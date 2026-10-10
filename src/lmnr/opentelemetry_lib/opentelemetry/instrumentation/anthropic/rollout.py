@@ -36,9 +36,7 @@ logger = get_default_logger(__name__)
 class AnthropicRolloutWrapper:
     """Serves cached Anthropic responses on a debug run; runs live otherwise."""
 
-    def cached_response_to_anthropic(
-        self, cached_span: dict[str, Any]
-    ) -> Message | None:
+    def cached_response_to_anthropic(self, cached_span: dict[str, Any]) -> Message | None:
         """Convert cached span envelope to Anthropic Message response."""
         from anthropic.types import Message, Usage
 
@@ -53,7 +51,9 @@ class AnthropicRolloutWrapper:
                 if not raw:
                     logger.warning("Cached span type='raw' has no response field")
                     return None
-                response_dict = cast(dict[str, Any], raw if isinstance(raw, dict) else json.loads(raw))
+                response_dict = cast(
+                    dict[str, Any], raw if isinstance(raw, dict) else json.loads(raw)
+                )
                 if "usage" in response_dict:
                     response_dict["usage"] = {"input_tokens": 0, "output_tokens": 0}
                 return Message.model_validate(response_dict)
@@ -186,17 +186,11 @@ class AnthropicRolloutWrapper:
             elif block.type == "tool_use":
                 # For tool use, we send the whole input as one delta
                 input_json = (
-                    json.dumps(block.input)
-                    if not isinstance(block.input, str)
-                    else block.input
+                    json.dumps(block.input) if not isinstance(block.input, str) else block.input
                 )
-                delta_obj = InputJSONDelta(
-                    partial_json=input_json, type="input_json_delta"
-                )
+                delta_obj = InputJSONDelta(partial_json=input_json, type="input_json_delta")
             elif block.type == "thinking":
-                delta_obj = ThinkingDelta(
-                    thinking=block.thinking, type="thinking_delta"
-                )
+                delta_obj = ThinkingDelta(thinking=block.thinking, type="thinking_delta")
 
             if delta_obj:
                 yield RawContentBlockDeltaEvent(

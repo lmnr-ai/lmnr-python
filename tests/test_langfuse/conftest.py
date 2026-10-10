@@ -108,6 +108,7 @@ def pydantic_ai_not_installed(monkeypatch: pytest.MonkeyPatch):
 def pydantic_ai_installed(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(instruments_mod, "_pydantic_ai_installed", lambda: True)
 
+
 @pytest.fixture
 def langfuse_client():
     """Fresh Langfuse client with an isolated resource manager.
@@ -119,8 +120,8 @@ def langfuse_client():
     """
     if not LANGFUSE_IMPORTABLE:
         pytest.skip(
-            "langfuse SDK not importable on this interpreter " +
-            "(known pydantic v1 incompatibility on Python 3.14)"
+            "langfuse SDK not importable on this interpreter "
+            + "(known pydantic v1 incompatibility on Python 3.14)"
         )
     # Delay import so tests that don't need langfuse can still be collected.
     from langfuse._client.resource_manager import LangfuseResourceManager

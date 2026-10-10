@@ -25,7 +25,9 @@ def test_openai_prompt_caching(
         )
     client = OpenAI()
 
-    system_message = "You help generate concise summaries of news articles and blog posts that user sends you."
+    system_message = (
+        "You help generate concise summaries of news articles and blog posts that user sends you."
+    )
 
     for _ in range(2):
         _ = client.chat.completions.create(
@@ -68,8 +70,7 @@ def test_openai_prompt_caching(
         == "chatcmpl-BNi3xzj4EEAzo6vce1IwHwie9IRhH"
     )
     assert (
-        cache_read_attributes.get("gen_ai.response.id")
-        == "chatcmpl-BNi420iFNtIOHzy8Gq2fVS5utTus7"
+        cache_read_attributes.get("gen_ai.response.id") == "chatcmpl-BNi420iFNtIOHzy8Gq2fVS5utTus7"
     )
 
     creation_output = json.loads(cast(str, cache_creation_attributes["gen_ai.output.messages"]))
@@ -92,7 +93,9 @@ async def test_openai_prompt_caching_async(
     instrumentor: OpenAIInstrumentor,
     span_exporter: InMemorySpanExporter,
 ):
-    async with await anyio.open_file(Path(__file__).parent.parent.joinpath("data/1024+tokens.txt"), "r") as f:
+    async with await anyio.open_file(
+        Path(__file__).parent.parent.joinpath("data/1024+tokens.txt"), "r"
+    ) as f:
         # add the unique test name to the prompt to avoid caching leaking to other tests
         text = (
             "test_openai_prompt_caching_async <- IGNORE THIS. ARTICLES START ON THE NEXT LINE\n"
@@ -100,7 +103,9 @@ async def test_openai_prompt_caching_async(
         )
     client = AsyncOpenAI()
 
-    system_message = "You help generate concise summaries of news articles and blog posts that user sends you."
+    system_message = (
+        "You help generate concise summaries of news articles and blog posts that user sends you."
+    )
 
     for _ in range(2):
         _ = await client.chat.completions.create(
@@ -142,8 +147,7 @@ async def test_openai_prompt_caching_async(
         == "chatcmpl-BNhr79TlegaJvfSOAOH2jsPEpRHMd"
     )
     assert (
-        cache_read_attributes.get("gen_ai.response.id")
-        == "chatcmpl-BNhrEFvKSNY08Uphau5iA4InZH6jn"
+        cache_read_attributes.get("gen_ai.response.id") == "chatcmpl-BNhrEFvKSNY08Uphau5iA4InZH6jn"
     )
 
     creation_output = json.loads(cast(str, cache_creation_attributes["gen_ai.output.messages"]))

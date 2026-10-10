@@ -68,7 +68,7 @@ def _extract_system_remaining(messages: Any) -> list[Any] | None:
     sys_idx = next(
         (
             i
-            for i, m in enumerate(messages) # pyright: ignore[reportUnknownArgumentType, reportUnknownVariableType]
+            for i, m in enumerate(messages)  # pyright: ignore[reportUnknownArgumentType, reportUnknownVariableType]
             if isinstance(m, dict) and cast(dict[str, str], m).get("role") == "system"
         ),
         None,
@@ -76,11 +76,11 @@ def _extract_system_remaining(messages: Any) -> list[Any] | None:
     if sys_idx is None:
         return None
 
-    sys_text = _system_text(messages[sys_idx]) # pyright: ignore[reportUnknownArgumentType]
+    sys_text = _system_text(messages[sys_idx])  # pyright: ignore[reportUnknownArgumentType]
     if not sys_text:
         return None
 
-    return [m for i, m in enumerate(messages) if i != sys_idx] # pyright: ignore[reportUnknownArgumentType, reportUnknownVariableType]
+    return [m for i, m in enumerate(messages) if i != sys_idx]  # pyright: ignore[reportUnknownArgumentType, reportUnknownVariableType]
 
 
 def _system_text(sys_msg: dict[str, Any]) -> str:

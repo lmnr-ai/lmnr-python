@@ -65,7 +65,7 @@ def input_messages_from_span(span: Span | LaminarSpan | None) -> list[Any] | Non
         if isinstance(messages, list):
             return messages  # pyright: ignore[reportUnknownVariableType]
     except Exception:
-       logger.debug("Failed to get input mesages from span", exc_info=True)
+        logger.debug("Failed to get input mesages from span", exc_info=True)
     return None
 
 

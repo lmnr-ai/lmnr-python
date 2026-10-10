@@ -60,8 +60,8 @@ class AsyncLaminarClient:
         resolved_key = project_api_key or from_env("LMNR_PROJECT_API_KEY")
         if not resolved_key:
             raise ValueError(
-                "Project API key is not set. Please set the LMNR_PROJECT_API_KEY environment " +
-                "variable or pass project_api_key to the initializer."
+                "Project API key is not set. Please set the LMNR_PROJECT_API_KEY environment "
+                + "variable or pass project_api_key to the initializer."
             )
         self.__project_api_key = resolved_key
 
@@ -91,20 +91,14 @@ class AsyncLaminarClient:
         )
 
         # Initialize resource objects
-        self.__evals = AsyncEvals(
-            self.__client, self.__base_url, self.__project_api_key
-        )
+        self.__evals = AsyncEvals(self.__client, self.__base_url, self.__project_api_key)
         self.__browser_events = AsyncBrowserEvents(
             self.__client, self.__base_url, self.__project_api_key
         )
         self.__tags = AsyncTags(self.__client, self.__base_url, self.__project_api_key)
-        self.__datasets = AsyncDatasets(
-            self.__client, self.__base_url, self.__project_api_key
-        )
+        self.__datasets = AsyncDatasets(self.__client, self.__base_url, self.__project_api_key)
         self.__sql = AsyncSql(self.__client, self.__base_url, self.__project_api_key)
-        self.__traces = AsyncTraces(
-            self.__client, self.__base_url, self.__project_api_key
-        )
+        self.__traces = AsyncTraces(self.__client, self.__base_url, self.__project_api_key)
         self.__rollout_sessions = AsyncRolloutSessions(
             self.__client, self.__base_url, self.__project_api_key
         )

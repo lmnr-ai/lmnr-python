@@ -53,17 +53,11 @@ def set_model_input_attributes(span: Span, kwargs: dict[str, Any]):
         return
 
     set_span_attribute(span, GEN_AI_REQUEST_MODEL, kwargs.get("model"))
-    set_span_attribute(
-        span, GEN_AI_REQUEST_MAX_TOKENS, kwargs.get("max_tokens_to_sample")
-    )
+    set_span_attribute(span, GEN_AI_REQUEST_MAX_TOKENS, kwargs.get("max_tokens_to_sample"))
     set_span_attribute(span, GEN_AI_REQUEST_TEMPERATURE, kwargs.get("temperature"))
     set_span_attribute(span, GEN_AI_REQUEST_TOP_P, kwargs.get("top_p"))
-    set_span_attribute(
-        span, GEN_AI_REQUEST_FREQUENCY_PENALTY, kwargs.get("frequency_penalty")
-    )
-    set_span_attribute(
-        span, GEN_AI_REQUEST_PRESENCE_PENALTY, kwargs.get("presence_penalty")
-    )
+    set_span_attribute(span, GEN_AI_REQUEST_FREQUENCY_PENALTY, kwargs.get("frequency_penalty"))
+    set_span_attribute(span, GEN_AI_REQUEST_PRESENCE_PENALTY, kwargs.get("presence_penalty"))
     set_span_attribute(span, "llm.is_streaming", kwargs.get("stream") or False)
 
 
@@ -71,7 +65,7 @@ def set_streaming_response_attributes(
     span: Span,
     accumulated_content: Any,
     finish_reason: str | None = None,
-    usage: Any=None  # TODO: set usage on attributes
+    usage: Any = None,  # TODO: set usage on attributes
 ):
     """Set span attributes for accumulated streaming response."""
     if not span.is_recording() or not should_send_prompts():
@@ -157,9 +151,7 @@ def _set_completions(span: Span, choices: list[dict[str, Any]] | None):
         function_call = message.get("function_call")
         if function_call and isinstance(function_call, dict):
             function_call = cast(dict[str, str], function_call)
-            set_span_attribute(
-                span, f"{prefix}.tool_calls.0.name", function_call.get("name")
-            )
+            set_span_attribute(span, f"{prefix}.tool_calls.0.name", function_call.get("name"))
             set_span_attribute(
                 span,
                 f"{prefix}.tool_calls.0.arguments",

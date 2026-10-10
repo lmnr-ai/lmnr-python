@@ -291,7 +291,13 @@ def _wrap(
     instance: Any,
     args: Sequence[Any],
     kwargs: dict[str, Any],
-) -> T | Generator[ParsedMessageStreamEvent] | WrappedAsyncMessageStreamManager | WrappedMessageStreamManager | None:
+) -> (
+    T
+    | Generator[ParsedMessageStreamEvent]
+    | WrappedAsyncMessageStreamManager
+    | WrappedMessageStreamManager
+    | None
+):
     """Instruments and calls every function defined in WRAPPED_FUNCTIONS."""
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
@@ -361,10 +367,7 @@ def _wrap(
                     response,
                 )
         except Exception:
-            logger.warning(
-                "Failed to set response attributes for anthropic span",
-                exc_info=True
-            )
+            logger.warning("Failed to set response attributes for anthropic span", exc_info=True)
 
         if span.is_recording():
             span.set_status(Status(StatusCode.OK))
@@ -378,7 +381,13 @@ async def _awrap(
     instance: Any,
     args: Sequence[Any],
     kwargs: dict[str, Any],
-) -> T | AsyncGenerator[ParsedMessageStreamEvent] | WrappedAsyncMessageStreamManager | WrappedMessageStreamManager | None:
+) -> (
+    T
+    | AsyncGenerator[ParsedMessageStreamEvent]
+    | WrappedAsyncMessageStreamManager
+    | WrappedMessageStreamManager
+    | None
+):
     """Instruments and calls every function defined in WRAPPED_FUNCTIONS."""
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)

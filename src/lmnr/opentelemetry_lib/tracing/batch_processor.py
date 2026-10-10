@@ -102,7 +102,9 @@ def approximate_span_size(span: ReadableSpan) -> int:
         total += utf8_size(event.name or "") + _attributes_size(event.attributes)
     for link in span.links or ():
         total += _attributes_size(link.attributes)
-    if span.status.status_code != StatusCode.UNSET and span.status.description:  # span.status != Status.UNSET
+    if (
+        span.status.status_code != StatusCode.UNSET and span.status.description
+    ):  # span.status != Status.UNSET
         total += utf8_size(span.status.description)
     return total
 
@@ -250,9 +252,7 @@ class SizeLimitedBatchSpanProcessor(BatchSpanProcessor):
             )
             # This span lands in the buffer either way, and the flush below
             # takes out only what preceded it.
-            self._pending_size_bytes = (
-                size if should_flush else self._pending_size_bytes + size
-            )
+            self._pending_size_bytes = size if should_flush else self._pending_size_bytes + size
 
         if should_flush:
             # Two cases have to be exported on this thread rather than handed

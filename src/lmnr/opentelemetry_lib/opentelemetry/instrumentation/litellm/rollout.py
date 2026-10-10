@@ -118,7 +118,6 @@ class DualIteratorWrapper:
         if not self._cached_response:
             return
 
-
         response_dict = to_dict(self._cached_response)
 
         # Set common attributes based on response type
@@ -132,9 +131,7 @@ class DualIteratorWrapper:
                 "gen_ai.response.system_fingerprint",
                 response_dict.get("system_fingerprint"),
             )
-            messages = [
-                choice.get("message", {}) for choice in response_dict.get("choices", [])
-            ]
+            messages = [choice.get("message", {}) for choice in response_dict.get("choices", [])]
             span.set_attribute("gen_ai.output.messages", json_dumps(messages))
 
         # For responses API
@@ -145,7 +142,7 @@ class DualIteratorWrapper:
                 if reasoning_dict.get("summary") or reasoning_dict.get("effort"):
                     final_items.append(reasoning_dict)  # pyright: ignore[reportUnknownMemberType]
             if isinstance(response_dict.get("output"), list):
-                for item in (response_dict.get("output") or []):  # pyright: ignore[reportUnknownVariableType]
+                for item in response_dict.get("output") or []:  # pyright: ignore[reportUnknownVariableType]
                     final_items.append(to_dict(item))  # pyright: ignore[reportUnknownMemberType]
             span.set_attribute("gen_ai.output.messages", json_dumps(final_items))  # pyright: ignore[reportUnknownArgumentType]
 
@@ -245,7 +242,9 @@ class LiteLLMRolloutWrapper:
                     try:
                         return ModelResponse.model_validate(raw_dict)
                     except Exception:
-                        logger.debug("Failed to validate ModelResponse, returning dict", exc_info=True)
+                        logger.debug(
+                            "Failed to validate ModelResponse, returning dict", exc_info=True
+                        )
                         return raw_dict  # pyright: ignore[reportUnknownVariableType]
                 return raw_dict  # pyright: ignore[reportUnknownVariableType]
             except Exception:
@@ -311,7 +310,9 @@ class LiteLLMRolloutWrapper:
                     try:
                         return ResponsesAPIResponse.model_validate(raw_dict)
                     except Exception:
-                        logger.debug("Failed to validate ResponsesAPIResponse, returning dict", exc_info=True)
+                        logger.debug(
+                            "Failed to validate ResponsesAPIResponse, returning dict", exc_info=True
+                        )
                         return raw_dict  # pyright: ignore[reportUnknownVariableType]
                 return raw_dict  # pyright: ignore[reportUnknownVariableType]
             except Exception:
@@ -348,7 +349,9 @@ class LiteLLMRolloutWrapper:
                 try:
                     return ResponsesAPIResponse.model_validate(response_dict)
                 except Exception:
-                    logger.debug("Failed to validate ResponsesAPIResponse, returning dict", exc_info=True)
+                    logger.debug(
+                        "Failed to validate ResponsesAPIResponse, returning dict", exc_info=True
+                    )
                     return response_dict
             return response_dict
 
@@ -360,7 +363,8 @@ class LiteLLMRolloutWrapper:
             return None
 
     def _create_cached_completion_stream(
-        self, response: Any,
+        self,
+        response: Any,
     ) -> Generator[Any, None, None]:
         """
         Create a generator that yields a cached completion response as a single chunk.
@@ -417,7 +421,8 @@ class LiteLLMRolloutWrapper:
         yield chunk_dict
 
     async def _create_async_cached_completion_stream(
-        self, response: Any,
+        self,
+        response: Any,
     ) -> AsyncGenerator[Any, None]:
         """
         Create an async generator that yields a cached completion response as a single chunk.
@@ -473,7 +478,8 @@ class LiteLLMRolloutWrapper:
         yield chunk_dict
 
     def _create_cached_responses_stream(
-        self, response: Any,
+        self,
+        response: Any,
     ) -> Generator[Any, None, None]:
         """
         Create a generator that yields a cached responses response as a completed event.
@@ -504,7 +510,8 @@ class LiteLLMRolloutWrapper:
         yield event_dict
 
     async def _create_async_cached_responses_stream(
-        self, response: Any,
+        self,
+        response: Any,
     ) -> AsyncGenerator[Any, None]:
         """
         Create an async generator that yields a cached responses response as a completed event.

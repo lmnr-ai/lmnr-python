@@ -109,10 +109,7 @@ class DebugConfig:
         Replay needs a source trace AND a `cache_until` span-id needle; either
         one missing is a debug-no-replay run.
         """
-        return (
-            self.replay_trace_id is not None
-            and self.cache_until_span_id is not None
-        )
+        return self.replay_trace_id is not None and self.cache_until_span_id is not None
 
 
 def build_debug_config() -> DebugConfig | None:
@@ -208,9 +205,7 @@ def build_debug_config_from_context(debug: DebugContext | None) -> DebugConfig |
     replay_trace_id = debug.get("replay_trace_id", None) or None
     # The needle is propagated verbatim; re-run it through the same normalizer
     # the env path uses so a downstream config holds an identical needle form.
-    cache_until_span_id = _parse_cache_until_span_id(
-        debug.get("cache_until", None)
-    )
+    cache_until_span_id = _parse_cache_until_span_id(debug.get("cache_until", None))
 
     return DebugConfig(
         session_id=session_id,

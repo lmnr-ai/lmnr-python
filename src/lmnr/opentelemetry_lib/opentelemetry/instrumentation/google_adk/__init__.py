@@ -80,25 +80,20 @@ _BASE_LLM_FLOW_MODULE = "google.adk.flows.llm_flows.base_llm_flow"
 # ADK moved the by-name bindings in later releases: trace_merged_tool_calls
 # into a batch executor module in 2.9 (renamed in 2.10), trace_call_llm out
 # of base_llm_flow into core._model_call in 2.10.
-_BATCH_TOOL_EXECUTOR_MODULE = (
-    "google.adk.flows.llm_flows._batch_tool_executor"
-)
-_TOOLS_BATCH_EXECUTOR_MODULE = (
-    "google.adk.flows.llm_flows.tools._batch_executor"
-)
+_BATCH_TOOL_EXECUTOR_MODULE = "google.adk.flows.llm_flows._batch_tool_executor"
+_TOOLS_BATCH_EXECUTOR_MODULE = "google.adk.flows.llm_flows.tools._batch_executor"
 _MODEL_CALL_MODULE = "google.adk.flows.llm_flows.core._model_call"
 _TOOL_ARGS_ATTRIBUTE = "gcp.vertex.agent.tool_call_args"
 _TOOL_RESPONSE_ATTRIBUTE = "gcp.vertex.agent.tool_response"
 _LLM_REQUEST_ATTRIBUTE = "gcp.vertex.agent.llm_request"
-_GENAI_DETECTOR = (
-    "_instrumented_with_opentelemetry_instrumentation_google_genai"
-)
+_GENAI_DETECTOR = "_instrumented_with_opentelemetry_instrumentation_google_genai"
 
 T = TypeVar("T")
 
+
 def _resolve_span(
     args: Sequence[Any],
-    kwargs: dict[str,Any],
+    kwargs: dict[str, Any],
     position: int,
 ) -> trace.Span | None:
     """Mirrors ADK's own resolution: explicit span argument, else current."""
@@ -113,7 +108,10 @@ def _resolve_span(
 
 
 def _copy_content_attribute(
-    span: trace.Span, source: str, target: str, actual_is_empty: bool = False,
+    span: trace.Span,
+    source: str,
+    target: str,
+    actual_is_empty: bool = False,
 ) -> None:
     """Copies an ADK content attribute onto a Laminar one.
 
@@ -246,7 +244,8 @@ def _tool_declarations_from_config(config: Any) -> list[Any]:
         if isinstance(tool, types.Tool):
             declarations.extend(tool.function_declarations or [])  # pyright: ignore[reportUnknownMemberType]
         elif isinstance(tool, dict) and isinstance(
-            tool.get("function_declarations"), list  # pyright: ignore[reportUnknownMemberType]
+            tool.get("function_declarations"),
+            list,  # pyright: ignore[reportUnknownMemberType]
         ):
             declarations.extend(tool.get("function_declarations", []))  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
     return declarations  # pyright: ignore[reportUnknownVariableType]
@@ -315,11 +314,7 @@ def _detach_from_current_context(span: trace.Span) -> None:
     the exact value captured at attach time, not "whatever is current now".
     """
     parent = cast(trace.SpanContext | None, getattr(span, "parent", None))
-    new_span = (
-        trace.NonRecordingSpan(parent)
-        if parent is not None
-        else trace.INVALID_SPAN
-    )
+    new_span = trace.NonRecordingSpan(parent) if parent is not None else trace.INVALID_SPAN
     # Pass the current context explicitly rather than None: omitting it
     # would build a brand new empty Context, discarding Laminar's own
     # association-properties/debug-context state carried in context vars.
@@ -365,9 +360,7 @@ def _wrap_trace_call_llm(
     try:
         _detach_from_current_context(span)
     except Exception:
-        logger.debug(
-            "Failed to detach ADK call_llm span from context", exc_info=True
-        )
+        logger.debug("Failed to detach ADK call_llm span from context", exc_info=True)
     try:
         # Ends call_llm as soon as the model's last token arrives, instead
         # of letting its recorded duration bleed into the tool-execution
@@ -379,9 +372,7 @@ def _wrap_trace_call_llm(
         # returns, without re-exporting the span.
         span.end()
     except Exception:
-        logger.debug(
-            "Failed to end ADK call_llm span early", exc_info=True
-        )
+        logger.debug("Failed to end ADK call_llm span early", exc_info=True)
     return result
 
 
@@ -416,10 +407,7 @@ def _wrap_use_extra_generate_content_attributes(
 
 
 def _wrap_genai_detection(
-    _wrapped: Any,
-    _instance: Any,
-    _args: Sequence[Any],
-    _kwargs: dict[str, Any]
+    _wrapped: Any, _instance: Any, _args: Sequence[Any], _kwargs: dict[str, Any]
 ):
     """ADK's own native `generate_content <model>` span is always redundant
     while this instrumentor is active: by default `call_llm` is enriched
@@ -432,6 +420,8 @@ def _wrap_genai_detection(
 
 
 _wrapped_functions: list[tuple[str, str, Callable[..., Any]]] = []
+
+
 class GoogleAdkInstrumentor(BaseInstrumentor):
     # Not set in __init__: BaseInstrumentor is a singleton whose __init__
     # runs again on every construction, which would clear the tracking while
@@ -524,9 +514,7 @@ class GoogleAdkInstrumentor(BaseInstrumentor):
         ):
             try:
                 wrap_function_wrapper(module_name, function_name, wrapper)
-                _wrapped_functions.append(
-                    (module_name, function_name, wrapper)
-                )
+                _wrapped_functions.append((module_name, function_name, wrapper))
             except (AttributeError, ModuleNotFoundError):
                 logger.debug(
                     "ADK telemetry hook %s.%s not found, skipping",
@@ -537,6 +525,7 @@ class GoogleAdkInstrumentor(BaseInstrumentor):
     @override
     def _uninstrument(self, **kwargs: Any):
         import importlib
+
         global _wrapped_functions
 
         for module_name, function_name, wrapper in _wrapped_functions:

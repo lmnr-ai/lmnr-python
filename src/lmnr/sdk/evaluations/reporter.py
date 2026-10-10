@@ -29,9 +29,7 @@ class EvaluationReporter:
             self.cli_progress.close()
         raise error
 
-    def stop(
-        self, average_scores: dict[str, Numeric], project_id: UUID, evaluation_id: UUID
-    ):
+    def stop(self, average_scores: dict[str, Numeric], project_id: UUID, evaluation_id: UUID):
         assert self.cli_progress is not None
         self.cli_progress.close()
         print("Average scores:")

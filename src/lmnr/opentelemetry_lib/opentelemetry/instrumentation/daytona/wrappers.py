@@ -53,12 +53,15 @@ DAYTONA_LOG_ATTRIBUTES = {
 
 class LogStream(Enum):
     """Enum for Daytona log stream types."""
+
     STDOUT = "stdout"
     STDERR = "stderr"
 
 
 @dont_throw
-def _set_request_attributes(span: Span, session_id: str | None, request: SessionExecuteRequest | None):
+def _set_request_attributes(
+    span: Span, session_id: str | None, request: SessionExecuteRequest | None
+):
     """Set span attributes from the execute_session_command request."""
     set_span_attribute(span, "daytona.session_id", session_id)
 
@@ -116,7 +119,9 @@ def _emit_log(
 
     try:
         event_name = f"daytona.log.{stream.value}"
-        event_severity_number = SeverityNumber.INFO if stream == LogStream.STDOUT else SeverityNumber.ERROR
+        event_severity_number = (
+            SeverityNumber.INFO if stream == LogStream.STDOUT else SeverityNumber.ERROR
+        )
 
         attributes = {
             **DAYTONA_LOG_ATTRIBUTES,
@@ -264,9 +269,7 @@ def _start_log_streaming(
     # Sync context: use thread with its own event loop
     def run_in_thread():
         try:
-            asyncio.run(
-                _stream_logs_async(logger, instance, session_id, cmd_id, ctx)
-            )
+            asyncio.run(_stream_logs_async(logger, instance, session_id, cmd_id, ctx))
         except Exception:
             log.debug("Log streaming thread error", exc_info=True)
 
@@ -369,9 +372,7 @@ def wrap(
     # Process logs outside the try block - don't let logging failures
     # break the user's code after a successful Daytona command
     try:
-        _process_command_response(
-            logger, instance, response, session_id or "", request, ctx
-        )
+        _process_command_response(logger, instance, response, session_id or "", request, ctx)
     except Exception:
         log.debug("Failed to process Daytona command response for logging", exc_info=True)
 
@@ -384,7 +385,7 @@ async def awrap(
     instance: AsyncProcess,
     args: Sequence[Any] | None,
     kwargs: dict[str, Any] | None,
-)-> SessionExecuteResponse:
+) -> SessionExecuteResponse:
     """Wrapper for async execute_session_command.
 
     Creates a span, executes the command, sets attributes, ends span, then emits logs.
@@ -440,13 +441,12 @@ async def awrap(
     # Process logs outside the try block - don't let logging failures
     # break the user's code after a successful Daytona command
     try:
-        _process_command_response(
-            logger, instance, response, session_id or "", request, ctx
-        )
+        _process_command_response(logger, instance, response, session_id or "", request, ctx)
     except Exception:
         log.debug("Failed to process Daytona command response for logging", exc_info=True)
 
     return response
+
 
 @dont_throw
 def _set_exec_request_attributes(span: Span, command: str, cwd: str | None):
@@ -480,7 +480,10 @@ def _emit_exec_logs_from_response(
     stdout = getattr(response, "result", None)
     if stdout:
         _emit_log(
-            logger, LogStream.STDOUT, stdout, ctx,
+            logger,
+            LogStream.STDOUT,
+            stdout,
+            ctx,
             extra_attributes={"daytona.command": command},
         )
 
@@ -491,7 +494,7 @@ def wrap_exec(
     _instance: Process,
     args: Sequence[Any] | None,
     kwargs: dict[str, Any] | None,
-)-> SessionExecuteResponse:
+) -> SessionExecuteResponse:
     """Wrapper for sync Process.exec.
 
     Creates a span, executes the command, sets attributes, ends span, then emits logs.
@@ -556,7 +559,7 @@ async def awrap_exec(
     _instance: AsyncProcess,
     args: Sequence[Any] | None,
     kwargs: dict[str, Any] | None,
-)-> SessionExecuteResponse:
+) -> SessionExecuteResponse:
     """Wrapper for async AsyncProcess.exec.
 
     Creates a span, executes the command, sets attributes, ends span, then emits logs.

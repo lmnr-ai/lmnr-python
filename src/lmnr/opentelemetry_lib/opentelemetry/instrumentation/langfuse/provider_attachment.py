@@ -122,7 +122,7 @@ class ProviderAttachment:
             if translator is not None:
                 _removed = remove_span_processor(provider, translator)
             if lmnr_processor is not None:
-                _removed= remove_span_processor(provider, lmnr_processor)
+                _removed = remove_span_processor(provider, lmnr_processor)
         self._attached_providers = {}
         self._handled_providers = set()
 
@@ -160,7 +160,9 @@ class ProviderAttachment:
             # inert for the resource-manager path.
             return
 
-        instances: dict[str, LangfuseResourceManager] = getattr(LangfuseResourceManager, "_instances", {}) or {}
+        instances: dict[str, LangfuseResourceManager] = (
+            getattr(LangfuseResourceManager, "_instances", {}) or {}
+        )
         for rm in instances.values():
             provider: TracerProvider | None = getattr(rm, "tracer_provider", None)
             self.attach(provider)
@@ -200,9 +202,7 @@ class ProviderAttachment:
                 LangfuseResourceManager,
             )
 
-            LangfuseResourceManager._initialize_instance = (
-                self._original_initialize_instance
-            )
+            LangfuseResourceManager._initialize_instance = self._original_initialize_instance
         except Exception:
             # If langfuse can't be imported here it isn't usable in this
             # interpreter, so the patched hook can never be invoked anyway.

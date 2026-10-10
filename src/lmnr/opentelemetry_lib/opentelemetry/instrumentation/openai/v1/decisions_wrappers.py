@@ -77,9 +77,7 @@ def _set_request_attributes(span: Span, kwargs: dict[str, Any]) -> None:
     if should_send_prompts():
         input_messages = build_genai_input_messages(kwargs)
         if input_messages is not None:
-            set_span_attribute(
-                span, "gen_ai.input.messages", json_dumps(input_messages)
-            )
+            set_span_attribute(span, "gen_ai.input.messages", json_dumps(input_messages))
         questions = kwargs.get("questions")
         if isinstance(questions, (list, tuple)):
             set_span_attribute(
@@ -101,18 +99,14 @@ def _set_response_attributes(span: Span, response: Any) -> None:
         set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, usage.output_tokens)
         set_span_attribute(span, "llm.usage.total_tokens", usage.total_tokens)
         if details := usage.input_tokens_details:
-            set_span_attribute(
-                span, "gen_ai.usage.cache_read_input_tokens", details.cached_tokens
-            )
+            set_span_attribute(span, "gen_ai.usage.cache_read_input_tokens", details.cached_tokens)
             set_span_attribute(
                 span,
                 "gen_ai.usage.cache_creation_input_tokens",
                 details.cache_write_tokens,
             )
         if details := usage.output_tokens_details:
-            set_span_attribute(
-                span, "gen_ai.usage.reasoning_tokens", details.reasoning_tokens
-            )
+            set_span_attribute(span, "gen_ai.usage.reasoning_tokens", details.reasoning_tokens)
 
     if should_send_prompts():
         answers = [model_as_dict(answer) for answer in decision.answers]

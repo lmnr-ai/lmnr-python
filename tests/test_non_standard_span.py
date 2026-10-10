@@ -56,9 +56,7 @@ def test_broken_span(span_exporter: InMemorySpanExporter):
     assert inner_ctx is not None
     assert outer_attrs["lmnr.span.instrumentation_source"] == "python"
     assert outer_attrs["lmnr.span.path"] == ("outer",)
-    assert outer_attrs["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=outer_ctx.span_id)),
-    )
+    assert outer_attrs["lmnr.span.ids_path"] == (str(uuid.UUID(int=outer_ctx.span_id)),)
 
     assert inner_ctx.trace_id == outer_ctx.trace_id
 
@@ -111,9 +109,7 @@ def test_broken_span_observe(span_exporter: InMemorySpanExporter):
     assert outer_span.name == "outer"
     assert outer_attrs["lmnr.span.instrumentation_source"] == "python"
     assert outer_attrs["lmnr.span.path"] == ("outer",)
-    assert outer_attrs["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=outer_ctx.span_id)),
-    )
+    assert outer_attrs["lmnr.span.ids_path"] == (str(uuid.UUID(int=outer_ctx.span_id)),)
 
     assert inner_ctx.trace_id == outer_ctx.trace_id
 
@@ -165,8 +161,6 @@ async def test_broken_span_observe_async(span_exporter: InMemorySpanExporter):
     assert outer_span.name == "outer"
     assert outer_attrs["lmnr.span.instrumentation_source"] == "python"
     assert outer_attrs["lmnr.span.path"] == ("outer",)
-    assert outer_attrs["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=outer_ctx.span_id)),
-    )
+    assert outer_attrs["lmnr.span.ids_path"] == (str(uuid.UUID(int=outer_ctx.span_id)),)
 
     assert inner_ctx.trace_id == outer_ctx.trace_id

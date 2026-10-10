@@ -60,6 +60,7 @@ logger = get_default_logger(__name__)
 
 GetCtxReturnType = tuple[Context, Span] | tuple[Context, None] | tuple[None, None]
 
+
 class LiteLLMLangfuseBridge:
     """Attaches Laminar's translator + span processor to LiteLLM's
     `langfuse_otel` loggers, and forces a primary span for them.
@@ -127,21 +128,30 @@ class LiteLLMLangfuseBridge:
         # No-credentials path still emits through `_tracer_provider`.
         self._provider_attachment.attach(getattr(logger_obj, "_tracer_provider", None))
 
-        orig_get_tracer: Callable[[dict[str, str]], Tracer] | None = getattr(logger_obj, "_get_tracer_with_dynamic_headers", None)
-        orig_get_ctx: Callable[[dict[str, Any], Span | None], tuple[Context, Span]] | None = getattr(logger_obj, "_get_span_context", None)
+        orig_get_tracer: Callable[[dict[str, str]], Tracer] | None = getattr(
+            logger_obj, "_get_tracer_with_dynamic_headers", None
+        )
+        orig_get_ctx: Callable[[dict[str, Any], Span | None], tuple[Context, Span]] | None = (
+            getattr(logger_obj, "_get_span_context", None)
+        )
         if not callable(orig_get_tracer) or not callable(orig_get_ctx):
             return
 
         provider_attachment = self._provider_attachment
         is_llm_span = self._is_llm_span
 
-        def patched_get_tracer(dynamic_headers: dict[str, str], _orig: Callable[[dict[str, str]], Tracer]=orig_get_tracer) -> Tracer:
+        def patched_get_tracer(
+            dynamic_headers: dict[str, str],
+            _orig: Callable[[dict[str, str]], Tracer] = orig_get_tracer,
+        ) -> Tracer:
             tracer = _orig(dynamic_headers)
             # Attach to every cache provider we haven't seen yet. The cache is
             # keyed by credential set, so per-team keys each get a provider;
             # `attach()`'s id() guard makes repeats a no-op.
             try:
-                cache: dict[Any, TracerProvider] = getattr(logger_obj, "_tracer_provider_cache", None) or {}
+                cache: dict[Any, TracerProvider] = (
+                    getattr(logger_obj, "_tracer_provider_cache", None) or {}
+                )
                 for provider in list(cache.values()):
                     provider_attachment.attach(provider)
             except Exception:
@@ -150,8 +160,8 @@ class LiteLLMLangfuseBridge:
 
         def patched_get_ctx(
             kwargs: dict[str, Any],
-            default_span: Span | None=None,
-            _orig: Callable[[dict[str, Any], Span | None], tuple[Context, Span]]=orig_get_ctx
+            default_span: Span | None = None,
+            _orig: Callable[[dict[str, Any], Span | None], tuple[Context, Span]] = orig_get_ctx,
         ) -> GetCtxReturnType:
             ctx, parent_span = _orig(kwargs, default_span)
             # Only force primary-span creation when folding would corrupt the
@@ -197,9 +207,7 @@ class LiteLLMLangfuseBridge:
         if self._original_litellm_init_logger is not None:
             return
 
-        original = getattr(
-            litellm_logging, "_init_custom_logger_compatible_class", None
-        )
+        original = getattr(litellm_logging, "_init_custom_logger_compatible_class", None)
         if not callable(original):
             return
         self._original_litellm_init_logger = original

@@ -45,15 +45,11 @@ def test_anthropic_message_parse_pydantic_model(
     assert len(output_messages) == 1
     assert output_messages[0]["role"] == "assistant"
     # Structured output is returned as a text block with JSON.
-    text_block = next(
-        block for block in output_messages[0]["content"] if block["type"] == "text"
-    )
+    text_block = next(block for block in output_messages[0]["content"] if block["type"] == "text")
     assert text_block["text"] == cast(ParsedTextBlock, response.content[0]).text
 
     assert (
-        json.loads(
-            cast(str, attributes.get("gen_ai.request.structured_output_schema"))
-        )
+        json.loads(cast(str, attributes.get("gen_ai.request.structured_output_schema")))
         == Joke.model_json_schema()
     )
 
@@ -94,7 +90,7 @@ def test_anthropic_message_create_with_output_config(
         json.loads(
             cast(
                 str,
-                (anthropic_span.attributes or {}).get("gen_ai.request.structured_output_schema")
+                (anthropic_span.attributes or {}).get("gen_ai.request.structured_output_schema"),
             )
         )
         == schema
@@ -126,14 +122,10 @@ async def test_async_anthropic_message_parse_pydantic_model(
 
     attributes = anthropic_span.attributes or {}
     output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
-    text_block = next(
-        block for block in output_messages[0]["content"] if block["type"] == "text"
-    )
+    text_block = next(block for block in output_messages[0]["content"] if block["type"] == "text")
     assert text_block["text"] == cast(ParsedTextBlock, response.content[0]).text
 
     assert (
-        json.loads(
-            cast(str, attributes.get("gen_ai.request.structured_output_schema"))
-        )
+        json.loads(cast(str, attributes.get("gen_ai.request.structured_output_schema")))
         == Joke.model_json_schema()
     )

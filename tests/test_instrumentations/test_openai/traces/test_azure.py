@@ -32,17 +32,17 @@ def test_chat(
     open_ai_span = spans[0]
     input_messages = json.loads(cast(str, (open_ai_span.attributes or {})["gen_ai.input.messages"]))
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
-    output_messages = json.loads(cast(str, (open_ai_span.attributes or {})["gen_ai.output.messages"]))
+    output_messages = json.loads(
+        cast(str, (open_ai_span.attributes or {})["gen_ai.output.messages"])
+    )
     assert output_messages[0]["message"]["content"]
-    assert (
-        (open_ai_span.attributes or {}).get("gen_ai.request.base_url")
-        == "https://traceloop-stg.openai.azure.com/openai/"
-    )
+    assert (open_ai_span.attributes or {}).get(
+        "gen_ai.request.base_url"
+    ) == "https://traceloop-stg.openai.azure.com/openai/"
     assert (open_ai_span.attributes or {}).get("llm.is_streaming") is False
-    assert (
-        (open_ai_span.attributes or {}).get("gen_ai.response.id")
-        == "chatcmpl-9HpbZPf84KZFiQG6fdY0KVtIwHyIa"
-    )
+    assert (open_ai_span.attributes or {}).get(
+        "gen_ai.response.id"
+    ) == "chatcmpl-9HpbZPf84KZFiQG6fdY0KVtIwHyIa"
 
 
 @pytest.mark.vcr
@@ -64,22 +64,22 @@ def test_chat_content_filtering(
     open_ai_span = spans[0]
     input_messages = json.loads(cast(str, (open_ai_span.attributes or {})["gen_ai.input.messages"]))
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
-    output_messages = json.loads(cast(str, (open_ai_span.attributes or {})["gen_ai.output.messages"]))
+    output_messages = json.loads(
+        cast(str, (open_ai_span.attributes or {})["gen_ai.output.messages"])
+    )
     assert output_messages[0]["finish_reason"] == "content_filter"
     content_filter_results = output_messages[0]["content_filter_results"]
     assert content_filter_results["hate"]["filtered"] is True
     assert content_filter_results["hate"]["severity"] == "high"
     assert content_filter_results["self_harm"]["filtered"] is False
     assert content_filter_results["self_harm"]["severity"] == "safe"
-    assert (
-        (open_ai_span.attributes or {}).get("gen_ai.request.base_url")
-        == "https://traceloop-stg.openai.azure.com/openai/"
-    )
+    assert (open_ai_span.attributes or {}).get(
+        "gen_ai.request.base_url"
+    ) == "https://traceloop-stg.openai.azure.com/openai/"
     assert (open_ai_span.attributes or {}).get("llm.is_streaming") is False
-    assert (
-        (open_ai_span.attributes or {}).get("gen_ai.response.id")
-        == "chatcmpl-9HpyGSWv1hoKdGaUaiFhfxzTEVlZo"
-    )
+    assert (open_ai_span.attributes or {}).get(
+        "gen_ai.response.id"
+    ) == "chatcmpl-9HpyGSWv1hoKdGaUaiFhfxzTEVlZo"
 
 
 @pytest.mark.vcr
@@ -143,12 +143,13 @@ def test_chat_streaming(
     open_ai_span = spans[0]
     input_messages = json.loads(cast(str, (open_ai_span.attributes or {})["gen_ai.input.messages"]))
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
-    output_messages = json.loads(cast(str, (open_ai_span.attributes or {})["gen_ai.output.messages"]))
-    assert output_messages[0]["message"]["content"]
-    assert (
-        (open_ai_span.attributes or {}).get("gen_ai.request.base_url")
-        == "https://traceloop-stg.openai.azure.com/openai/"
+    output_messages = json.loads(
+        cast(str, (open_ai_span.attributes or {})["gen_ai.output.messages"])
     )
+    assert output_messages[0]["message"]["content"]
+    assert (open_ai_span.attributes or {}).get(
+        "gen_ai.request.base_url"
+    ) == "https://traceloop-stg.openai.azure.com/openai/"
     assert (open_ai_span.attributes or {}).get("llm.is_streaming") is True
 
     events = open_ai_span.events
@@ -159,17 +160,11 @@ def test_chat_streaming(
         cast(str, (open_ai_span.attributes or {}).get(f"gen_ai.prompt.{PROMPT_FILTER_KEY}"))
     )
     assert prompt_filter_results[0]["prompt_index"] == 0
-    assert (
-        prompt_filter_results[0]["content_filter_results"]["hate"]["severity"] == "safe"
-    )
-    assert (
-        prompt_filter_results[0]["content_filter_results"]["self_harm"]["filtered"]
-        is False
-    )
-    assert (
-        (open_ai_span.attributes or {}).get("gen_ai.response.id")
-        == "chatcmpl-9HpbaAXyt0cAnlWvI8kUAFpZt5jyQ"
-    )
+    assert prompt_filter_results[0]["content_filter_results"]["hate"]["severity"] == "safe"
+    assert prompt_filter_results[0]["content_filter_results"]["self_harm"]["filtered"] is False
+    assert (open_ai_span.attributes or {}).get(
+        "gen_ai.response.id"
+    ) == "chatcmpl-9HpbaAXyt0cAnlWvI8kUAFpZt5jyQ"
 
 
 @pytest.mark.vcr
@@ -198,20 +193,20 @@ async def test_chat_async_streaming(
 
     input_messages = json.loads(cast(str, (open_ai_span.attributes or {})["gen_ai.input.messages"]))
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
-    output_messages = json.loads(cast(str, (open_ai_span.attributes or {})["gen_ai.output.messages"]))
-    assert output_messages[0]["message"]["content"]
-    assert (
-        (open_ai_span.attributes or {}).get("gen_ai.request.base_url")
-        == "https://traceloop-stg.openai.azure.com/openai/"
+    output_messages = json.loads(
+        cast(str, (open_ai_span.attributes or {})["gen_ai.output.messages"])
     )
+    assert output_messages[0]["message"]["content"]
+    assert (open_ai_span.attributes or {}).get(
+        "gen_ai.request.base_url"
+    ) == "https://traceloop-stg.openai.azure.com/openai/"
     assert (open_ai_span.attributes or {}).get("llm.is_streaming") is True
 
     events = open_ai_span.events
     assert len(events) == chunk_count
-    assert (
-        (open_ai_span.attributes or {}).get("gen_ai.response.id")
-        == "chatcmpl-9HpbbsSaH8U6amSDAwdA2WzMeDdLB"
-    )
+    assert (open_ai_span.attributes or {}).get(
+        "gen_ai.response.id"
+    ) == "chatcmpl-9HpbbsSaH8U6amSDAwdA2WzMeDdLB"
 
 
 @pytest.mark.vcr

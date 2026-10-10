@@ -15,9 +15,7 @@ def process_schema(schema: Any) -> dict[str, Any]:
         type_schema = t_schema(DUMMY_CLIENT, schema)
         if type_schema is None:
             return {}
-        json_schema = type_schema.json_schema.model_dump(
-            exclude_unset=True, exclude_none=True
-        )
+        json_schema = type_schema.json_schema.model_dump(exclude_unset=True, exclude_none=True)
     except Exception:
         json_schema = {}
     return json_schema

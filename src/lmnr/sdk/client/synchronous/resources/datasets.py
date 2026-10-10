@@ -33,10 +33,8 @@ class Datasets(BaseResource):
             headers=self._headers(),
         )
         if response.status_code != 200:
-            raise ValueError(
-                f"Error listing datasets: [{response.status_code}] {response.text}"
-            )
-        return [parse_dataset(dataset) for dataset in cast(list[dict[str,str]], response.json())]
+            raise ValueError(f"Error listing datasets: [{response.status_code}] {response.text}")
+        return [parse_dataset(dataset) for dataset in cast(list[dict[str, str]], response.json())]
 
     def get_dataset_by_name(self, name: str) -> list[Dataset]:
         """Get a dataset by name."""
@@ -46,10 +44,8 @@ class Datasets(BaseResource):
             headers=self._headers(),
         )
         if response.status_code != 200:
-            raise ValueError(
-                f"Error getting dataset: [{response.status_code}] {response.text}"
-            )
-        return [parse_dataset(dataset) for dataset in cast(list[dict[str,str]], response.json())]
+            raise ValueError(f"Error getting dataset: [{response.status_code}] {response.text}")
+        return [parse_dataset(dataset) for dataset in cast(list[dict[str, str]], response.json())]
 
     def push(
         self,
@@ -74,7 +70,7 @@ class Datasets(BaseResource):
 
         total_batches = math.ceil(len(points) / batch_size)
         response = None
-        for (batch_num, i) in enumerate(range(0, len(points), batch_size)):
+        for batch_num, i in enumerate(range(0, len(points), batch_size)):
             logger.debug(f"Pushing batch {batch_num} of {total_batches}")
             batch = points[i : i + batch_size]
             response = self._client.post(
@@ -93,7 +89,7 @@ class Datasets(BaseResource):
                     f"Error pushing data to dataset: [{response.status_code}] {response.text}"
                 )
 
-            response = parse_push_datapoints_response(cast(dict[str,str], response.json()))
+            response = parse_push_datapoints_response(cast(dict[str, str], response.json()))
         # Currently, the response only contains the dataset ID,
         # so it's safe to return the last response only.
         return response
@@ -114,7 +110,9 @@ class Datasets(BaseResource):
         if name is not None and id is not None:
             raise ValueError("Only one of name or id must be provided")
 
-        identifier = {"name": name} if name is not None else {"datasetId": str(id) if id is not None else id}
+        identifier = (
+            {"name": name} if name is not None else {"datasetId": str(id) if id is not None else id}
+        )
 
         params = {
             **identifier,
@@ -130,4 +128,6 @@ class Datasets(BaseResource):
             raise ValueError(
                 f"Error pulling data from dataset: [{response.status_code}] {response.text}"
             )
-        return parse_get_datapoints_response(cast(dict[str, int | list[dict[str, Any]]], response.json()))
+        return parse_get_datapoints_response(
+            cast(dict[str, int | list[dict[str, Any]]], response.json())
+        )

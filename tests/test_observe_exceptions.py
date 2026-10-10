@@ -413,9 +413,12 @@ def test_process_exception_record_exception_failure_sync(
     def observed_foo() -> None:
         raise ValueError("user error")
 
-    with patch.object(
-        LaminarSpan, "record_exception", side_effect=RuntimeError("record_exception exploded")
-    ), pytest.raises(ValueError, match="user error"):
+    with (
+        patch.object(
+            LaminarSpan, "record_exception", side_effect=RuntimeError("record_exception exploded")
+        ),
+        pytest.raises(ValueError, match="user error"),
+    ):
         observed_foo()
 
     spans = span_exporter.get_finished_spans()
@@ -431,9 +434,12 @@ async def test_process_exception_record_exception_failure_async(
     async def observed_foo() -> None:
         raise ValueError("user error")
 
-    with patch.object(
-        LaminarSpan, "record_exception", side_effect=RuntimeError("record_exception exploded")
-    ), pytest.raises(ValueError, match="user error"):
+    with (
+        patch.object(
+            LaminarSpan, "record_exception", side_effect=RuntimeError("record_exception exploded")
+        ),
+        pytest.raises(ValueError, match="user error"),
+    ):
         await observed_foo()
 
     spans = span_exporter.get_finished_spans()
@@ -453,9 +459,10 @@ def test_process_exception_set_status_failure_sync(span_exporter: InMemorySpanEx
     def observed_foo() -> None:
         raise ValueError("user error")
 
-    with patch.object(
-        LaminarSpan, "set_status", side_effect=RuntimeError("set_status exploded")
-    ), pytest.raises(ValueError, match="user error"):
+    with (
+        patch.object(LaminarSpan, "set_status", side_effect=RuntimeError("set_status exploded")),
+        pytest.raises(ValueError, match="user error"),
+    ):
         observed_foo()
 
     spans = span_exporter.get_finished_spans()
@@ -471,9 +478,10 @@ async def test_process_exception_set_status_failure_async(
     async def observed_foo() -> None:
         raise ValueError("user error")
 
-    with patch.object(
-        LaminarSpan, "set_status", side_effect=RuntimeError("set_status exploded")
-    ), pytest.raises(ValueError, match="user error"):
+    with (
+        patch.object(LaminarSpan, "set_status", side_effect=RuntimeError("set_status exploded")),
+        pytest.raises(ValueError, match="user error"),
+    ):
         await observed_foo()
 
     spans = span_exporter.get_finished_spans()

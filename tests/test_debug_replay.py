@@ -35,10 +35,15 @@ class CachedSpan(TypedDict):
 class _FakeSpan:
     def __init__(
         self,
-        attributes: dict[str, AttributeValue | dict[str, AttributeValue] | list[dict[str, AttributeValue]]] | None = None,
-        recording: bool = True
+        attributes: dict[
+            str, AttributeValue | dict[str, AttributeValue] | list[dict[str, AttributeValue]]
+        ]
+        | None = None,
+        recording: bool = True,
     ):
-        self.attributes: dict[str, AttributeValue | dict[str, AttributeValue] | list[dict[str, AttributeValue]]] = attributes or {}
+        self.attributes: dict[
+            str, AttributeValue | dict[str, AttributeValue] | list[dict[str, AttributeValue]]
+        ] = attributes or {}
         self._recording: bool = recording
         self.marked: dict[str, AttributeValue] = {}
 
@@ -119,7 +124,9 @@ class _FakeRuntime:
         self.session_id: str = session_id
         self.replay_trace_id: str = replay_trace_id
         self.cache_until_span_id: str = cache_until_span_id
-        self._sync_cache: _RecordingCache = _RecordingCache(sync_outcome or CacheOutcome(kind="live"))
+        self._sync_cache: _RecordingCache = _RecordingCache(
+            sync_outcome or CacheOutcome(kind="live")
+        )
         self._async_cache: _AsyncRecordingCache = _AsyncRecordingCache(
             async_outcome or CacheOutcome(kind="live")
         )
@@ -302,9 +309,7 @@ def test_acache_outcome_miss_latches_run_live():
 
 def test_acache_outcome_none_when_replay_not_configured():
     debug._runtime = _FakeRuntime(replay_configured=False)
-    outcome = asyncio.run(
-        acache_outcome_for(cast(Any, _span_with_messages([{"role": "user"}])))
-    )
+    outcome = asyncio.run(acache_outcome_for(cast(Any, _span_with_messages([{"role": "user"}]))))
     assert outcome is None
 
 
@@ -333,15 +338,11 @@ def test_mark_span_cached_handles_none():
 # --- cross-language parity vector ----------------------------------------
 
 _HASH_VECTORS = json.loads(
-    (Path(__file__).parent / "data" / "debug" / "input_hash_cases.json").read_text(
-        encoding="utf-8"
-    )
+    (Path(__file__).parent / "data" / "debug" / "input_hash_cases.json").read_text(encoding="utf-8")
 )["cases"]
 
 
-@pytest.mark.parametrize(
-    "case", _HASH_VECTORS, ids=[c["name"] for c in _HASH_VECTORS]
-)
+@pytest.mark.parametrize("case", _HASH_VECTORS, ids=[c["name"] for c in _HASH_VECTORS])
 def test_input_hash_matches_shared_vector(case: dict[str, Any]):
     # Pins debug_input_hash against the shared cross-language vector. The TS SDK
     # and app-server must produce byte-identical hashes for the same inputs.

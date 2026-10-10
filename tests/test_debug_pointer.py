@@ -70,7 +70,7 @@ def test_emit_prints_prefixed_compact_json(
 
     out = capsys.readouterr().out.strip()
     assert out.startswith(CONSOLE_PREFIX)
-    payload = out[len(CONSOLE_PREFIX):]
+    payload = out[len(CONSOLE_PREFIX) :]
     # Compact JSON: no spaces after separators.
     assert ", " not in payload and ": " not in payload
     assert json.loads(payload) == file
@@ -82,9 +82,7 @@ def test_emit_always_writes_the_debug_session_file(
 ):
     # Default-on now: no env gate. The file is always written.
     monkeypatch.chdir(tmp_path)
-    file = build_debug_session_file(
-        "s", "t", "r", "abcdef", "https://www.lmnr.ai"
-    )
+    file = build_debug_session_file("s", "t", "r", "abcdef", "https://www.lmnr.ai")
     emit_pointer(file)
 
     path = os.path.join(tmp_path, DEBUG_SESSION_DIR, DEBUG_SESSION_FILE)
@@ -105,9 +103,7 @@ def test_emit_best_effort_on_unwritable_dir(
     def boom(*args, **kwargs):
         raise OSError("read-only filesystem")
 
-    monkeypatch.setattr(
-        "lmnr.sdk.debug.debug_session_file.os.makedirs", boom
-    )
+    monkeypatch.setattr("lmnr.sdk.debug.debug_session_file.os.makedirs", boom)
     file = build_debug_session_file("s", "t", None, None, None)
 
     emit_pointer(file)  # must not raise
@@ -158,9 +154,7 @@ def test_read_returns_none_when_session_id_missing(tmp_path: Path):
 def test_read_coerces_non_string_fields_to_none(tmp_path: Path):
     _write_raw(
         str(tmp_path),
-        json.dumps(
-            {"session_id": "s", "trace_id": 123, "started_at": "2026-01-01T00:00:00Z"}
-        ),
+        json.dumps({"session_id": "s", "trace_id": 123, "started_at": "2026-01-01T00:00:00Z"}),
     )
     read = read_debug_session_file(str(tmp_path))
     assert read is not None
@@ -194,10 +188,7 @@ def test_find_prefers_the_nearest_ancestor(tmp_path: Path):
     nested.mkdir(parents=True)
     file_with_session = copy.deepcopy(_SAMPLE)
     file_with_session["session_id"] = "sess-closer"
-    _success = write_debug_session_file(
-        file_with_session,
-        str(mid)
-    )
+    _success = write_debug_session_file(file_with_session, str(mid))
     assert find_debug_session_dir(str(nested)) == str(mid)
 
 
@@ -217,7 +208,9 @@ def test_resolve_falls_back_to_start_dir(tmp_path: Path):
 
 
 def test_emit_from_subdirectory_writes_back_to_the_ancestor_anchor(
-    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: MagicMock,
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    capsys: MagicMock,
 ):
     existing = build_debug_session_file("s", None, None, None, None)
     _success = write_debug_session_file(existing, str(tmp_path))
@@ -237,7 +230,9 @@ def test_emit_from_subdirectory_writes_back_to_the_ancestor_anchor(
 
 
 def test_emit_skips_the_write_when_on_disk_session_differs(
-    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: MagicMock,
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    capsys: MagicMock,
 ):
     # A fresher session minted on disk while this run was in flight (e.g.
     # `lmnr-cli debug session new`) must not be clobbered.
@@ -255,7 +250,9 @@ def test_emit_skips_the_write_when_on_disk_session_differs(
 
 
 def test_emit_persists_env_session_override_when_file_unchanged(
-    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: MagicMock,
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    capsys: MagicMock,
 ):
     # LMNR_DEBUG_SESSION_ID overrode the file's session at init; the file is
     # unchanged since that read, so this run still owns it and the override
@@ -272,7 +269,9 @@ def test_emit_persists_env_session_override_when_file_unchanged(
 
 
 def test_emit_skips_when_file_changed_since_init(
-    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: MagicMock,
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    capsys: MagicMock,
 ):
     # Init read sess-at-init, but a fresher session replaced it mid-run — even
     # an env-overridden run no longer owns the file.
@@ -288,7 +287,9 @@ def test_emit_skips_when_file_changed_since_init(
 
 
 def test_emit_writes_to_the_pinned_directory_after_chdir(
-    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: MagicMock,
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    capsys: MagicMock,
 ):
     # The anchor is resolved once at init and passed in; a chdir between init
     # and shutdown must not retarget the write.

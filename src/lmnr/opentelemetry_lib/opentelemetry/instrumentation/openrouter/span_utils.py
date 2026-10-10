@@ -37,33 +37,25 @@ def _aliased(d: dict[str, Any], key: str) -> Any:
 
 def _set_structured_output_schema(span: Span, schema: dict[str, Any] | None):
     if schema:
-        set_span_attribute(
-            span, "gen_ai.request.structured_output_schema", json_dumps(schema)
-        )
+        set_span_attribute(span, "gen_ai.request.structured_output_schema", json_dumps(schema))
 
 
 def _set_common_request_attributes(span: Span, kwargs: dict[str, Any]):
     set_span_attribute(span, "gen_ai.request.model", kwargs.get("model"))
     set_span_attribute(span, "gen_ai.request.temperature", kwargs.get("temperature"))
     set_span_attribute(span, "gen_ai.request.top_p", kwargs.get("top_p"))
-    set_span_attribute(
-        span, "gen_ai.request.frequency_penalty", kwargs.get("frequency_penalty")
-    )
-    set_span_attribute(
-        span, "gen_ai.request.presence_penalty", kwargs.get("presence_penalty")
-    )
+    set_span_attribute(span, "gen_ai.request.frequency_penalty", kwargs.get("frequency_penalty"))
+    set_span_attribute(span, "gen_ai.request.presence_penalty", kwargs.get("presence_penalty"))
     set_span_attribute(span, "llm.user", kwargs.get("user"))
     # `chat` takes a flat `reasoning_effort`, `responses` nests it under `reasoning`.
-    reasoning_effort = kwargs.get("reasoning_effort") or to_dict(
-        kwargs.get("reasoning")
-    ).get("effort")
+    reasoning_effort = kwargs.get("reasoning_effort") or to_dict(kwargs.get("reasoning")).get(
+        "effort"
+    )
     set_span_attribute(span, "gen_ai.request.reasoning_effort", reasoning_effort)
     if kwargs.get("stream"):
         set_span_attribute(span, "llm.is_streaming", True)
     if kwargs.get("tools") and should_send_prompts():
-        set_span_attribute(
-            span, "gen_ai.tool.definitions", json_dumps(_to_dicts(kwargs["tools"]))
-        )
+        set_span_attribute(span, "gen_ai.tool.definitions", json_dumps(_to_dicts(kwargs["tools"])))
 
 
 @dont_throw
@@ -77,17 +69,13 @@ def set_chat_request_attributes(span: Span, kwargs: dict[str, Any]):
         _set_structured_output_schema(span, _aliased(json_schema, "schema"))
 
     if kwargs.get("messages") and should_send_prompts():
-        set_span_attribute(
-            span, "gen_ai.input.messages", json_dumps(_to_dicts(kwargs["messages"]))
-        )
+        set_span_attribute(span, "gen_ai.input.messages", json_dumps(_to_dicts(kwargs["messages"])))
 
 
 @dont_throw
 def set_responses_request_attributes(span: Span, kwargs: dict[str, Any]):
     _set_common_request_attributes(span, kwargs)
-    set_span_attribute(
-        span, "gen_ai.request.max_tokens", kwargs.get("max_output_tokens")
-    )
+    set_span_attribute(span, "gen_ai.request.max_tokens", kwargs.get("max_output_tokens"))
 
     text_format = to_dict(_aliased(to_dict(kwargs.get("text")), "format"))
     if text_format.get("type") == "json_schema":
@@ -160,12 +148,8 @@ def _set_usage_attributes(
 
     set_span_attribute(span, "gen_ai.usage.cost", cast(float, usage.get("cost")))
     cost_details = cast(dict[str, float], usage.get("cost_details") or {})
-    set_span_attribute(
-        span, "gen_ai.usage.input_cost", cost_details.get(input_cost_key)
-    )
-    set_span_attribute(
-        span, "gen_ai.usage.output_cost", cost_details.get(output_cost_key)
-    )
+    set_span_attribute(span, "gen_ai.usage.input_cost", cost_details.get(input_cost_key))
+    set_span_attribute(span, "gen_ai.usage.output_cost", cost_details.get(output_cost_key))
 
 
 @dont_throw
@@ -181,9 +165,7 @@ def set_chat_response_attributes(span: Span, response: dict[str, Any]):
         "upstream_inference_completions_cost",
     )
     if response.get("choices") and should_send_prompts():
-        set_span_attribute(
-            span, "gen_ai.output.messages", json_dumps(response["choices"])
-        )
+        set_span_attribute(span, "gen_ai.output.messages", json_dumps(response["choices"]))
 
 
 @dont_throw
@@ -213,9 +195,7 @@ def set_responses_response_attributes(span: Span, response: dict[str, Any]):
         "upstream_inference_output_cost",
     )
     if response.get("output") and should_send_prompts():
-        set_span_attribute(
-            span, "gen_ai.output.messages", json_dumps(response["output"])
-        )
+        set_span_attribute(span, "gen_ai.output.messages", json_dumps(response["output"]))
 
 
 def responses_error_message(response: dict[str, Any]) -> str | None:

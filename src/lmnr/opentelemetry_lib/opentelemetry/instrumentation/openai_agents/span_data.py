@@ -173,13 +173,9 @@ def _apply_handoff_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
     from_agent = data.get("from_agent")
     to_agent = data.get("to_agent")
     if from_agent:
-        lmnr_span.set_attribute(
-            "openai.agents.handoff.from", name_from_span_data(from_agent)
-        )
+        lmnr_span.set_attribute("openai.agents.handoff.from", name_from_span_data(from_agent))
     if to_agent:
-        lmnr_span.set_attribute(
-            "openai.agents.handoff.to", name_from_span_data(to_agent)
-        )
+        lmnr_span.set_attribute("openai.agents.handoff.to", name_from_span_data(to_agent))
 
 
 def _apply_guardrail_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:

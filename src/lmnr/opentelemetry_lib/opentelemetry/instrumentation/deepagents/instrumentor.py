@@ -64,7 +64,7 @@ _root_active: contextvars.ContextVar[bool] = contextvars.ContextVar(
 
 def _extract_messages(input_payload: Any) -> Any:
     if isinstance(input_payload, dict):
-        return input_payload.get("messages") # pyright: ignore[reportUnknownMemberType, reportUnknownMemberType, reportUnknownVariableType]
+        return input_payload.get("messages")  # pyright: ignore[reportUnknownMemberType, reportUnknownMemberType, reportUnknownVariableType]
     return None
 
 
@@ -91,7 +91,7 @@ def _wrap_graph_invoke(
     _instance: Any,
     args: Sequence[Any],
     kwargs: dict[str, Any],
-)-> T:
+) -> T:
     if _root_active.get():
         return wrapped(*args, **kwargs)
     input_payload = args[0] if args else kwargs.get("input")
@@ -114,7 +114,7 @@ async def _awrap_graph_invoke(
     _instance: Any,
     args: Sequence[Any],
     kwargs: dict[str, Any],
-)-> T:
+) -> T:
     if _root_active.get():
         return await wrapped(*args, **kwargs)
     input_payload = args[0] if args else kwargs.get("input")
@@ -137,7 +137,7 @@ def _wrap_graph_stream(
     _instance: Any,
     args: Sequence[Any],
     kwargs: dict[str, Any],
-)-> Generator[T]:
+) -> Generator[T]:
     # The `_root_active` sentinel is set only by `_wrap_graph_invoke`, and
     # only within its own (non-generator) function frame. That's enough to
     # collapse the invoke→stream path: when Pregel.invoke internally calls
@@ -159,11 +159,14 @@ def _wrap_graph_stream(
     # detaches the OTel + Laminar-isolated contexts around each iteration
     # and ends the span on generator close (including on GeneratorExit).
     def _gen():
-        span = cast(LaminarSpan, Laminar.start_span(
-            name=_ROOT_SPAN_NAME,
-            input=_span_input(input_payload),
-            span_type="DEFAULT",
-        ))
+        span = cast(
+            LaminarSpan,
+            Laminar.start_span(
+                name=_ROOT_SPAN_NAME,
+                input=_span_input(input_payload),
+                span_type="DEFAULT",
+            ),
+        )
         last_chunk: Any = None
         with Laminar.use_span(span, end_on_exit=True):
             for chunk in wrapped(*args, **kwargs):
@@ -180,7 +183,7 @@ def _awrap_graph_stream(
     _instance: Any,
     args: Sequence[Any],
     kwargs: dict[str, Any],
-)-> AsyncGenerator[T]:
+) -> AsyncGenerator[T]:
     # See `_wrap_graph_stream` — the sentinel is intentionally not set
     # inside the generator body to avoid cross-stream leakage.
     if _root_active.get():
@@ -188,11 +191,14 @@ def _awrap_graph_stream(
     input_payload = args[0] if args else kwargs.get("input")
 
     async def _gen():
-        span = cast(LaminarSpan, Laminar.start_span(
-            name=_ROOT_SPAN_NAME,
-            input=_span_input(input_payload),
-            span_type="DEFAULT",
-        ))
+        span = cast(
+            LaminarSpan,
+            Laminar.start_span(
+                name=_ROOT_SPAN_NAME,
+                input=_span_input(input_payload),
+                span_type="DEFAULT",
+            ),
+        )
         last_chunk: Any = None
         with Laminar.use_span(span, end_on_exit=True):
             async for chunk in wrapped(*args, **kwargs):

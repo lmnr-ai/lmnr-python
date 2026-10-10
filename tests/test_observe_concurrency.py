@@ -77,9 +77,7 @@ async def test_asyncio_parallel_spans_same_parent(span_exporter: InMemorySpanExp
     @observe(session_id="parent_session")
     async def parent_task() -> tuple[str, str, str]:
         # Run child tasks concurrently within the parent context
-        results = await asyncio.gather(
-            child_task("a"), child_task("b"), child_task("c")
-        )
+        results = await asyncio.gather(child_task("a"), child_task("b"), child_task("c"))
         return results
 
     result = await parent_task()
@@ -93,10 +91,9 @@ async def test_asyncio_parallel_spans_same_parent(span_exporter: InMemorySpanExp
     child_spans = [s for s in spans if s.name == "child_task"]
 
     assert len(child_spans) == 3
-    assert (
-        (parent_span.attributes or {})["lmnr.association.properties.session_id"]
-        == "parent_session"
-    )
+    assert (parent_span.attributes or {})[
+        "lmnr.association.properties.session_id"
+    ] == "parent_session"
 
     # Check all spans share the same trace ID
     trace_ids = [_ctx(span).trace_id for span in spans]
@@ -121,9 +118,7 @@ async def test_asyncio_deeply_nested_with_parallelism(
     @observe()
     async def branch_task(branch_id: str) -> tuple[str, str]:
         # Each branch runs some leaf tasks in parallel
-        results = await asyncio.gather(
-            leaf_task(f"{branch_id}_1"), leaf_task(f"{branch_id}_2")
-        )
+        results = await asyncio.gather(leaf_task(f"{branch_id}_1"), leaf_task(f"{branch_id}_2"))
         return results
 
     @observe(session_id="root_session")
@@ -155,9 +150,7 @@ async def test_asyncio_deeply_nested_with_parallelism(
 
     # Each leaf should have a branch as parent
     for leaf_span in leaf_spans:
-        assert _parent(leaf_span).span_id in [
-            _ctx(b).span_id for b in branch_spans
-        ]
+        assert _parent(leaf_span).span_id in [_ctx(b).span_id for b in branch_spans]
 
 
 # =============================================================================
@@ -239,10 +232,9 @@ def test_threading_parallel_spans_same_parent(span_exporter: InMemorySpanExporte
     child_spans = [s for s in spans if s.name == "child_worker"]
 
     assert len(child_spans) == 3
-    assert (
-        (parent_span.attributes or {})["lmnr.association.properties.session_id"]
-        == "parent_session"
-    )
+    assert (parent_span.attributes or {})[
+        "lmnr.association.properties.session_id"
+    ] == "parent_session"
 
     # Check all spans share the same trace ID
     trace_ids = [_ctx(span).trace_id for span in spans]
@@ -316,9 +308,7 @@ def test_threading_deeply_nested_with_parallelism(span_exporter: InMemorySpanExp
 
     # Each leaf should have a branch as parent
     for leaf_span in leaf_spans:
-        assert _parent(leaf_span).span_id in [
-            _ctx(b).span_id for b in branch_spans
-        ]
+        assert _parent(leaf_span).span_id in [_ctx(b).span_id for b in branch_spans]
 
 
 # =============================================================================
@@ -337,9 +327,7 @@ def test_threadpool_parallel_spans_separate_traces(span_exporter: InMemorySpanEx
     # Use ThreadPoolExecutor to run tasks
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         futures = [executor.submit(task_worker, str(i)) for i in range(3)]
-        results = [
-            future.result() for future in concurrent.futures.as_completed(futures)
-        ]
+        results = [future.result() for future in concurrent.futures.as_completed(futures)]
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 3
@@ -377,18 +365,14 @@ def test_observe_threadpool_parallel_spans_with_openai(
         with patch.object(openai_client._client, "send", return_value=mock_response):
             _res = openai_client.chat.completions.create(
                 model="gpt-4o-mini",
-                messages=[
-                    {"role": "user", "content": "what is the capital of France?"}
-                ],
+                messages=[{"role": "user", "content": "what is the capital of France?"}],
             )
         return f"task_{task_id}"
 
     # Use ThreadPoolExecutor to run tasks
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         futures = [executor.submit(task_worker, str(i)) for i in range(3)]
-        results = [
-            future.result() for future in concurrent.futures.as_completed(futures)
-        ]
+        results = [future.result() for future in concurrent.futures.as_completed(futures)]
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 6
@@ -447,9 +431,7 @@ def test_observe_threadpool_parallel_spans_with_langchain(
     # Use ThreadPoolExecutor to run tasks
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         futures = [executor.submit(task_worker, str(i)) for i in range(3)]
-        results = [
-            future.result() for future in concurrent.futures.as_completed(futures)
-        ]
+        results = [future.result() for future in concurrent.futures.as_completed(futures)]
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 6
@@ -484,9 +466,7 @@ def test_threadpool_parallel_spans_same_parent(span_exporter: InMemorySpanExport
         # Use ThreadPoolExecutor within parent context
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
             futures = [executor.submit(child_worker, str(i)) for i in range(3)]
-            results = [
-                future.result() for future in concurrent.futures.as_completed(futures)
-            ]
+            results = [future.result() for future in concurrent.futures.as_completed(futures)]
         return results
 
     result = parent_task()
@@ -500,10 +480,9 @@ def test_threadpool_parallel_spans_same_parent(span_exporter: InMemorySpanExport
     child_spans = [s for s in spans if s.name == "child_worker"]
 
     assert len(child_spans) == 3
-    assert (
-        (parent_span.attributes or {})["lmnr.association.properties.session_id"]
-        == "parent_session"
-    )
+    assert (parent_span.attributes or {})[
+        "lmnr.association.properties.session_id"
+    ] == "parent_session"
 
     # Check all spans share the same trace ID
     trace_ids = [_ctx(span).trace_id for span in spans]
@@ -526,12 +505,8 @@ def test_threadpool_deeply_nested_with_parallelism(span_exporter: InMemorySpanEx
     def branch_worker(branch_id: str) -> list[str]:
         # Each branch uses ThreadPoolExecutor for leaf tasks
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-            futures = [
-                executor.submit(leaf_worker, f"{branch_id}_{i}") for i in range(2)
-            ]
-            results = [
-                future.result() for future in concurrent.futures.as_completed(futures)
-            ]
+            futures = [executor.submit(leaf_worker, f"{branch_id}_{i}") for i in range(2)]
+            results = [future.result() for future in concurrent.futures.as_completed(futures)]
         return results
 
     @observe(session_id="root_session")
@@ -539,9 +514,7 @@ def test_threadpool_deeply_nested_with_parallelism(span_exporter: InMemorySpanEx
         # Use ThreadPoolExecutor for branch tasks
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
             futures = [executor.submit(branch_worker, str(i)) for i in range(2)]
-            results = [
-                future.result() for future in concurrent.futures.as_completed(futures)
-            ]
+            results = [future.result() for future in concurrent.futures.as_completed(futures)]
         return results
 
     _results = root_task()
@@ -567,9 +540,7 @@ def test_threadpool_deeply_nested_with_parallelism(span_exporter: InMemorySpanEx
 
     # Each leaf should have a branch as parent
     for leaf_span in leaf_spans:
-        assert _parent(leaf_span).span_id in [
-            _ctx(b).span_id for b in branch_spans
-        ]
+        assert _parent(leaf_span).span_id in [_ctx(b).span_id for b in branch_spans]
 
 
 # =============================================================================
@@ -582,7 +553,7 @@ async def test_mixed_concurrency_isolation(span_exporter: InMemorySpanExporter):
     """Test that different concurrency models don't interfere with each other."""
 
     async_result: list[str] = []
-    thread_result: list[str]  = []
+    thread_result: list[str] = []
 
     @observe()
     async def async_task() -> str:
@@ -720,6 +691,7 @@ def test_start_active_span_threadpool_parallel_with_observe(
     span_exporter: InMemorySpanExporter,
 ):
     """Test start_active_span with ThreadPoolExecutor and observe decorator."""
+
     @observe()
     def child_worker(task_id: str) -> str:
         time.sleep(0.01)
@@ -729,9 +701,7 @@ def test_start_active_span_threadpool_parallel_with_observe(
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         futures = [executor.submit(child_worker, str(i)) for i in range(3)]
-        results = [
-            future.result() for future in concurrent.futures.as_completed(futures)
-        ]
+        results = [future.result() for future in concurrent.futures.as_completed(futures)]
 
     span.end()
 
@@ -810,9 +780,7 @@ def test_start_active_span_nested_threading_with_observe(
         assert cast(list[str], (branch_span.attributes or {})["lmnr.span.path"])[0] == "root"
 
     for leaf_span in leaf_spans:
-        assert _parent(leaf_span).span_id in [
-            _ctx(b).span_id for b in branch_spans
-        ]
+        assert _parent(leaf_span).span_id in [_ctx(b).span_id for b in branch_spans]
         assert cast(list[str], (leaf_span.attributes or {})["lmnr.span.path"])[0] == "root"
 
 
@@ -821,6 +789,7 @@ async def test_start_active_span_nested_asyncio_with_observe(
     span_exporter: InMemorySpanExporter,
 ):
     """Test nested start_active_span with asyncio and observe decorator."""
+
     @observe()
     async def leaf_task(task_id: str):
         await asyncio.sleep(0.01)
@@ -829,9 +798,7 @@ async def test_start_active_span_nested_asyncio_with_observe(
     async def branch_task(branch_id: str):
         span = Laminar.start_active_span(f"branch_{branch_id}")
 
-        results = await asyncio.gather(
-            leaf_task(f"{branch_id}_1"), leaf_task(f"{branch_id}_2")
-        )
+        results = await asyncio.gather(leaf_task(f"{branch_id}_1"), leaf_task(f"{branch_id}_2"))
 
         span.end()
         return results
@@ -862,9 +829,7 @@ async def test_start_active_span_nested_asyncio_with_observe(
         assert cast(list[str], (branch_span.attributes or {})["lmnr.span.path"])[0] == "root"
 
     for leaf_span in leaf_spans:
-        assert _parent(leaf_span).span_id in [
-            _ctx(b).span_id for b in branch_spans
-        ]
+        assert _parent(leaf_span).span_id in [_ctx(b).span_id for b in branch_spans]
         assert cast(list[str], (leaf_span.attributes or {})["lmnr.span.path"])[0] == "root"
 
 
@@ -888,9 +853,7 @@ def test_start_active_span_threadpool_context_isolation_with_observe(
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         futures = [executor.submit(worker, str(i)) for i in range(3)]
-        results = [
-            future.result() for future in concurrent.futures.as_completed(futures)
-        ]
+        results = [future.result() for future in concurrent.futures.as_completed(futures)]
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 6  # 3 workers + 3 inner_work spans

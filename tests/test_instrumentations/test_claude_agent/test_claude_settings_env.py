@@ -10,7 +10,6 @@ import os
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -45,11 +44,11 @@ class MockOptions:
         settings: str | Path | None = None,
         cwd: str | None = None,
         skills: Any = None,
-        setting_sources: Sequence[Any] | None = None
+        setting_sources: Sequence[Any] | None = None,
     ):
         self.env: dict[str, Any] = env or {}
         self.settings: str | Path | None = settings
-        self.cwd: str |None = cwd
+        self.cwd: str | None = cwd
         self.skills: Any = skills
         self.setting_sources: Sequence[Any] | None = setting_sources
 
@@ -145,8 +144,7 @@ def test_setting_sources_gates_which_layers_are_read(isolated_settings: tuple[Pa
     )
 
     assert (
-        read_claude_settings_env(setting_sources=["user"])["ANTHROPIC_BASE_URL"]
-        == "https://user"
+        read_claude_settings_env(setting_sources=["user"])["ANTHROPIC_BASE_URL"] == "https://user"
     )
     assert (
         read_claude_settings_env(setting_sources=["project"])["ANTHROPIC_BASE_URL"]
@@ -168,7 +166,9 @@ def test_a_skills_run_still_forces_the_proxy_via_the_flag_layer():
     assert config_dir_env["ANTHROPIC_BASE_URL"] == PROXY_URL
 
 
-def test_setting_sources_is_read_from_the_documented_field_only(isolated_settings: tuple[Path, Path]):
+def test_setting_sources_is_read_from_the_documented_field_only(
+    isolated_settings: tuple[Path, Path],
+):
     """``skills`` must not change which layers we read."""
     _, session_dir = isolated_settings
     write_settings(
@@ -191,9 +191,7 @@ def test_empty_setting_sources_disables_on_disk_settings(isolated_settings: tupl
 def test_upstream_ignores_a_layer_the_cli_will_not_load(isolated_settings: tuple[Path, Path]):
     config_dir, session_dir = isolated_settings
     write_settings(config_dir / "settings.json", {})
-    write_settings(
-        session_dir / ".claude" / "settings.json", {"ANTHROPIC_BASE_URL": UPSTREAM}
-    )
+    write_settings(session_dir / ".claude" / "settings.json", {"ANTHROPIC_BASE_URL": UPSTREAM})
 
     # The CLI only loads user settings, so the project gateway must be invisible.
     url = resolve_target_url_from_env({}, setting_sources=["user"])
@@ -220,7 +218,9 @@ def test_options_settings_gateway_becomes_the_upstream(isolated_settings: tuple[
     assert resolve_target_url_from_env({}, settings=existing) == UPSTREAM
 
 
-def test_options_settings_provider_gateway_becomes_the_upstream(isolated_settings: tuple[Path, Path]):
+def test_options_settings_provider_gateway_becomes_the_upstream(
+    isolated_settings: tuple[Path, Path],
+):
     existing = json.dumps(
         {"env": {"CLAUDE_CODE_USE_BEDROCK": "1", "ANTHROPIC_BEDROCK_BASE_URL": UPSTREAM}}
     )
@@ -228,7 +228,9 @@ def test_options_settings_provider_gateway_becomes_the_upstream(isolated_setting
     assert resolve_target_url_from_env({}, settings=existing) == UPSTREAM
 
 
-def test_options_settings_from_a_file_becomes_the_upstream(isolated_settings: tuple[Path, Path], tmp_path: Path):
+def test_options_settings_from_a_file_becomes_the_upstream(
+    isolated_settings: tuple[Path, Path], tmp_path: Path
+):
     settings_file = tmp_path / "caller.json"
     _bytes_written = settings_file.write_text(json.dumps({"env": {"ANTHROPIC_BASE_URL": UPSTREAM}}))
 
@@ -238,9 +240,7 @@ def test_options_settings_from_a_file_becomes_the_upstream(isolated_settings: tu
 def test_options_env_still_outranks_options_settings(isolated_settings: tuple[Path, Path]):
     existing = json.dumps({"env": {"ANTHROPIC_BASE_URL": UPSTREAM}})
 
-    url = resolve_target_url_from_env(
-        {"ANTHROPIC_BASE_URL": "https://explicit"}, settings=existing
-    )
+    url = resolve_target_url_from_env({"ANTHROPIC_BASE_URL": "https://explicit"}, settings=existing)
 
     assert url == "https://explicit"
 
@@ -253,7 +253,9 @@ def test_options_settings_outranks_on_disk_settings(isolated_settings: tuple[Pat
     assert resolve_target_url_from_env({}, settings=existing) == UPSTREAM
 
 
-def test_unreadable_options_settings_does_not_break_resolution(isolated_settings: tuple[Path, Path]):
+def test_unreadable_options_settings_does_not_break_resolution(
+    isolated_settings: tuple[Path, Path],
+):
     """A value we cannot read contributes nothing; the on-disk layers still apply."""
     config_dir, _ = isolated_settings
     write_settings(config_dir / "settings.json", {"ANTHROPIC_BASE_URL": UPSTREAM})
@@ -262,7 +264,9 @@ def test_unreadable_options_settings_does_not_break_resolution(isolated_settings
     assert resolve_target_url_from_env({}, settings="/nonexistent.json") == UPSTREAM
 
 
-def test_setup_proxy_env_pins_a_provider_enabled_only_in_settings(isolated_settings: tuple[Path, Path]):
+def test_setup_proxy_env_pins_a_provider_enabled_only_in_settings(
+    isolated_settings: tuple[Path, Path],
+):
     """Custom transports gate on the process env, but users put provider config —
     and its credentials, e.g. AWS_BEARER_TOKEN_BEDROCK — in settings.json.
 
@@ -288,7 +292,9 @@ def test_setup_proxy_env_pins_a_provider_enabled_only_in_settings(isolated_setti
         restore_env(snapshot, {k for k, v in snapshot.items() if v is not None})
 
 
-def test_setup_proxy_env_does_not_pin_a_provider_nobody_enabled(isolated_settings: tuple[Path, Path]):
+def test_setup_proxy_env_does_not_pin_a_provider_nobody_enabled(
+    isolated_settings: tuple[Path, Path],
+):
     _, session_dir = isolated_settings
 
     snapshot = setup_proxy_env(PROXY_URL, str(session_dir))
@@ -349,7 +355,9 @@ def test_lowercase_proxy_var_is_blanked(isolated_settings: tuple[Path, Path]):
     assert settings["env"]["https_proxy"] == ""
 
 
-def test_lowercase_settings_proxy_var_does_not_shadow_the_gateway(isolated_settings: tuple[Path, Path]):
+def test_lowercase_settings_proxy_var_does_not_shadow_the_gateway(
+    isolated_settings: tuple[Path, Path],
+):
     config_dir, _ = isolated_settings
     write_settings(
         config_dir / "settings.json",
@@ -359,7 +367,9 @@ def test_lowercase_settings_proxy_var_does_not_shadow_the_gateway(isolated_setti
     assert resolve_target_url_from_env({}) == UPSTREAM
 
 
-def test_lowercase_process_env_proxy_var_is_the_upstream(isolated_settings: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch):
+def test_lowercase_process_env_proxy_var_is_the_upstream(
+    isolated_settings: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+):
     """Pre-existing semantics: a proxy var in the real env IS the target."""
     monkeypatch.setenv("https_proxy", "http://corp:8080")
 
@@ -367,7 +377,9 @@ def test_lowercase_process_env_proxy_var_is_the_upstream(isolated_settings: tupl
 
 
 @pytest.mark.parametrize("value", ["1", "true", "True", " on ", "yes"])
-def test_provider_flag_truthy_values_pin_the_base_url(isolated_settings: tuple[Path, Path], value: Any):
+def test_provider_flag_truthy_values_pin_the_base_url(
+    isolated_settings: tuple[Path, Path], value: Any
+):
     """The CLI accepts 1/true/yes/on — verified against the bundled binary.
 
     Missing one would blank the Foundry resource without pinning a base URL,
@@ -386,7 +398,9 @@ def test_provider_flag_truthy_values_pin_the_base_url(isolated_settings: tuple[P
 
 
 @pytest.mark.parametrize("value", ["0", "false", "no", "off", ""])
-def test_provider_flag_falsy_values_do_not_pin_a_base_url(isolated_settings: tuple[Path, Path], value: Any):
+def test_provider_flag_falsy_values_do_not_pin_a_base_url(
+    isolated_settings: tuple[Path, Path], value: Any
+):
     config_dir, _ = isolated_settings
     write_settings(config_dir / "settings.json", {"CLAUDE_CODE_USE_VERTEX": value})
 
@@ -475,8 +489,7 @@ def test_settings_proxy_var_alone_falls_back_to_default(isolated_settings: tuple
 
 
 def test_process_env_proxy_var_is_still_the_upstream(
-    isolated_settings: tuple[Path, Path],
-    monkeypatch: pytest.MonkeyPatch
+    isolated_settings: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
 ):
     """Pre-existing behavior: a proxy var in the real env IS the target."""
     config_dir, _ = isolated_settings
@@ -539,7 +552,9 @@ def test_flag_settings_pin_provider_base_url_when_configured(isolated_settings: 
     assert settings["env"]["ANTHROPIC_BEDROCK_BASE_URL"] == PROXY_URL
 
 
-def test_flag_settings_pin_foundry_base_url_for_resource_only_setup(isolated_settings: tuple[Path, Path]):
+def test_flag_settings_pin_foundry_base_url_for_resource_only_setup(
+    isolated_settings: tuple[Path, Path],
+):
     """Foundry can be set up by resource alone, with no base-URL key.
 
     Blanking the resource without pinning a base URL would strip its only routing
@@ -558,7 +573,8 @@ def test_flag_settings_pin_foundry_base_url_for_resource_only_setup(isolated_set
 
 
 def test_foundry_resource_is_blanked_when_enabled_only_in_settings(
-    isolated_settings: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch,
+    isolated_settings: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
 ):
     """The resource is mutually exclusive with the base URL we pin.
 
@@ -587,7 +603,9 @@ def test_process_env_proxy_var_is_blanked_in_flag_settings(
     assert settings["env"]["HTTPS_PROXY"] == ""
 
 
-def test_flag_settings_pin_provider_base_url_from_enabling_flag(isolated_settings: tuple[Path, Path]):
+def test_flag_settings_pin_provider_base_url_from_enabling_flag(
+    isolated_settings: tuple[Path, Path],
+):
     config_dir, _ = isolated_settings
     write_settings(config_dir / "settings.json", {"CLAUDE_CODE_USE_VERTEX": "1"})
 
@@ -603,9 +621,7 @@ def test_flag_settings_merge_a_settings_file_path(
     settings_file = tmp_path / "custom.json"
     _bytes_written = settings_file.write_text(json.dumps({"model": "sonnet", "env": {"KEEP": "1"}}))
 
-    settings = json.loads(
-        build_proxy_flag_settings(str(settings_file), PROXY_URL) or ""
-    )
+    settings = json.loads(build_proxy_flag_settings(str(settings_file), PROXY_URL) or "")
 
     assert settings["model"] == "sonnet"
     assert settings["env"]["KEEP"] == "1"
@@ -618,7 +634,8 @@ def test_unreadable_settings_path_is_left_untouched(isolated_settings: tuple[Pat
 
 
 def test_malformed_settings_file_is_left_untouched(
-    isolated_settings: tuple[Path, Path], tmp_path: Path,
+    isolated_settings: tuple[Path, Path],
+    tmp_path: Path,
 ):
     """An existing but unparseable file must not be replaced.
 
@@ -626,7 +643,9 @@ def test_malformed_settings_file_is_left_untouched(
     the user configured for this run.
     """
     settings_file = tmp_path / "trailing_comma.json"
-    _bytes_written = settings_file.write_text('{"model": "sonnet", "permissions": {"allow": ["Bash(*)"]},}')
+    _bytes_written = settings_file.write_text(
+        '{"model": "sonnet", "permissions": {"allow": ["Bash(*)"]},}'
+    )
 
     assert build_proxy_flag_settings(str(settings_file), PROXY_URL) is None
 
@@ -646,7 +665,8 @@ def test_non_object_inline_settings_is_left_untouched(isolated_settings: tuple[P
 
 
 def test_valid_empty_settings_file_still_gets_the_proxy(
-    isolated_settings: tuple[Path, Path], tmp_path: Path,
+    isolated_settings: tuple[Path, Path],
+    tmp_path: Path,
 ):
     """A genuinely empty settings object is readable — it must NOT be skipped."""
     settings_file = tmp_path / "empty.json"
@@ -684,7 +704,9 @@ def test_apply_override_reports_a_rewrite_of_unset_settings(isolated_settings: t
     assert options.settings is not None
 
 
-def test_apply_override_reports_no_rewrite_without_a_settings_field(isolated_settings: tuple[Path, Path]):
+def test_apply_override_reports_no_rewrite_without_a_settings_field(
+    isolated_settings: tuple[Path, Path],
+):
     class NoSettings:
         env: dict[str, str]
         cwd: str | Path | None = None

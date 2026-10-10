@@ -5,7 +5,6 @@ from typing import Any, TypeVar
 from opentelemetry.trace import NonRecordingSpan, SpanContext, get_current_span
 from typing_extensions import override
 
-from lmnr.sdk.laminar import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
     BaseLaminarInstrumentor,
 )
@@ -15,6 +14,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
 )
 from lmnr.opentelemetry_lib.tracing.context import get_current_context
+from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.log import get_default_logger
 
 _instruments = ("bubus >= 1.3.0",)

@@ -32,7 +32,7 @@ def wrap_pregel_stream(
     instance: Any,
     args: Sequence[Any],
     kwargs: dict[str, Any],
-)-> Iterable[T]:
+) -> Iterable[T]:
     graph = cast(Graph, instance.get_graph())
     nodes = [
         {
@@ -66,7 +66,7 @@ async def async_wrap_pregel_stream(
     instance: Any,
     args: Sequence[Any],
     kwargs: dict[str, Any],
-)-> AsyncIterable[T]:
+) -> AsyncIterable[T]:
     graph = cast(Graph, await instance.aget_graph())
     nodes = [
         {

@@ -16,9 +16,8 @@ from lmnr.sdk.evaluations import evaluate
 from lmnr.sdk.evaluations.models import EvaluationRunResult
 from lmnr.sdk.types import Datapoint
 
-FIXTURE = (
-    Path(__file__).parent / "data" / "dataset" / "seeded_perm_cases.json"
-)
+FIXTURE = Path(__file__).parent / "data" / "dataset" / "seeded_perm_cases.json"
+
 
 def make_dp(i: int) -> Datapoint:
     return Datapoint(
@@ -230,7 +229,7 @@ def _paged_laminar_dataset(total: int, fetch_size: int):
         name: int | None = None,
         id: uuid.UUID | None = None,
         offset: int = 0,
-        limit: int = fetch_size
+        limit: int = fetch_size,
     ) -> dict[str, list[Datapoint] | int]:
         return {
             "items": all_items[offset : offset + limit],
@@ -315,10 +314,7 @@ async def test_eval_over_chained_dataset_has_dataset_link(
     mock_init.return_value = eval_resp
 
     def pull(
-        name: int | None = None,
-        id: uuid.UUID | None = None,
-        offset: int = 0,
-        limit: int = 25
+        name: int | None = None, id: uuid.UUID | None = None, offset: int = 0, limit: int = 25
     ) -> dict[str, list[Datapoint] | int]:
         return {
             "items": all_items[offset : offset + limit],
@@ -329,12 +325,15 @@ async def test_eval_over_chained_dataset_has_dataset_link(
 
     data = LaminarDataset(id=dataset_id).shuffle(seed=1).take(2)
 
-    _result = await cast(Awaitable[EvaluationRunResult], evaluate(
-        data=data,
-        executor=lambda d, _t=None: d,
-        evaluators={"test": lambda output, target: 1},
-        project_api_key="test",
-    ))
+    _result = await cast(
+        Awaitable[EvaluationRunResult],
+        evaluate(
+            data=data,
+            executor=lambda d, _t=None: d,
+            evaluators={"test": lambda output, target: 1},
+            project_api_key="test",
+        ),
+    )
     _flushed = Laminar.flush()
 
     # Collect every datapoint passed to save_datapoints across all calls.

@@ -89,9 +89,7 @@ def _process_response_item(
             # so we update/replace rather than add to existing values.
             # Filter out None values to avoid overwriting message_start data
             # (e.g. cache_creation_input_tokens) with None from message_delta.
-            usage_update = {
-                k: v for k, v in dict(item.usage).items() if v is not None
-            }
+            usage_update = {k: v for k, v in dict(item.usage).items() if v is not None}
             complete_response["usage"].update(cast(StreamUsage, cast(object, usage_update)))
     elif item.type in ["message_stop", "message_start"]:
         # raw stream returns the service_tier in the message_start event
@@ -106,9 +104,7 @@ def _set_token_usage(
     prompt_tokens: int,
     completion_tokens: int,
 ):
-    cache_read_tokens = (
-        complete_response.get("usage", {}).get("cache_read_input_tokens", 0) or 0
-    )
+    cache_read_tokens = complete_response.get("usage", {}).get("cache_read_input_tokens", 0) or 0
     cache_creation_tokens = (
         complete_response.get("usage", {}).get("cache_creation_input_tokens", 0) or 0
     )
@@ -128,9 +124,7 @@ def _set_token_usage(
 
 
 def _handle_streaming_response(
-    span: Span,
-    complete_response: CompleteResponse,
-    record_raw_response: bool = False
+    span: Span, complete_response: CompleteResponse, record_raw_response: bool = False
 ):
     if not span.is_recording():
         return
@@ -146,14 +140,11 @@ def _handle_streaming_response(
                 AnthropicUsage,
                 cast(
                     object,
-                    complete_response.get("usage")
-                    or {"input_tokens": 0, "output_tokens": 0},
+                    complete_response.get("usage") or {"input_tokens": 0, "output_tokens": 0},
                 ),
             )
 
-            set_span_attribute(
-                span, "lmnr.sdk.raw.response", json_dumps(dict(result))
-            )
+            set_span_attribute(span, "lmnr.sdk.raw.response", json_dumps(dict(result)))
         except Exception:
             logger.debug("Failed to record raw response", exc_info=True)
 

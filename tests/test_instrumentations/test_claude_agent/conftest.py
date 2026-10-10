@@ -89,9 +89,7 @@ def no_leaked_proxy_monitor_threads() -> Generator[None]:
     before = {t.name for t in threading.enumerate() if _MONITOR_PREFIX in t.name}
     yield
     leaked = sorted(
-        t.name
-        for t in threading.enumerate()
-        if _MONITOR_PREFIX in t.name and t.name not in before
+        t.name for t in threading.enumerate() if _MONITOR_PREFIX in t.name and t.name not in before
     )
     assert not leaked, (
         f"test leaked live proxy health-monitor thread(s): {leaked}. A real proxy "

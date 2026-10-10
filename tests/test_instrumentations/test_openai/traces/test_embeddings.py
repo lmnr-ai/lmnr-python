@@ -41,10 +41,7 @@ def test_embeddings(
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
     assert attributes["gen_ai.request.model"] == "text-embedding-ada-002"
     assert attributes["gen_ai.usage.input_tokens"] == 8
-    assert (
-        attributes["gen_ai.request.base_url"]
-        == "https://api.openai.com/v1/"
-    )
+    assert attributes["gen_ai.request.base_url"] == "https://api.openai.com/v1/"
 
 
 @pytest.mark.vcr
@@ -68,10 +65,7 @@ def test_embeddings_with_raw_response(
 
     assert attributes["gen_ai.request.model"] == "text-embedding-ada-002"
     assert attributes["gen_ai.usage.input_tokens"] == 8
-    assert (
-        attributes["gen_ai.request.base_url"]
-        == "https://api.openai.com/v1/"
-    )
+    assert attributes["gen_ai.request.base_url"] == "https://api.openai.com/v1/"
 
     parsed_response = response.parse()
     assert parsed_response.data[0]

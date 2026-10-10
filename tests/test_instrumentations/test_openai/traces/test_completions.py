@@ -41,15 +41,9 @@ def test_completion(
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
     output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert output_messages[0]["text"]
-    assert (
-        attributes.get("gen_ai.request.base_url")
-        == "https://api.openai.com/v1/"
-    )
+    assert attributes.get("gen_ai.request.base_url") == "https://api.openai.com/v1/"
     assert attributes.get("llm.is_streaming") is False
-    assert (
-        attributes.get("gen_ai.response.id")
-        == "cmpl-8wq42D1Socatcl1rCmgYZOFX7dFZw"
-    )
+    assert attributes.get("gen_ai.response.id") == "cmpl-8wq42D1Socatcl1rCmgYZOFX7dFZw"
 
 
 @pytest.mark.vcr
@@ -74,10 +68,7 @@ async def test_async_completion(
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
     output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert output_messages[0]["text"]
-    assert (
-        attributes.get("gen_ai.response.id")
-        == "cmpl-8wq43c8U5ZZCQBX5lrSpsANwcd3OF"
-    )
+    assert attributes.get("gen_ai.response.id") == "cmpl-8wq43c8U5ZZCQBX5lrSpsANwcd3OF"
 
 
 @pytest.mark.vcr
@@ -101,10 +92,7 @@ def test_completion_langchain_style(
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
     output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert output_messages[0]["text"]
-    assert (
-        attributes.get("gen_ai.response.id")
-        == "cmpl-8wq43QD6R2WqfxXLpYsRvSAIn9LB9"
-    )
+    assert attributes.get("gen_ai.response.id") == "cmpl-8wq43QD6R2WqfxXLpYsRvSAIn9LB9"
 
 
 @pytest.mark.vcr
@@ -137,15 +125,9 @@ def test_completion_streaming(
         assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
         output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
         assert output_messages[0]["text"]
-        assert (
-            attributes.get("gen_ai.request.base_url")
-            == "https://api.openai.com/v1/"
-        )
+        assert attributes.get("gen_ai.request.base_url") == "https://api.openai.com/v1/"
 
-        assert (
-            attributes.get("gen_ai.response.id")
-            == "cmpl-8wq44ev1DvyhsBfm1hNwxfv6Dltco"
-        )
+        assert attributes.get("gen_ai.response.id") == "cmpl-8wq44ev1DvyhsBfm1hNwxfv6Dltco"
 
     finally:
         # unset env
@@ -181,14 +163,8 @@ async def test_async_completion_streaming(
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
     output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert output_messages[0]["text"]
-    assert (
-        attributes.get("gen_ai.request.base_url")
-        == "https://api.openai.com/v1/"
-    )
-    assert (
-        attributes.get("gen_ai.response.id")
-        == "cmpl-8wq44uFYuGm6kNe44ntRwluggKZFY"
-    )
+    assert attributes.get("gen_ai.request.base_url") == "https://api.openai.com/v1/"
+    assert attributes.get("gen_ai.response.id") == "cmpl-8wq44uFYuGm6kNe44ntRwluggKZFY"
 
 
 @pytest.mark.vcr
@@ -215,10 +191,7 @@ def test_completion_context_propagation(
     request = single_request_to_path(send_spy.mock, "/v1/completions")  # pyright: ignore[reportFunctionMemberAccess]
 
     assert_request_contains_tracecontext(request, cast(Any, openai_span))
-    assert (
-        attributes.get("gen_ai.response.id")
-        == "cmpl-2996bf68f7f142fa817bdd32af678df9"
-    )
+    assert attributes.get("gen_ai.response.id") == "cmpl-2996bf68f7f142fa817bdd32af678df9"
 
 
 @pytest.mark.vcr
@@ -245,10 +218,7 @@ async def test_async_completion_context_propagation(
     request = single_request_to_path(send_spy.mock, "/v1/completions")  # pyright: ignore[reportFunctionMemberAccess]
 
     assert_request_contains_tracecontext(request, cast(Any, openai_span))
-    assert (
-        attributes.get("gen_ai.response.id")
-        == "cmpl-4acc6171f6c34008af07ca8490da3b95"
-    )
+    assert attributes.get("gen_ai.response.id") == "cmpl-4acc6171f6c34008af07ca8490da3b95"
 
 
 def test_completion_exception(
@@ -280,8 +250,8 @@ def test_completion_exception(
     assert event.name == "exception"
     assert event_attributes["exception.type"] == "openai.AuthenticationError"
     assert cast(str, event_attributes["exception.message"]).startswith("Error code: 401")
-    assert (
-        "Traceback (most recent call last):" in cast(str, event_attributes["exception.stacktrace"])
+    assert "Traceback (most recent call last):" in cast(
+        str, event_attributes["exception.stacktrace"]
     )
     assert "openai.AuthenticationError" in cast(str, event_attributes["exception.stacktrace"])
     assert "invalid_api_key" in cast(str, event_attributes["exception.stacktrace"])
@@ -318,8 +288,8 @@ async def test_async_completion_exception(
     assert event.name == "exception"
     assert event_attributes["exception.type"] == "openai.AuthenticationError"
     assert cast(str, event_attributes["exception.message"]).startswith("Error code: 401")
-    assert (
-        "Traceback (most recent call last):" in cast(str, event_attributes["exception.stacktrace"])
+    assert "Traceback (most recent call last):" in cast(
+        str, event_attributes["exception.stacktrace"]
     )
     assert "openai.AuthenticationError" in cast(str, event_attributes["exception.stacktrace"])
     assert "invalid_api_key" in cast(str, event_attributes["exception.stacktrace"])

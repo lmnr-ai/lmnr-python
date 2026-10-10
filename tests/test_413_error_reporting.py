@@ -39,6 +39,7 @@ def sample_datapoints():
         )
     ]
 
+
 # What app-server actually returns for a payload-limit rejection: plain text, not JSON.
 SERVER_413_BODY = (
     "Payload too large: request body is 60044 bytes, which exceeds the server's HTTP "
@@ -87,7 +88,10 @@ class TestSaveDatapoints413:
         eval_id = uuid.uuid4()
         response = _response(413, SERVER_413_BODY)
 
-        with patch.object(sync_client.evals._client, "post", return_value=response), pytest.raises(ValueError) as excinfo:
+        with (
+            patch.object(sync_client.evals._client, "post", return_value=response),
+            pytest.raises(ValueError) as excinfo,
+        ):
             sync_client.evals.save_datapoints(eval_id, sample_datapoints)
 
         message = str(excinfo.value)
@@ -95,18 +99,17 @@ class TestSaveDatapoints413:
         assert "HTTP_PAYLOAD_LIMIT" in message
 
     def test_shrinking_to_nothing_reports_the_server_message(
-        self,
-        sync_client: LaminarClient,
-        sample_datapoints: list[EvaluationResultDatapoint]
+        self, sync_client: LaminarClient, sample_datapoints: list[EvaluationResultDatapoint]
     ):
         """The length==0 branch: data was truncated away and the server still says 413."""
         eval_id = uuid.uuid4()
         response = _response(413, SERVER_413_BODY)
 
-        with patch.object(sync_client.evals._client, "post", return_value=response), pytest.raises(ValueError) as excinfo:
-            sync_client.evals._retry_save_datapoints(
-                eval_id, sample_datapoints, initial_length=2
-            )
+        with (
+            patch.object(sync_client.evals._client, "post", return_value=response),
+            pytest.raises(ValueError) as excinfo,
+        ):
+            sync_client.evals._retry_save_datapoints(eval_id, sample_datapoints, initial_length=2)
 
         message = str(excinfo.value)
         assert "truncating datapoint data to nothing" in message
@@ -114,9 +117,7 @@ class TestSaveDatapoints413:
         assert "HTTP_PAYLOAD_LIMIT" in message
 
     def test_shrinking_to_nothing_before_any_request_does_not_crash(
-        self,
-        sync_client: LaminarClient,
-        sample_datapoints: list[EvaluationResultDatapoint]
+        self, sync_client: LaminarClient, sample_datapoints: list[EvaluationResultDatapoint]
     ):
         """Regression guard: the length==0 branch can be reached on the first iteration,
         when no response exists yet — it must report that, not raise UnboundLocalError."""
@@ -128,15 +129,16 @@ class TestSaveDatapoints413:
             mock_post.assert_not_called()
 
     def test_non_413_failure_reports_status_and_body(
-        self,
-        sync_client: LaminarClient,
-        sample_datapoints: list[EvaluationResultDatapoint]
+        self, sync_client: LaminarClient, sample_datapoints: list[EvaluationResultDatapoint]
     ):
         eval_id = uuid.uuid4()
         response = _response(500, "internal error")
 
-        with patch.object(sync_client.evals._client, "post", return_value=response), pytest.raises(ValueError, match=r"\[500\] internal error"):
-                sync_client.evals.save_datapoints(eval_id, sample_datapoints)
+        with (
+            patch.object(sync_client.evals._client, "post", return_value=response),
+            pytest.raises(ValueError, match=r"\[500\] internal error"),
+        ):
+            sync_client.evals.save_datapoints(eval_id, sample_datapoints)
 
 
 class TestSyncAsyncLockstep:
@@ -170,7 +172,10 @@ class TestInitEval413:
     def test_init_reports_status_code_and_plain_text_body(self, sync_client: LaminarClient):
         response = _response(413, SERVER_413_BODY)
 
-        with patch.object(sync_client.evals._client, "post", return_value=response), pytest.raises(ValueError) as excinfo:
+        with (
+            patch.object(sync_client.evals._client, "post", return_value=response),
+            pytest.raises(ValueError) as excinfo,
+        ):
             _init_response = sync_client.evals.init(name="too-big")
 
         message = str(excinfo.value)

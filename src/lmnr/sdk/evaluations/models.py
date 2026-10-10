@@ -113,9 +113,7 @@ class PartialEvaluationDatapoint(BaseModel):
                 "index": self.index,
                 "traceId": str(self.trace_id),
                 "executorSpanId": str(self.executor_span_id),
-                "metadata": (
-                    serialize(self.metadata) if self.metadata is not None else {}
-                ),
+                "metadata": (serialize(self.metadata) if self.metadata is not None else {}),
                 "datasetLink": (
                     _dataset_link_to_dict(self.dataset_link)
                     if self.dataset_link is not None
@@ -170,9 +168,7 @@ class EvaluationResultDatapoint(BaseModel):
                 "traceId": str(self.trace_id),
                 "executorSpanId": str(self.executor_span_id),
                 "index": self.index,
-                "metadata": (
-                    serialize(self.metadata) if self.metadata is not None else {}
-                ),
+                "metadata": (serialize(self.metadata) if self.metadata is not None else {}),
                 "datasetLink": (
                     _dataset_link_to_dict(self.dataset_link)
                     if self.dataset_link is not None

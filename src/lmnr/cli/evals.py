@@ -41,9 +41,9 @@ class _Score(TypedDict):
 
 def log_evaluation_instance_not_found() -> None:
     LOG.warning(
-        "Evaluation instance not found. " +
-        "`evaluate` must be called at the top level of the file, " +
-        "not inside a function when running evaluations from the CLI."
+        "Evaluation instance not found. "
+        + "`evaluate` must be called at the top level of the file, "
+        + "not inside a function when running evaluations from the CLI."
     )
 
 

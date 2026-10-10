@@ -89,7 +89,11 @@ async def _pull_all_data(
             limit=batch_size,
         )
         result.extend(data["items"])
-        if stop_at is not None and current_offset + batch_size >= stop_at or current_offset + batch_size >= data["total_count"]:
+        if (
+            stop_at is not None
+            and current_offset + batch_size >= stop_at
+            or current_offset + batch_size >= data["total_count"]
+        ):
             has_more = False
         current_offset += batch_size
 
@@ -259,9 +263,7 @@ async def handle_datasets_push(args: DatasetsArgs) -> None:
             id=dataset_id,
             batch_size=args.batch_size or DEFAULT_DATASET_PUSH_BATCH_SIZE,
         )
-        LOG.info(
-            f"Pushed {len(datapoints)} data points to dataset {args.name or args.id}"
-        )
+        LOG.info(f"Pushed {len(datapoints)} data points to dataset {args.name or args.id}")
     except Exception:
         LOG.exception("Failed to push dataset")
     finally:
@@ -353,9 +355,7 @@ async def handle_datasets_create(args: DatasetsArgs) -> None:
             batch_size=args.batch_size or DEFAULT_DATASET_PUSH_BATCH_SIZE,
             create_dataset=True,
         )
-        LOG.info(
-            f"Successfully pushed {len(datapoints)} data points to dataset '{args.name}'"
-        )
+        LOG.info(f"Successfully pushed {len(datapoints)} data points to dataset '{args.name}'")
     except Exception:
         LOG.exception("Failed to create dataset")
         await client.close()

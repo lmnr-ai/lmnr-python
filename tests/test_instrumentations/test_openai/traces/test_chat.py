@@ -51,15 +51,9 @@ def test_chat(
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
     output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert output_messages[0]["message"]["content"]
-    assert (
-        attributes.get("gen_ai.request.base_url")
-        == "https://api.openai.com/v1/"
-    )
+    assert attributes.get("gen_ai.request.base_url") == "https://api.openai.com/v1/"
     assert attributes.get("llm.is_streaming") is False
-    assert (
-        attributes.get("gen_ai.response.id")
-        == "chatcmpl-CdGqqj1iK4R9EgoAo2k2ZvzxgmgGt"
-    )
+    assert attributes.get("gen_ai.response.id") == "chatcmpl-CdGqqj1iK4R9EgoAo2k2ZvzxgmgGt"
     assert attributes.get("openai.request.service_tier") == "default"
     assert attributes.get("openai.response.service_tier") == "default"
 
@@ -103,23 +97,15 @@ def test_chat_tool_calls(
     attributes = open_ai_span.attributes or {}
     input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert "content" not in input_messages[0]
-    assert (
-        input_messages[0]["tool_calls"][0]["function"]["name"] == "get_current_weather"
-    )
+    assert input_messages[0]["tool_calls"][0]["function"]["name"] == "get_current_weather"
     assert (
         input_messages[0]["tool_calls"][0]["function"]["arguments"]
         == '{"location": "San Francisco"}'
     )
 
-    assert (
-        input_messages[1]["content"]
-        == "The weather in San Francisco is 70 degrees and sunny."
-    )
+    assert input_messages[1]["content"] == "The weather in San Francisco is 70 degrees and sunny."
     assert input_messages[1]["tool_call_id"] == "1"
-    assert (
-        attributes.get("gen_ai.response.id")
-        == "chatcmpl-9gKNZbUWSC4s2Uh2QfVV7PYiqWIuH"
-    )
+    assert attributes.get("gen_ai.response.id") == "chatcmpl-9gKNZbUWSC4s2Uh2QfVV7PYiqWIuH"
 
 
 @pytest.mark.vcr
@@ -138,9 +124,8 @@ def test_chat_pydantic_based_tool_calls(
                         id="1",
                         type="function",
                         function=Function(
-                            name="get_current_weather",
-                            arguments='{"location": "San Francisco"}'
-                        )
+                            name="get_current_weather", arguments='{"location": "San Francisco"}'
+                        ),
                     )
                 ],
             },
@@ -162,23 +147,15 @@ def test_chat_pydantic_based_tool_calls(
 
     input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert "content" not in input_messages[0]
-    assert (
-        input_messages[0]["tool_calls"][0]["function"]["name"] == "get_current_weather"
-    )
+    assert input_messages[0]["tool_calls"][0]["function"]["name"] == "get_current_weather"
     assert (
         input_messages[0]["tool_calls"][0]["function"]["arguments"]
         == '{"location": "San Francisco"}'
     )
 
-    assert (
-        input_messages[1]["content"]
-        == "The weather in San Francisco is 70 degrees and sunny."
-    )
+    assert input_messages[1]["content"] == "The weather in San Francisco is 70 degrees and sunny."
     assert input_messages[1]["tool_call_id"] == "1"
-    assert (
-        attributes.get("gen_ai.response.id")
-        == "chatcmpl-9lvGJKrBUPeJjHi3KKSEbGfcfomOP"
-    )
+    assert attributes.get("gen_ai.response.id") == "chatcmpl-9lvGJKrBUPeJjHi3KKSEbGfcfomOP"
 
 
 @pytest.mark.vcr
@@ -209,19 +186,13 @@ def test_chat_streaming(
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
     output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert output_messages[0]["message"]["content"]
-    assert (
-        attributes.get("gen_ai.request.base_url")
-        == "https://api.openai.com/v1/"
-    )
+    assert attributes.get("gen_ai.request.base_url") == "https://api.openai.com/v1/"
     assert attributes.get("llm.is_streaming") is True
 
     events = open_ai_span.events
     assert len(events) == chunk_count
 
-    assert (
-        attributes.get("gen_ai.response.id")
-        == "chatcmpl-CdGr0EeaCKMNoLQ4cH79NjnMpgckv"
-    )
+    assert attributes.get("gen_ai.response.id") == "chatcmpl-CdGr0EeaCKMNoLQ4cH79NjnMpgckv"
     assert attributes.get("openai.request.service_tier") == "default"
     assert attributes.get("openai.response.service_tier") == "default"
 
@@ -254,19 +225,13 @@ async def test_chat_async_streaming(
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
     output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert output_messages[0]["message"]["content"]
-    assert (
-        attributes.get("gen_ai.request.base_url")
-        == "https://api.openai.com/v1/"
-    )
+    assert attributes.get("gen_ai.request.base_url") == "https://api.openai.com/v1/"
     assert attributes.get("llm.is_streaming") is True
 
     events = open_ai_span.events
     assert len(events) == chunk_count
 
-    assert (
-        attributes.get("gen_ai.response.id")
-        == "chatcmpl-CdGt5qCx5Rzql1NaxAplDRwFojACg"
-    )
+    assert attributes.get("gen_ai.response.id") == "chatcmpl-CdGt5qCx5Rzql1NaxAplDRwFojACg"
 
 
 @pytest.mark.vcr
@@ -278,9 +243,7 @@ def test_with_asyncio_run(
     _ = asyncio.run(
         async_openai_client.chat.completions.create(
             model="gpt-4.1-nano",
-            messages=[
-                {"role": "user", "content": "Tell me a joke about opentelemetry"}
-            ],
+            messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
         )
     )
 
@@ -290,10 +253,7 @@ def test_with_asyncio_run(
     ]
     open_ai_span = spans[0]
     attributes = open_ai_span.attributes or {}
-    assert (
-        attributes.get("gen_ai.response.id")
-        == "chatcmpl-CdGt66e4DLUiaHScvU4EpKsSU0sCu"
-    )
+    assert attributes.get("gen_ai.response.id") == "chatcmpl-CdGt66e4DLUiaHScvU4EpKsSU0sCu"
 
 
 @pytest.mark.vcr
@@ -306,9 +266,7 @@ def test_chat_context_propagation(
     with patch.object(httpx.Client, "send", send_spy):
         _ = vllm_openai_client.chat.completions.create(
             model="meta-llama/Llama-3.2-1B-Instruct",
-            messages=[
-                {"role": "user", "content": "Tell me a joke about opentelemetry"}
-            ],
+            messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
         )
 
     spans = span_exporter.get_finished_spans()
@@ -317,10 +275,7 @@ def test_chat_context_propagation(
     ]
     open_ai_span = spans[0]
     attributes = open_ai_span.attributes or {}
-    assert (
-        attributes.get("gen_ai.response.id")
-        == "chat-43f4347c3299481e9704ab77439fbdb8"
-    )
+    assert attributes.get("gen_ai.response.id") == "chat-43f4347c3299481e9704ab77439fbdb8"
     request = single_request_to_path(send_spy.mock, "/v1/chat/completions")  # pyright: ignore[reportFunctionMemberAccess]
 
     assert_request_contains_tracecontext(request, cast(Any, open_ai_span))
@@ -337,9 +292,7 @@ async def test_chat_async_context_propagation(
     with patch.object(httpx.AsyncClient, "send", send_spy):
         _ = await async_vllm_openai_client.chat.completions.create(
             model="meta-llama/Llama-3.2-1B-Instruct",
-            messages=[
-                {"role": "user", "content": "Tell me a joke about opentelemetry"}
-            ],
+            messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
         )
 
     spans = span_exporter.get_finished_spans()
@@ -348,10 +301,7 @@ async def test_chat_async_context_propagation(
     ]
     open_ai_span = spans[0]
     attributes = open_ai_span.attributes or {}
-    assert (
-        attributes.get("gen_ai.response.id")
-        == "chat-4db07f02ecae49cbafe1d359db1650df"
-    )
+    assert attributes.get("gen_ai.response.id") == "chat-4db07f02ecae49cbafe1d359db1650df"
     request = single_request_to_path(send_spy.mock, "/v1/chat/completions")  # pyright: ignore[reportFunctionMemberAccess]
 
     assert_request_contains_tracecontext(request, cast(Any, open_ai_span))
@@ -398,10 +348,7 @@ def test_chat_history_message_dict(
     assert first_input[0]["content"] == first_user_message["content"]
     assert first_input[0]["role"] == first_user_message["role"]
     first_output = json.loads(cast(str, first_attributes["gen_ai.output.messages"]))
-    assert (
-        first_output[0]["message"]["content"]
-        == first_response.choices[0].message.content
-    )
+    assert first_output[0]["message"]["content"] == first_response.choices[0].message.content
     assert first_output[0]["message"]["role"] == "assistant"
 
     second_span = spans[1]
@@ -410,10 +357,7 @@ def test_chat_history_message_dict(
     second_input = json.loads(cast(str, second_attributes["gen_ai.input.messages"]))
     assert second_input[0]["content"] == first_user_message["content"]
     second_output = json.loads(cast(str, second_attributes["gen_ai.output.messages"]))
-    assert (
-        second_output[0]["message"]["content"]
-        == second_response.choices[0].message.content
-    )
+    assert second_output[0]["message"]["content"] == second_response.choices[0].message.content
     assert second_input[1]["content"] == first_response.choices[0].message.content
     assert second_input[1]["role"] == "assistant"
     assert second_input[2]["content"] == second_user_message["content"]
@@ -458,10 +402,7 @@ def test_chat_history_message_pydantic(
     assert first_input[0]["content"] == first_user_message["content"]
     assert first_input[0]["role"] == first_user_message["role"]
     first_output = json.loads(cast(str, first_attributes["gen_ai.output.messages"]))
-    assert (
-        first_output[0]["message"]["content"]
-        == first_response.choices[0].message.content
-    )
+    assert first_output[0]["message"]["content"] == first_response.choices[0].message.content
     assert first_output[0]["message"]["role"] == "assistant"
 
     second_span = spans[1]
@@ -470,10 +411,7 @@ def test_chat_history_message_pydantic(
     second_input = json.loads(cast(str, second_attributes["gen_ai.input.messages"]))
     assert second_input[0]["content"] == first_user_message["content"]
     second_output = json.loads(cast(str, second_attributes["gen_ai.output.messages"]))
-    assert (
-        second_output[0]["message"]["content"]
-        == second_response.choices[0].message.content
-    )
+    assert second_output[0]["message"]["content"] == second_response.choices[0].message.content
     assert second_input[1]["content"] == first_response.choices[0].message.content
     assert second_input[1]["role"] == "assistant"
     assert second_input[2]["content"] == second_user_message["content"]
@@ -512,9 +450,7 @@ def test_chat_exception(
     with pytest.raises(AuthenticationError):
         _ = openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[
-                {"role": "user", "content": "Tell me a joke about opentelemetry"}
-            ],
+            messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
         )
 
     spans = span_exporter.get_finished_spans()
@@ -526,10 +462,7 @@ def test_chat_exception(
     attributes = open_ai_span.attributes or {}
     input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
-    assert (
-        attributes.get("gen_ai.request.base_url")
-        == "https://api.openai.com/v1/"
-    )
+    assert attributes.get("gen_ai.request.base_url") == "https://api.openai.com/v1/"
     assert attributes.get("llm.is_streaming") is False
     assert open_ai_span.status.status_code == StatusCode.ERROR
     assert (open_ai_span.status.description or "").startswith("Error code: 401")
@@ -541,8 +474,8 @@ def test_chat_exception(
     assert event_attributes["exception.type"] == "openai.AuthenticationError"
     assert cast(str, event_attributes["exception.message"]).startswith("Error code: 401")
     assert attributes.get("error.type") == "AuthenticationError"
-    assert (
-        "Traceback (most recent call last):" in cast(str, event_attributes["exception.stacktrace"])
+    assert "Traceback (most recent call last):" in cast(
+        str, event_attributes["exception.stacktrace"]
     )
     assert "openai.AuthenticationError" in cast(str, event_attributes["exception.stacktrace"])
     assert "invalid_api_key" in cast(str, event_attributes["exception.stacktrace"])
@@ -558,9 +491,7 @@ async def test_chat_async_exception(
     with pytest.raises(AuthenticationError):
         _ = await async_openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
-            messages=[
-                {"role": "user", "content": "Tell me a joke about opentelemetry"}
-            ],
+            messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
         )
 
     spans = span_exporter.get_finished_spans()
@@ -572,10 +503,7 @@ async def test_chat_async_exception(
     attributes = open_ai_span.attributes or {}
     input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
-    assert (
-        attributes.get("gen_ai.request.base_url")
-        == "https://api.openai.com/v1/"
-    )
+    assert attributes.get("gen_ai.request.base_url") == "https://api.openai.com/v1/"
     assert attributes.get("llm.is_streaming") is False
     assert open_ai_span.status.status_code == StatusCode.ERROR
     assert (open_ai_span.status.description or "").startswith("Error code: 401")
@@ -586,8 +514,8 @@ async def test_chat_async_exception(
     assert event.name == "exception"
     assert event_attributes["exception.type"] == "openai.AuthenticationError"
     assert cast(str, event_attributes["exception.message"]).startswith("Error code: 401")
-    assert (
-        "Traceback (most recent call last):" in cast(str, event_attributes["exception.stacktrace"])
+    assert "Traceback (most recent call last):" in cast(
+        str, event_attributes["exception.stacktrace"]
     )
     assert "openai.AuthenticationError" in cast(str, event_attributes["exception.stacktrace"])
     assert "invalid_api_key" in cast(str, event_attributes["exception.stacktrace"])

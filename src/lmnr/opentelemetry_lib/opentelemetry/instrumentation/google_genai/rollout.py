@@ -131,7 +131,8 @@ class GoogleGenAIRolloutWrapper:
                 return None
             except Exception:
                 logger.debug(
-                    "Failed to parse raw Google GenAI response", exc_info=True,
+                    "Failed to parse raw Google GenAI response",
+                    exc_info=True,
                 )
                 return None
 
@@ -145,9 +146,7 @@ class GoogleGenAIRolloutWrapper:
             finish_reason = finish_reasons[0] if finish_reasons else types.FinishReason.STOP
 
             if all(is_raw_genai_candidate_like(candidate) for candidate in messages):  # pyright: ignore[reportUnknownArgumentType, reportUnknownVariableType]
-                response = types.GenerateContentResponse.model_validate(
-                    {"candidates": messages}
-                )
+                response = types.GenerateContentResponse.model_validate({"candidates": messages})
                 self._add_parsed_to_response(
                     response,
                     messages[0]["content"]["parts"],  # pyright: ignore[reportUnknownArgumentType]
@@ -211,10 +210,7 @@ class GoogleGenAIRolloutWrapper:
             # Extract text content
             text_content = ""
             for block in content_blocks:
-                if (
-                    to_dict(block).get("type") == "text"
-                    or to_dict(block).get("text") is not None
-                ):
+                if to_dict(block).get("type") == "text" or to_dict(block).get("text") is not None:
                     text_content += to_dict(block).get("text", "")
 
             if not text_content:
@@ -252,13 +248,19 @@ class GoogleGenAIRolloutWrapper:
 
     def wrap_generate_content(
         self,
-        wrapped: Callable[..., types.GenerateContentResponse | Awaitable[types.GenerateContentResponse]],
+        wrapped: Callable[
+            ..., types.GenerateContentResponse | Awaitable[types.GenerateContentResponse]
+        ],
         _instance: Any,
         args: Sequence[Any],
         kwargs: dict[str, Any],
         is_streaming: bool = False,
         is_async: bool = False,
-    ) -> types.GenerateContentResponse | Generator[types.GenerateContentResponse] | Awaitable[types.GenerateContentResponse | AsyncGenerator[types.GenerateContentResponse]]:
+    ) -> (
+        types.GenerateContentResponse
+        | Generator[types.GenerateContentResponse]
+        | Awaitable[types.GenerateContentResponse | AsyncGenerator[types.GenerateContentResponse]]
+    ):
         """
         Wrap generate_content with rollout logic.
 

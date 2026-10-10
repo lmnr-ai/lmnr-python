@@ -18,6 +18,7 @@ from lmnr.sdk.utils import format_id, is_otel_attribute_value_type, json_dumps
 K = TypeVar("K")
 T = TypeVar("T")
 
+
 class SimplePydanticModel(BaseModel):
     name: str
     value: int
@@ -128,6 +129,7 @@ class ComplexFailingObject:
     def __repr__(self):
         raise ValueError("Cannot create repr")
 
+
 class ReadOnlyMapping(Mapping[K, T]):
     def __init__(self, data: Mapping[K, T]):
         self._data: Mapping[K, T] = data
@@ -144,6 +146,7 @@ class ReadOnlyMapping(Mapping[K, T]):
     def __len__(self) -> int:
         return len(self._data)
 
+
 class CustomSequence(Sequence[T]):
     def __init__(self, items: Sequence[T]):
         self._items: Sequence[T] = items
@@ -159,6 +162,7 @@ class CustomSequence(Sequence[T]):
     @override
     def __len__(self):
         return len(self._items)
+
 
 def test_is_otel_attribute_value_type():
     # primitive types
@@ -309,17 +313,13 @@ def test_json_dumps_generators_and_iterators():
 
     result = json_dumps(cast(Any, gen()))
     parsed = json.loads(result)
-    assert isinstance(
-        parsed, str
-    )  # Should fallback to string, not consume the generator
+    assert isinstance(parsed, str)  # Should fallback to string, not consume the generator
 
     # Iterator
     iterator = iter([1, 2, 3])
     result = json_dumps(cast(Any, iterator))
     parsed = json.loads(result)
-    assert isinstance(
-        parsed, str
-    )  # Should fallback to string, not consume the iterator
+    assert isinstance(parsed, str)  # Should fallback to string, not consume the iterator
 
 
 def test_json_dumps_deeply_nested():
@@ -518,9 +518,7 @@ def test_json_dumps_deeply_nested_pydantic():
         id=1,
         user=level3,
         tags=["nested"],
-        settings={
-            "nested_model": level2.model_dump()
-        },  # Manually serialize for deep nesting
+        settings={"nested_model": level2.model_dump()},  # Manually serialize for deep nesting
     )
 
     result = json_dumps(level1)
@@ -535,6 +533,7 @@ def test_json_dumps_deeply_nested_pydantic():
 
 def test_json_dumps_pydantic_with_none_values():
     """Test pydantic model with None values"""
+
     class ModelWithOptional(BaseModel):
         name: str
         optional_value: int | None = None
@@ -551,6 +550,7 @@ def test_json_dumps_pydantic_with_none_values():
 
 def test_json_dumps_pydantic_edge_cases():
     """Test pydantic models with edge cases"""
+
     class EdgeCaseModel(BaseModel):
         text: str
         number: int
@@ -652,9 +652,7 @@ def test_json_dumps_fallback_hierarchy():
 
     # These should fail completely and return "{}"
     failing_cases = [
-        FailingStr(
-            "test1"
-        ),  # __str__ fails, __repr__ works but encoder might not use it
+        FailingStr("test1"),  # __str__ fails, __repr__ works but encoder might not use it
         FailingBoth("test3"),  # Both __str__ and __repr__ fail
         ComplexFailingObject(99),  # Both __str__ and __repr__ fail
     ]
@@ -932,9 +930,7 @@ def test_json_dumps_key_names_do_not_depend_on_the_retry_path():
 
     first_pass = json.loads(json_dumps({"m": dict(native_keys)}))["m"]
     # A tuple key elsewhere in the document forces the retry.
-    retry_pass = json.loads(
-        json_dumps({"m": dict(native_keys), "other": {(0, 1): "x"}})
-    )["m"]
+    retry_pass = json.loads(json_dumps({"m": dict(native_keys), "other": {(0, 1): "x"}}))["m"]
 
     assert first_pass == retry_pass
     assert "null" in first_pass and "true" in first_pass
@@ -948,7 +944,6 @@ def test_json_dumps_dict_like_objects_do_not_stringify_to_python_reprs():
     Falling through to `str(o)` yields a Python repr with SINGLE quotes —
     "{'a': 1}" — which is not JSON and no consumer can parse it.
     """
-
 
     mapping = ReadOnlyMapping({"a": 1, "b": [1, {"c": 2}]})
     assert json.loads(json_dumps({"m": mapping}))["m"] == {"a": 1, "b": [1, {"c": 2}]}
@@ -1038,9 +1033,7 @@ def test_json_dumps_recovers_bad_keys_nested_in_pydantic_models():
         assert "(0, 1)" in json_dumps(parsed), value
 
     # A model on the happy path (no retry) is unchanged.
-    assert json.loads(json_dumps({"m": Inner(payload={"a": 1})})) == {
-        "m": {"payload": {"a": 1}}
-    }
+    assert json.loads(json_dumps({"m": Inner(payload={"a": 1})})) == {"m": {"payload": {"a": 1}}}
 
 
 def test_unwrap_container_is_the_single_source_of_truth_for_containers():

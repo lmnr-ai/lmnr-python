@@ -11,7 +11,6 @@ import json
 import os
 from collections.abc import Generator
 from typing import Any, cast
-from unittest.mock import MagicMock
 
 import pytest
 from opentelemetry.sdk.trace import ReadableSpan
@@ -70,13 +69,11 @@ def vcr_config():
 def gemini_env(monkeypatch: pytest.MonkeyPatch):
     # Real key from the environment while recording; the placeholder is
     # enough for replay because vcr_config filters the key out of matches.
-    monkeypatch.setenv(
-        "GOOGLE_API_KEY", os.environ.get("GOOGLE_API_KEY", "123")
-    )
+    monkeypatch.setenv("GOOGLE_API_KEY", os.environ.get("GOOGLE_API_KEY", "123"))
 
 
 @pytest.fixture(scope="module", autouse=True)
-def adk_instrumentation(span_exporter: InMemorySpanExporter)-> Generator[None]:
+def adk_instrumentation(span_exporter: InMemorySpanExporter) -> Generator[None]:
     # conftest.py's session fixture blocks GOOGLE_ADK: with `google-adk` a
     # pinned dev dependency, leaving it enabled would auto-remove
     # GOOGLE_GENAI from the session-wide default set (see
@@ -112,8 +109,7 @@ def adk_instrumentation(span_exporter: InMemorySpanExporter)-> Generator[None]:
 def run_agent(
     user_id: str = "test-user",
     instruction: str = (
-        "Call get_weather for the city the user asks about, then answer "
-        "in one short sentence."
+        "Call get_weather for the city the user asks about, then answer in one short sentence."
     ),
     prompt: str = "Weather in Almaty?",
 ):
@@ -126,14 +122,10 @@ def run_agent(
     )
     runner = InMemoryRunner(agent=agent, app_name="test-app")
     session = asyncio.run(
-        runner.session_service.create_session(
-            app_name="test-app", user_id=user_id
-        )
+        runner.session_service.create_session(app_name="test-app", user_id=user_id)
     )
     message = types.Content(role="user", parts=[types.Part(text=prompt)])
-    for _ in runner.run(
-        user_id=session.user_id, session_id=session.id, new_message=message
-    ):
+    for _ in runner.run(user_id=session.user_id, session_id=session.id, new_message=message):
         pass
     return session
 
@@ -171,9 +163,7 @@ def test_call_llm_span_carries_gen_ai_attributes(span_exporter: InMemorySpanExpo
     assert len(call_llm_spans) == 2
     for span in call_llm_spans:
         assert (span.attributes or {})["lmnr.span.type"] == "LLM"
-        assert (
-            (span.attributes or {})["gen_ai.request.model"] == "gemini-3.5-flash-lite"
-        )
+        assert (span.attributes or {})["gen_ai.request.model"] == "gemini-3.5-flash-lite"
         assert (span.attributes or {})["gen_ai.response.model"]
         assert json.loads(cast(str, (span.attributes or {})["gen_ai.input.messages"]))
         assert json.loads(cast(str, (span.attributes or {})["gen_ai.output.messages"]))
@@ -183,9 +173,7 @@ def test_call_llm_span_carries_gen_ai_attributes(span_exporter: InMemorySpanExpo
     # "generate_content <model>" span should exist.
     assert spans_by_name(span_exporter, "gemini.generate_content") == []
     native = [
-        s
-        for s in span_exporter.get_finished_spans()
-        if s.name.startswith("generate_content ")
+        s for s in span_exporter.get_finished_spans() if s.name.startswith("generate_content ")
     ]
     assert native == []
 
@@ -232,7 +220,8 @@ def test_call_llm_span_ends_before_tool_execution(span_exporter: InMemorySpanExp
 
 @pytest.mark.vcr
 def test_call_llm_content_respects_adk_content_toggle(
-    span_exporter: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch,
+    span_exporter: InMemorySpanExporter,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     # With the content knob off, ADK stamps "{}" for the legacy
     # gcp.vertex.agent.llm_request/response attributes; the new gen_ai.*
@@ -253,15 +242,14 @@ def test_agent_span_carries_session_association(span_exporter: InMemorySpanExpor
 
     (agent_span,) = spans_by_name(span_exporter, "invoke_agent weather_agent")
     attributes = agent_span.attributes or {}
-    assert (
-        attributes["lmnr.association.properties.session_id"] == session.id
-    )
+    assert attributes["lmnr.association.properties.session_id"] == session.id
     assert attributes["lmnr.association.properties.user_id"] == "user-42"
 
 
 @pytest.mark.vcr
 def test_tool_content_respects_adk_content_toggle(
-    span_exporter: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch,
+    span_exporter: InMemorySpanExporter,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     # With the content knob off, ADK stamps "{}" for tool args/response;
     # that must not leak into the Laminar input/output attributes.
@@ -282,9 +270,7 @@ def test_adk_recognizes_laminar_genai_instrumentation(span_exporter: InMemorySpa
     # genai instrumentation, regardless of GOOGLE_GENAI's own state.
     from google.adk.telemetry import tracing
 
-    detected = (
-        tracing._instrumented_with_opentelemetry_instrumentation_google_genai()
-    )
+    detected = tracing._instrumented_with_opentelemetry_instrumentation_google_genai()
     assert detected is True
 
 
@@ -297,8 +283,7 @@ def test_merged_parallel_tool_span_typed(span_exporter: InMemorySpanExporter):
     # instrumentor patches the flow module's binding too.
     _res = run_agent(
         instruction=(
-            "Call get_weather and get_time together in the same turn, "
-            "then answer in one short sentence."
+            "Call get_weather and get_time together in the same turn, then answer in one short sentence."
         ),
         prompt="Weather and local time in Almaty?",
     )
@@ -313,15 +298,11 @@ def test_empty_args_tool_is_not_mistaken_for_redaction(span_exporter: InMemorySp
     # A niladic tool's args serialize to "{}", same as ADK's redaction
     # sentinel; the (empty) input must still be recorded.
     _res = run_agent(
-        instruction=(
-            "Call get_default_city, then answer with just the city name."
-        ),
+        instruction=("Call get_default_city, then answer with just the city name."),
         prompt="Which city am I in?",
     )
 
-    (tool_span,) = spans_by_name(
-        span_exporter, "execute_tool get_default_city"
-    )
+    (tool_span,) = spans_by_name(span_exporter, "execute_tool get_default_city")
     assert (tool_span.attributes or {})["lmnr.span.type"] == "TOOL"
     assert (tool_span.attributes or {})["lmnr.span.input"] == "{}"
     assert json.loads(cast(str, (tool_span.attributes or {})["lmnr.span.output"])) == {
@@ -358,13 +339,8 @@ def test_agent_enrichment_keeps_explicit_session_id():
     google_adk._wrap_trace_agent_invocation(
         lambda *a, **k: None, None, (span, object(), FakeCtx()), {}
     )
-    assert (
-        span.attributes["lmnr.association.properties.session_id"]
-        == "checkout-42"
-    )
-    assert (
-        span.attributes["lmnr.association.properties.user_id"] == "adk-user"
-    )
+    assert span.attributes["lmnr.association.properties.session_id"] == "checkout-42"
+    assert span.attributes["lmnr.association.properties.user_id"] == "adk-user"
 
 
 def test_partial_call_llm_response_does_not_detach_or_end_span():
@@ -427,7 +403,6 @@ def test_partial_call_llm_response_does_not_detach_or_end_span():
     assert span.attributes["lmnr.span.type"] == "LLM"
 
 
-
 def test_uninstrument_unwraps_lazily_imported_binding():
     # initialize() before any ADK import means the flow module is first
     # imported by the instrumentor itself, mid wrap-loop; its by-name
@@ -461,16 +436,10 @@ def test_uninstrument_unwraps_lazily_imported_binding():
         instrumentor.instrument()
         fresh = sys.modules[module_name]
         assert isinstance(fresh.trace_merged_tool_calls, wrapt.ObjectProxy)
-        assert not isinstance(
-            fresh.trace_merged_tool_calls.__wrapped__, wrapt.ObjectProxy
-        )
+        assert not isinstance(fresh.trace_merged_tool_calls.__wrapped__, wrapt.ObjectProxy)
         instrumentor.uninstrument()
-        assert not isinstance(
-            fresh.trace_merged_tool_calls, wrapt.ObjectProxy
-        )
-        assert not isinstance(
-            tracing.trace_merged_tool_calls, wrapt.ObjectProxy
-        )
+        assert not isinstance(fresh.trace_merged_tool_calls, wrapt.ObjectProxy)
+        assert not isinstance(tracing.trace_merged_tool_calls, wrapt.ObjectProxy)
     finally:
         sys.modules[module_name] = original_module
         setattr(sys.modules[parent_name], attr_name, original_module)

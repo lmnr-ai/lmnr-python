@@ -96,8 +96,7 @@ class EvaluationDataset(ABC):
                 _require_dataset_integer(i, f"select index {i} is not an integer")
                 if i < 0 or i >= size:
                     raise IndexError(
-                        f"select index {i} is out of range for dataset of size " +
-                        f"{size}"
+                        f"select index {i} is out of range for dataset of size " + f"{size}"
                     )
             return requested
 
@@ -177,8 +176,8 @@ class LaminarDataset(EvaluationDataset):
     def _fetch_page(self, page_index: int) -> list[Datapoint]:
         offset = page_index * self._fetch_size
         self._logger.debug(
-            f"dataset name: {self.name}, id: {self.id}. Fetching page " +
-            f"{page_index} (offset {offset}, limit {self._fetch_size})"
+            f"dataset name: {self.name}, id: {self.id}. Fetching page "
+            + f"{page_index} (offset {offset}, limit {self._fetch_size})"
         )
         if self.id is not None:
             resp = self.client.datasets.pull(
@@ -210,18 +209,14 @@ class LaminarDataset(EvaluationDataset):
     def __getitem__(self, idx: int) -> Datapoint:
         size = len(self)
         if idx < 0 or idx >= size:
-            raise IndexError(
-                f"dataset index {idx} is out of range for dataset of size {size}"
-            )
+            raise IndexError(f"dataset index {idx} is out of range for dataset of size {size}")
         page_index = idx // self._fetch_size
         if page_index not in self._pages:
             _fetch_result = self._fetch_page(page_index)
         page = self._pages[page_index]
         offset_in_page = idx - page_index * self._fetch_size
         if offset_in_page >= len(page):
-            raise IndexError(
-                f"dataset index {idx} is out of range for dataset of size {size}"
-            )
+            raise IndexError(f"dataset index {idx} is out of range for dataset of size {size}")
         return page[offset_in_page]
 
     def set_client(self, client: LaminarClient):
@@ -232,7 +227,7 @@ class LaminarDataset(EvaluationDataset):
         return self
 
     def push(self, paths: str | list[str], recursive: bool = False):
-        path_strs= [paths] if isinstance(paths, str) else paths
+        path_strs = [paths] if isinstance(paths, str) else paths
         path_objs = [Path(path) for path in path_strs]
         data = cast(list[Datapoint], load_from_paths(path_objs, recursive))
         if len(data) == 0:
@@ -245,6 +240,4 @@ class LaminarDataset(EvaluationDataset):
             _push_result = self.client.datasets.push(data, id=self.id)
         else:
             _push_result = self.client.datasets.push(data, name=self.name)
-        LOG.info(
-            f"Successfully pushed {len(data)} datapoints to dataset [{identifier}]"
-        )
+        LOG.info(f"Successfully pushed {len(data)} datapoints to dataset [{identifier}]")

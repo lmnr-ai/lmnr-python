@@ -9,6 +9,8 @@ from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapProp
 from typing_extensions import TypeVar
 
 T = TypeVar("T")
+
+
 # from: https://stackoverflow.com/a/41599695/2749989
 def spy_decorator(method_to_decorate: Callable[..., T]) -> Callable[..., T]:
     mock = MagicMock()

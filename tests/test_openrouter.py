@@ -90,9 +90,7 @@ def test_openrouter_chat(span_exporter: InMemorySpanExporter):
     _assert_usage(span)
 
     input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
-    assert input_messages == [
-        {"role": "user", "content": "What is the capital of France?"}
-    ]
+    assert input_messages == [{"role": "user", "content": "What is the capital of France?"}]
     output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert output_messages[0]["message"]["role"] == "assistant"
     assert "Paris" in output_messages[0]["message"]["content"]
@@ -130,11 +128,7 @@ def test_openrouter_chat_stream(span_exporter: InMemorySpanExporter):
         stream=True,
         stream_options={"include_usage": True},
     )
-    content = "".join(
-        chunk.choices[0].delta.content or ""
-        for chunk in stream
-        if chunk.choices
-    )
+    content = "".join(chunk.choices[0].delta.content or "" for chunk in stream if chunk.choices)
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
@@ -370,7 +364,6 @@ def test_openrouter_responses_incomplete(span_exporter: InMemorySpanExporter):
 
 @pytest.mark.vcr
 def test_openrouter_embeddings(span_exporter: InMemorySpanExporter):
-    from openrouter.operations import CreateEmbeddingsResponse
     client = _client()
     response = client.embeddings.generate(
         model=EMBEDDINGS_MODEL,
@@ -381,7 +374,9 @@ def test_openrouter_embeddings(span_exporter: InMemorySpanExporter):
     )
     # A flat list of token ids is one document, not a batch of them.
     token_ids = [15339, 1917]
-    _emb = client.embeddings.generate(model=EMBEDDINGS_MODEL, input=cast(Any, token_ids), dimensions=8)
+    _emb = client.embeddings.generate(
+        model=EMBEDDINGS_MODEL, input=cast(Any, token_ids), dimensions=8
+    )
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
@@ -410,6 +405,7 @@ def test_openrouter_embeddings(span_exporter: InMemorySpanExporter):
 @pytest.mark.vcr
 def test_openrouter_chat_error(span_exporter: InMemorySpanExporter):
     from openrouter.errors.badrequestresponse_error import BadRequestResponseError
+
     with pytest.raises(BadRequestResponseError):
         _res = _client().chat.send(
             model="openai/this-model-does-not-exist",

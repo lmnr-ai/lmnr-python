@@ -85,9 +85,7 @@ def _ok_handler(request: httpx2.Request) -> httpx2.Response:
 
 
 def _client(handler: Any = _ok_handler, **kwargs: Any) -> TypeSafeClient:
-    return TypeSafeClient(
-        api_key="test-key", transport=httpx2.MockTransport(handler), **kwargs
-    )
+    return TypeSafeClient(api_key="test-key", transport=httpx2.MockTransport(handler), **kwargs)
 
 
 def _async_client(handler: Any = _ok_handler, **kwargs: Any) -> AsyncTypeSafeClient:
@@ -117,9 +115,7 @@ def _assert_span_shape(span: ReadableSpan):
 
 
 def test_typesafe_system_one(span_exporter: InMemorySpanExporter):
-    response = _client().system_one(
-        state=STATE, questions=QUESTIONS, model=MODEL
-    )
+    response = _client().system_one(state=STATE, questions=QUESTIONS, model=MODEL)
     assert response.answers["queue"].choice == "billing"  # pyright: ignore[reportAttributeAccessIssue]
 
     spans = span_exporter.get_finished_spans()
@@ -147,9 +143,7 @@ def test_typesafe_system_one_positional_args(span_exporter: InMemorySpanExporter
 @pytest.mark.asyncio
 async def test_typesafe_system_one_async(span_exporter: InMemorySpanExporter):
     async with _async_client() as client:
-        response = await client.system_one(
-            state=STATE, questions=QUESTIONS, model=MODEL
-        )
+        response = await client.system_one(state=STATE, questions=QUESTIONS, model=MODEL)
     assert response.nouls["wants_refund"].noul == 0.98
 
     spans = span_exporter.get_finished_spans()
@@ -175,14 +169,10 @@ def test_typesafe_system_one_dict_state(span_exporter: InMemorySpanExporter):
 
 def test_typesafe_system_one_error(span_exporter: InMemorySpanExporter):
     def handler(request: httpx2.Request) -> httpx2.Response:
-        return httpx2.Response(
-            400, json={"error": {"message": "Unknown model: jev-1.13"}}
-        )
+        return httpx2.Response(400, json={"error": {"message": "Unknown model: jev-1.13"}})
 
     with pytest.raises(TypeSafeBadRequestError):
-        _ = _client(handler).system_one(
-            state=STATE, questions=QUESTIONS, model="jev-1.13"
-        )
+        _ = _client(handler).system_one(state=STATE, questions=QUESTIONS, model="jev-1.13")
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1

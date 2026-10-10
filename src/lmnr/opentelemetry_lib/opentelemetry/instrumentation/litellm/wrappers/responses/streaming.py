@@ -18,6 +18,7 @@ from lmnr.sdk.utils import json_dumps
 logger = get_default_logger(__name__)
 T = TypeVar("T")
 
+
 class _Usage(TypedDict, total=False):
     input_tokens: int
     output_tokens: int
@@ -47,12 +48,10 @@ def _set_final_response_attributes(
         # Handle usage information
         if usage := final_response.get("usage"):
             usage_dict = cast(_Usage, cast(object, to_dict(usage)))
-            input_tokens = usage_dict.get(
-                "input_tokens", usage_dict.get("prompt_tokens", 0)
-            ) or 0
-            output_tokens = usage_dict.get(
-                "output_tokens", usage_dict.get("completion_tokens", 0)
-            ) or 0
+            input_tokens = usage_dict.get("input_tokens", usage_dict.get("prompt_tokens", 0)) or 0
+            output_tokens = (
+                usage_dict.get("output_tokens", usage_dict.get("completion_tokens", 0)) or 0
+            )
             total_tokens = usage_dict.get("total_tokens", input_tokens + output_tokens)
             set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, input_tokens)
             set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, output_tokens)
@@ -60,9 +59,7 @@ def _set_final_response_attributes(
             if input_details := usage_dict.get("input_tokens_details"):
                 details = to_dict(input_details)
                 cache_read_tokens = cast(int, details.get("cached_tokens") or 0)
-                set_span_attribute(
-                    span, "gen_ai.usage.cache_read_input_tokens", cache_read_tokens
-                )
+                set_span_attribute(span, "gen_ai.usage.cache_read_input_tokens", cache_read_tokens)
 
         # Handle output messages/items
         final_items: list[dict[str, Any]] = []
@@ -77,9 +74,7 @@ def _set_final_response_attributes(
 
         # Record raw response in rollout mode
         if record_raw_response:
-            set_span_attribute(
-                span, "lmnr.sdk.raw.response", json_dumps(dict(final_response))
-            )
+            set_span_attribute(span, "lmnr.sdk.raw.response", json_dumps(dict(final_response)))
     finally:
         span.end()
 
@@ -109,7 +104,9 @@ def process_responses_streaming_response(
     finally:
         if final_response:
             _set_final_response_attributes(
-                span, cast(_FinalResponse, cast(object, to_dict(final_response))), record_raw_response
+                span,
+                cast(_FinalResponse, cast(object, to_dict(final_response))),
+                record_raw_response,
             )
         else:
             span.end()
@@ -140,7 +137,9 @@ async def process_responses_async_streaming_response(
     finally:
         if final_response:
             _set_final_response_attributes(
-                span, cast(_FinalResponse, cast(object, to_dict(final_response))), record_raw_response
+                span,
+                cast(_FinalResponse, cast(object, to_dict(final_response))),
+                record_raw_response,
             )
         else:
             span.end()

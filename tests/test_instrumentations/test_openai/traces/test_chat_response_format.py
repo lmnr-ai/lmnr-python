@@ -51,7 +51,10 @@ def test_chat_response_format(
     assert attributes.get("gen_ai.response.id") == "chatcmpl-Botx5sCVD3gs6JSNnNcmlvZdqXNZp"
     assert attributes.get("gen_ai.request.model") == "gpt-4.1-nano"
     assert attributes.get("gen_ai.response.model") == "gpt-4.1-nano-2025-04-14"
-    assert json.loads(cast(str, attributes.get("gen_ai.request.structured_output_schema"))) == Joke.model_json_schema()
+    assert (
+        json.loads(cast(str, attributes.get("gen_ai.request.structured_output_schema")))
+        == Joke.model_json_schema()
+    )
 
     input_messages = json.loads(cast(str, attributes.get("gen_ai.input.messages")))
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
@@ -93,7 +96,10 @@ async def test_async_chat_response_format(
     assert attributes.get("gen_ai.response.id") == "chatcmpl-BouUvjFs4cpqtzGMx4TQZ92swSqz0"
     assert attributes.get("gen_ai.request.model") == "gpt-4.1-nano"
     assert attributes.get("gen_ai.response.model") == "gpt-4.1-nano-2025-04-14"
-    assert json.loads(cast(str, attributes.get("gen_ai.request.structured_output_schema"))) == Joke.model_json_schema()
+    assert (
+        json.loads(cast(str, attributes.get("gen_ai.request.structured_output_schema")))
+        == Joke.model_json_schema()
+    )
 
     input_messages = json.loads(cast(str, attributes.get("gen_ai.input.messages")))
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"

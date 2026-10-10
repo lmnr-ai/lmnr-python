@@ -24,7 +24,7 @@ class ClaudeAgentSpec(WrappedFunctionSpec, total=False):
 
 class ProxyContext(TypedDict):
     trace_id: str
-    span_id:str
+    span_id: str
     project_api_key: str
     span_ids_path: list[str]
     span_path: list[str]

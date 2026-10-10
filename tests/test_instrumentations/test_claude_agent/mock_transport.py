@@ -96,10 +96,8 @@ class MockClaudeTransport(Transport):
         self._closed: bool = False
         self._sentinel: object = object()
         self._message_queue: asyncio.Queue[dict[str, Any] | object] = asyncio.Queue()
-        self._conversations: list[Sequence[dict[str,Any]]] | list[list[dict[str, Any]]] = (
-            list(conversations)
-            if conversations is not None
-            else _default_conversations()
+        self._conversations: list[Sequence[dict[str, Any]]] | list[list[dict[str, Any]]] = (
+            list(conversations) if conversations is not None else _default_conversations()
         )
         self._conversation_index: int = 0
         self._auto_respond_on_connect: bool = auto_respond_on_connect

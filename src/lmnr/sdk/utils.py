@@ -37,9 +37,11 @@ InstrumentedWrapper = Callable[
 #: `WrappedFunctionSpec` contract instead of these helpers.
 ToWrapT = TypeVar("ToWrapT")
 
+
 @dataclasses.dataclass
 class _WrappedCallable:
     __wrapped__: Callable[..., Any]
+
 
 #: `wrapt`'s wrapper contract is genuinely untyped -- `instance`/`args`/`kwargs`
 #: (and the wrapped call's return value) can be anything, for any wrapped
@@ -78,9 +80,7 @@ def with_tracer_wrapper(
             args: tuple[Any, ...],
             kwargs: dict[str, Any],
         ) -> Any:
-            return func(
-                tracer, to_wrap, wrapped, instance, args, kwargs
-            )
+            return func(tracer, to_wrap, wrapped, instance, args, kwargs)
 
         return wrapper
 
@@ -200,10 +200,7 @@ def serialize(obj: Any) -> JsonValue:
             return [serialize_inner(item) for item in items]
         elif isinstance(o, dict):
             mapping = cast(dict[Any, Any], o)
-            return {
-                serialize_inner(k): serialize_inner(v)
-                for k, v in mapping.items()
-            }
+            return {serialize_inner(k): serialize_inner(v) for k, v in mapping.items()}
         elif isinstance(o, queue.Queue):
             return type(o).__name__  # pyright: ignore[reportUnknownArgumentType]
 
@@ -225,9 +222,7 @@ def get_input_from_func_args(
     # instance or class methods
     try:
         res = {
-            k: v
-            for k, v in normalized_kwargs.items()
-            if not (ignore_inputs and k in ignore_inputs)
+            k: v for k, v in normalized_kwargs.items() if not (ignore_inputs and k in ignore_inputs)
         }
         for i, k in enumerate(inspect.signature(func).parameters.keys()):
             if is_method and k in ["self", "cls"]:
@@ -255,9 +250,7 @@ def from_env(key: str) -> str | None:
         return None
 
 
-def get_frontend_url(
-    base_url: str | None = None, frontend_port: int | None = None
-) -> str:
+def get_frontend_url(base_url: str | None = None, frontend_port: int | None = None) -> str:
     """
     Get the frontend URL from the base API URL.
 
@@ -298,9 +291,7 @@ def is_otel_attribute_value_type(value: object) -> bool:
         return True
     elif isinstance(value, Sequence):
         if len(value) > 0:
-            return is_primitive_type(value[0]) and all(
-                isinstance(v, type(value[0])) for v in value
-            )
+            return is_primitive_type(value[0]) and all(isinstance(v, type(value[0])) for v in value)
         return True
     return False
 
@@ -404,9 +395,7 @@ def _unwrap_container(o: object) -> dict[Any, Any] | list[Any] | object:
         return dict(cast(Mapping[Any, Any], o))
     if isinstance(o, (set, frozenset)):
         return list(cast("set[Any] | frozenset[Any]", o))
-    if isinstance(o, Sequence) and not isinstance(
-        o, (str, bytes, bytearray)
-    ):
+    if isinstance(o, Sequence) and not isinstance(o, (str, bytes, bytearray)):
         return list(cast(Sequence[Any], o))
     return _UNWRAP_MISS
 
@@ -480,7 +469,9 @@ _ORJSON_NATIVE_KEY_TYPES = (
 )
 
 
-def _stringify_dict_keys(value: pydantic.BaseModel | JsonValue | Sequence[Any] | dict[Any, Any] | set[Any]) -> JsonValue:
+def _stringify_dict_keys(
+    value: pydantic.BaseModel | JsonValue | Sequence[Any] | dict[Any, Any] | set[Any],
+) -> JsonValue:
     """Coerce the mapping keys orjson cannot encode into strings.
 
     `OPT_NON_STR_KEYS` only covers a fixed set of scalar key types, and orjson
@@ -522,13 +513,12 @@ def _stringify_dict_keys(value: pydantic.BaseModel | JsonValue | Sequence[Any] |
                 for key, inner in opened.items()
             },
         )
-    return [
-        _stringify_dict_keys(item)
-        for item in opened
-    ]
+    return [_stringify_dict_keys(item) for item in opened]
 
 
-def json_dumps(data: pydantic.BaseModel | JsonValue | dict[str, Any] | Sequence[Any] | set[Any]) -> str:
+def json_dumps(
+    data: pydantic.BaseModel | JsonValue | dict[str, Any] | Sequence[Any] | set[Any],
+) -> str:
     try:
         return orjson.dumps(
             data,

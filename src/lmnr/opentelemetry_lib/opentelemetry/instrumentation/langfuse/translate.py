@@ -36,7 +36,6 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse.attributes im
 OIValue: TypeAlias = str | bool | int | float | None | dict[str, "OIValue"] | list["OIValue"]
 
 
-
 def parse_json(raw: Any) -> Any:
     if not isinstance(raw, str):
         return raw
@@ -102,7 +101,8 @@ def split_messages_and_tool_defs_langchain(
             content = msg.get("content")  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
             if isinstance(content, dict):
                 if content.get("type") == "function" and isinstance(  # pyright: ignore[reportUnknownMemberType]
-                    content.get("function"), dict  # pyright: ignore[reportUnknownMemberType]
+                    content.get("function"),
+                    dict,  # pyright: ignore[reportUnknownMemberType]
                 ):
                     tool_defs.append(content["function"])  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
                     continue
@@ -132,9 +132,7 @@ def genai_output_from_langfuse(output_raw: Any) -> Any | None:
     return None
 
 
-def convert_openai_tool_calls_to_content_parts(
-    messages: list[Any], is_output: bool
-) -> list[Any]:
+def convert_openai_tool_calls_to_content_parts(messages: list[Any], is_output: bool) -> list[Any]:
     """The output of LangChain integration looks a lot like OpenAI's output,
     i.e. separate tool_calls and content keys. This function extracts the tool
     calls and converts them to a more generic content-part style.
@@ -280,9 +278,7 @@ def oi_collect_indexed(attrs: dict[str, AttributeValue], prefix: str) -> list[di
     return [by_index[i] for i in sorted(by_index)]
 
 
-def _oi_assign_path(
-    container: dict[str, OIValue], segments: list[str], value: OIValue
-) -> None:
+def _oi_assign_path(container: dict[str, OIValue], segments: list[str], value: OIValue) -> None:
     """Assign `value` into `container` following a dotted openinference path.
 
     Numeric segments index into lists, named segments index into dicts. Lists
@@ -410,7 +406,9 @@ def is_openinference_span(span: ReadableSpan) -> bool:
     return any(
         isinstance(k, str)  # pyright: ignore[reportUnnecessaryIsInstance]
         and (
-            k.startswith((_OI_LLM_INPUT_MESSAGES + ".", _OI_LLM_OUTPUT_MESSAGES + ".", "llm.token_count."))
+            k.startswith(
+                (_OI_LLM_INPUT_MESSAGES + ".", _OI_LLM_OUTPUT_MESSAGES + ".", "llm.token_count.")
+            )
         )
         for k in attrs
     )
@@ -436,9 +434,7 @@ def is_llm_span(span: Span) -> bool:
         return any(
             isinstance(k, str)
             and (
-                k == "gen_ai.request.model"
-                or k == "gen_ai.response.model"
-                or k == "gen_ai.system"
+                k == "gen_ai.request.model" or k == "gen_ai.response.model" or k == "gen_ai.system"
             )
             for k in attrs  # pyright: ignore[reportUnknownVariableType]
         )

@@ -123,9 +123,9 @@ def test_force_reinit_creates_fresh_exporter_instance():
         new_exporter_instance = cast(LaminarSpanExporter, processor.exporter).instance
 
         # Assert they are different objects
-        assert (
-            new_exporter_instance is mock_instance_2
-        ), "force_reinit should create a new exporter instance"
+        assert new_exporter_instance is mock_instance_2, (
+            "force_reinit should create a new exporter instance"
+        )
         assert initial_exporter_instance is not new_exporter_instance
 
         # Verify the old instance was shut down
@@ -165,14 +165,16 @@ def test_force_reinit_with_batch_processor_exports_pending_spans(mock_otlp_expor
     time.sleep(0.2)
 
     # Verify the span was exported
-    assert (
-        len(mock_otlp_exporter) >= 1
-    ), "force_reinit should export pending spans from the old BatchSpanProcessor"
+    assert len(mock_otlp_exporter) >= 1, (
+        "force_reinit should export pending spans from the old BatchSpanProcessor"
+    )
 
-    exported_names: list[str] = [span.name for span in cast(Generator[ReadableSpan], mock_otlp_exporter)]
-    assert (
-        "test_span_1" in exported_names
-    ), f"Expected 'test_span_1' in exported spans, got {exported_names}"
+    exported_names: list[str] = [
+        span.name for span in cast(Generator[ReadableSpan], mock_otlp_exporter)
+    ]
+    assert "test_span_1" in exported_names, (
+        f"Expected 'test_span_1' in exported spans, got {exported_names}"
+    )
 
     processor.shutdown()
 
@@ -199,7 +201,9 @@ def test_force_reinit_multiple_times(mock_otlp_exporter: MagicMock):
         time.sleep(0.2)
 
     # All spans should have been exported
-    exported_names: list[str] = [span.name for span in cast(Generator[ReadableSpan], mock_otlp_exporter)]
+    exported_names: list[str] = [
+        span.name for span in cast(Generator[ReadableSpan], mock_otlp_exporter)
+    ]
     assert "span_0" in exported_names
     assert "span_1" in exported_names
     assert "span_2" in exported_names
@@ -230,9 +234,9 @@ def test_force_reinit_preserves_disable_batch_setting():
 
         assert isinstance(processor_simple.instance, SimpleSpanProcessor)
         _success = processor_simple.force_reinit()
-        assert isinstance(
-            processor_simple.instance, SimpleSpanProcessor
-        ), "force_reinit should preserve SimpleSpanProcessor when disable_batch=True"
+        assert isinstance(processor_simple.instance, SimpleSpanProcessor), (
+            "force_reinit should preserve SimpleSpanProcessor when disable_batch=True"
+        )
 
         processor_simple.shutdown()
 
@@ -246,8 +250,8 @@ def test_force_reinit_preserves_disable_batch_setting():
 
         assert isinstance(processor_batch.instance, BatchSpanProcessor)
         _success = processor_batch.force_reinit()
-        assert isinstance(
-            processor_batch.instance, BatchSpanProcessor
-        ), "force_reinit should preserve BatchSpanProcessor when disable_batch=False"
+        assert isinstance(processor_batch.instance, BatchSpanProcessor), (
+            "force_reinit should preserve BatchSpanProcessor when disable_batch=False"
+        )
 
         processor_batch.shutdown()

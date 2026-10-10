@@ -60,9 +60,7 @@ class AsyncEvals(BaseAsyncResource):
         if response.status_code != 200:
             if response.status_code == 401:
                 raise ValueError("Unauthorized. Please check your project API key.")
-            raise ValueError(
-                f"Error initializing evaluation: {describe_response(response)}"
-            )
+            raise ValueError(f"Error initializing evaluation: {describe_response(response)}")
         resp_json = cast(dict[str, str], response.json())
         return parse_init_evaluation_response(resp_json)
 
@@ -83,9 +81,7 @@ class AsyncEvals(BaseAsyncResource):
         Returns:
             uuid.UUID: The evaluation ID.
         """
-        evaluation = await self.init(
-            name=name, group_name=group_name, metadata=metadata
-        )
+        evaluation = await self.init(name=name, group_name=group_name, metadata=metadata)
         return evaluation["id"]
 
     async def update_evaluation(
@@ -119,12 +115,8 @@ class AsyncEvals(BaseAsyncResource):
         )
         if response.status_code != 200:
             if response.status_code == 401:
-                raise ValueError(
-                    "Unauthorized. Please check your project API key."
-                )
-            raise ValueError(
-                f"Error updating evaluation: {describe_response(response)}"
-            )
+                raise ValueError("Unauthorized. Please check your project API key.")
+            raise ValueError(f"Error updating evaluation: {describe_response(response)}")
         return parse_init_evaluation_response(cast(dict[str, str], response.json()))
 
     async def create_datapoint(
@@ -199,10 +191,7 @@ class AsyncEvals(BaseAsyncResource):
             return
 
         if response.status_code != 200:
-            raise ValueError(
-                f"Error saving evaluation datapoints: {describe_response(response)}"
-            )
-
+            raise ValueError(f"Error saving evaluation datapoints: {describe_response(response)}")
 
     async def update_datapoint(
         self,
@@ -239,9 +228,7 @@ class AsyncEvals(BaseAsyncResource):
         )
 
         if response.status_code != 200:
-            raise ValueError(
-                f"Error updating evaluation datapoint: {describe_response(response)}"
-            )
+            raise ValueError(f"Error updating evaluation datapoint: {describe_response(response)}")
 
     async def _retry_save_datapoints(
         self,
@@ -257,18 +244,14 @@ class AsyncEvals(BaseAsyncResource):
         while retry < max_retries:
             retry += 1
             length = length // 2
-            logger.debug(
-                f"Retrying save datapoints: {retry} of {max_retries}, length: {length}"
-            )
+            logger.debug(f"Retrying save datapoints: {retry} of {max_retries}, length: {length}")
             if length == 0:
                 raise ValueError(
-                    "Error saving evaluation datapoints: the server rejected the payload as too " +
-                    "large even after truncating datapoint data to nothing. " +
-                    f"Last server response: {describe_response(response)}"
+                    "Error saving evaluation datapoints: the server rejected the payload as too "
+                    + "large even after truncating datapoint data to nothing. "
+                    + f"Last server response: {describe_response(response)}"
                 )
-            points = [
-                datapoint.to_dict(max_data_length=length) for datapoint in datapoints
-            ]
+            points = [datapoint.to_dict(max_data_length=length) for datapoint in datapoints]
             response = await self._client.post(
                 self._base_url + f"/v1/evals/{eval_id}/datapoints",
                 json={
@@ -280,6 +263,4 @@ class AsyncEvals(BaseAsyncResource):
             if response.status_code != 413:
                 break
         if response is None or response.status_code != 200:
-            raise ValueError(
-                f"Error saving evaluation datapoints: {describe_response(response)}"
-            )
+            raise ValueError(f"Error saving evaluation datapoints: {describe_response(response)}")
