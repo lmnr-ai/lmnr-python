@@ -43,8 +43,14 @@ def test_langchain_langgraph(span_exporter: InMemorySpanExporter):
     _res = graph.invoke({"messages": [HumanMessage(content="What is the weather in Tokyo?")]})  # pyright: ignore[reportUnknownMemberType]
 
     spans = span_exporter.get_finished_spans()
-    assert len(spans) == 3
+    # opentelemetry-instrumentation-langchain>=0.62 opens a root
+    # `invoke_agent LangGraph` span around the graph run.
+    assert len(spans) == 4
     workflow_span = next(span for span in spans if span.name == "LangGraph.workflow")
+    agent_span = next(span for span in spans if span.name == "invoke_agent LangGraph")
+    assert agent_span.parent is None
+    assert workflow_span.parent is not None and agent_span.context is not None
+    assert workflow_span.parent.span_id == agent_span.context.span_id
     other_spans = [span for span in spans if span.name != "LangGraph.workflow"]
     assert json.loads(
         cast(str, (workflow_span.attributes or {})["lmnr.association.properties.langgraph.nodes"])
@@ -109,8 +115,14 @@ async def test_langchain_langgraph_async(span_exporter: InMemorySpanExporter):
     )
 
     spans = span_exporter.get_finished_spans()
-    assert len(spans) == 3
+    # opentelemetry-instrumentation-langchain>=0.62 opens a root
+    # `invoke_agent LangGraph` span around the graph run.
+    assert len(spans) == 4
     workflow_span = next(span for span in spans if span.name == "LangGraph.workflow")
+    agent_span = next(span for span in spans if span.name == "invoke_agent LangGraph")
+    assert agent_span.parent is None
+    assert workflow_span.parent is not None and agent_span.context is not None
+    assert workflow_span.parent.span_id == agent_span.context.span_id
     other_spans = [span for span in spans if span.name != "LangGraph.workflow"]
     assert json.loads(
         cast(str, (workflow_span.attributes or {})["lmnr.association.properties.langgraph.nodes"])
@@ -175,8 +187,14 @@ def test_langchain_langgraph_stream(span_exporter: InMemorySpanExporter):
         pass
 
     spans = span_exporter.get_finished_spans()
-    assert len(spans) == 3
+    # opentelemetry-instrumentation-langchain>=0.62 opens a root
+    # `invoke_agent LangGraph` span around the graph run.
+    assert len(spans) == 4
     workflow_span = next(span for span in spans if span.name == "LangGraph.workflow")
+    agent_span = next(span for span in spans if span.name == "invoke_agent LangGraph")
+    assert agent_span.parent is None
+    assert workflow_span.parent is not None and agent_span.context is not None
+    assert workflow_span.parent.span_id == agent_span.context.span_id
     other_spans = [span for span in spans if span.name != "LangGraph.workflow"]
     assert json.loads(
         cast(str, (workflow_span.attributes or {})["lmnr.association.properties.langgraph.nodes"])
@@ -242,8 +260,14 @@ async def test_langchain_langgraph_async_stream(span_exporter: InMemorySpanExpor
         pass
 
     spans = span_exporter.get_finished_spans()
-    assert len(spans) == 3
+    # opentelemetry-instrumentation-langchain>=0.62 opens a root
+    # `invoke_agent LangGraph` span around the graph run.
+    assert len(spans) == 4
     workflow_span = next(span for span in spans if span.name == "LangGraph.workflow")
+    agent_span = next(span for span in spans if span.name == "invoke_agent LangGraph")
+    assert agent_span.parent is None
+    assert workflow_span.parent is not None and agent_span.context is not None
+    assert workflow_span.parent.span_id == agent_span.context.span_id
     other_spans = [span for span in spans if span.name != "LangGraph.workflow"]
     assert json.loads(
         cast(str, (workflow_span.attributes or {})["lmnr.association.properties.langgraph.nodes"])

@@ -5,14 +5,17 @@ These cover the generic machinery every migrated instrumentor relies on, so a
 regression here would silently affect all of them at once.
 """
 
+import sys
 import time
-from collections.abc import Callable, Sequence
+import types
+from collections.abc import Callable, Generator, Sequence
 from typing import Any, cast
 
 import pytest
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import SpanKind
 from typing_extensions import TypeVar, override
+from wrapt import wrap_function_wrapper
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
     BaseLaminarInstrumentor,
@@ -257,6 +260,125 @@ def test_wrapper_kwargs_defaults_to_empty_and_reaches_the_wrapper():
 
     add_spec_wrapper(handler, _spec(), **inst.wrapper_kwargs())(lambda: None, None, (), {})
     assert seen["extra"] == {"client": "sentinel"}
+
+
+# ---------------------------------------------------------------------------
+# Uninstrument removes only our layer when another instrumentor stacked on it
+# ---------------------------------------------------------------------------
+
+_PROBE_MODULE = "_lmnr_stack_probe"
+
+
+@pytest.fixture
+def probe_module() -> Generator[types.ModuleType]:
+    """A throwaway module with a class method and a module function, so stacking
+    order is fully controlled by the test and nothing session-wide is touched."""
+    module = types.ModuleType(_PROBE_MODULE)
+
+    class Target:
+        def method(self) -> str:
+            return "original"
+
+    def func() -> str:
+        return "original"
+
+    module.Target = Target  # pyright: ignore[reportAttributeAccessIssue]
+    module.func = func  # pyright: ignore[reportAttributeAccessIssue]
+    sys.modules[_PROBE_MODULE] = module
+    try:
+        yield module
+    finally:
+        del sys.modules[_PROBE_MODULE]
+
+
+def _recording_wrapper(calls: list[str], name: str) -> Callable[..., Any]:
+    def wrapper(
+        wrapped: Callable[..., Any], _instance: Any, args: tuple[Any, ...], kwargs: dict[str, Any]
+    ) -> Any:
+        calls.append(name)
+        return wrapped(*args, **kwargs)
+
+    return wrapper
+
+
+def _stack_instrumentor(calls: list[str], spec: WrappedFunctionSpec) -> BaseLaminarInstrumentor:
+    def handler(
+        _to_wrap: WrappedFunctionSpec,
+        wrapped: Callable[..., T],
+        _instance: Any,
+        args: Sequence[Any],
+        kwargs: dict[str, Any],
+    ) -> T:
+        calls.append("ours")
+        return wrapped(*args, **kwargs)
+
+    # A fresh class per call: `BaseInstrumentor` is a per-class singleton
+    class _Instrumentor(BaseLaminarInstrumentor):
+        @override
+        def instrumentation_dependencies(self):
+            return ()
+
+        @override
+        def instrumentation_scope(self):
+            return LaminarInstrumentationScopeAttributes(name="t", version="0")
+
+    spec["wrapper_function"] = handler
+    inst = _Instrumentor()
+    inst.instrumentor_config = LaminarInstrumentorConfig(wrapped_functions=[spec])
+    return inst
+
+
+def test_uninstrument_keeps_a_foreign_layer_stacked_on_top(probe_module: types.ModuleType):
+    """OTel's `unwrap` strips the OUTERMOST layer, so with a foreign layer on
+    top it used to peel theirs and leave ours."""
+    calls: list[str] = []
+    inst = _stack_instrumentor(
+        calls, _spec(package_name=_PROBE_MODULE, object_name="Target", method_name="method")
+    )
+    inst.instrument()
+    wrap_function_wrapper(_PROBE_MODULE, "Target.method", _recording_wrapper(calls, "foreign"))
+    foreign = vars(probe_module.Target)["method"]
+
+    inst.uninstrument()
+
+    assert vars(probe_module.Target)["method"] is foreign
+    assert probe_module.Target().method() == "original"
+    assert calls == ["foreign"]
+
+
+def test_uninstrument_keeps_a_foreign_layer_underneath(probe_module: types.ModuleType):
+    calls: list[str] = []
+    wrap_function_wrapper(_PROBE_MODULE, "Target.method", _recording_wrapper(calls, "foreign"))
+    foreign = vars(probe_module.Target)["method"]
+    inst = _stack_instrumentor(
+        calls, _spec(package_name=_PROBE_MODULE, object_name="Target", method_name="method")
+    )
+    inst.instrument()
+
+    inst.uninstrument()
+
+    # The stored descriptor itself, not a re-bound copy of it
+    assert vars(probe_module.Target)["method"] is foreign
+    assert probe_module.Target().method() == "original"
+    assert calls == ["foreign"]
+
+
+def test_alias_uninstrument_keeps_a_foreign_layer_stacked_on_top(
+    probe_module: types.ModuleType,
+):
+    calls: list[str] = []
+    inst = _stack_instrumentor(
+        calls, _spec(package_name=_PROBE_MODULE, method_name="func", replace_aliases=True)
+    )
+    inst.instrument()
+    wrap_function_wrapper(_PROBE_MODULE, "func", _recording_wrapper(calls, "foreign"))
+    foreign = probe_module.func
+
+    inst.uninstrument()
+
+    assert probe_module.func is foreign
+    assert probe_module.func() == "original"
+    assert calls == ["foreign"]
 
 
 # ---------------------------------------------------------------------------

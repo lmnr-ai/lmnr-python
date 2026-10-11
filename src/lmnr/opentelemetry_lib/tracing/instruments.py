@@ -67,7 +67,6 @@ class Instruments(Enum):
     MARQO = "marqo"
     MCP = "mcp"
     MICROSOFT_AGENT_FRAMEWORK = "microsoft_agent_framework"
-    MILVUS = "milvus"
     MISTRAL = "mistral"
     OLLAMA = "ollama"
     OPENAI = "openai"
@@ -79,7 +78,6 @@ class Instruments(Enum):
     OPENTELEMETRY = "opentelemetry"
     ###
     PATCHRIGHT = "patchright"
-    PINECONE = "pinecone"
     PLAYWRIGHT = "playwright"
     # Auto-enabled by default when `pydantic-ai-slim`/`pydantic-ai` is installed.
     # pydantic_ai emits its own OTel GenAI spans at the model abstraction layer,

@@ -5,79 +5,83 @@ interactions:
       the current weather for a location","parameters":{"type":"object","properties":{"location":{"type":"string","description":"Location
       of the weather to get, e.g. San Francisco, CA or Paris, France"}},"required":["location"]}}]}'
     headers:
-      Accept:
+      accept:
       - '*/*'
-      Accept-Encoding:
+      accept-encoding:
       - gzip, deflate, zstd
-      Connection:
+      connection:
       - keep-alive
-      Content-Length:
+      content-length:
       - '447'
-      Content-Type:
+      content-type:
       - application/json
-      Host:
+      cookie:
+      - _cfuvid=2q0Bej910mNnS5jnLQgCHWGa1CGhLdgc0_z8GhaNNGU-1769005437269-0.0.1.1-604800000
+      host:
       - api.openai.com
-      User-Agent:
-      - litellm/1.81.0
+      user-agent:
+      - litellm/1.85.2
     method: POST
     uri: https://api.openai.com/v1/responses
   response:
     body:
       string: !!binary |
-        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
+        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
+        ZUwMhgKsZ/f75dPlH2x63guwCQAA
     headers:
-      CF-RAY:
-      - 9c1782f56a43001f-LHR
-      Connection:
-      - keep-alive
-      Content-Encoding:
-      - gzip
-      Content-Type:
-      - application/json
-      Date:
-      - Wed, 21 Jan 2026 14:30:49 GMT
-      Server:
-      - cloudflare
-      Set-Cookie:
-      - __cf_bm=qwBpIq7xzZJ5zmS38HN6qAqT_R_T0TO5SDSF90CjXvM-1769005849-1.0.1.1-4KhpMPETXyJWnFOuCvPJrK.hC7KGZWM9cMKjnLpyQTNcLY6ffWMWCz66kcZiWFF1KXlnFQ2rRIbLJj0zCWF3CdKvdkWtpNEUBU_mz5ZoPBs;
-        path=/; expires=Wed, 21-Jan-26 15:00:49 GMT; domain=.api.openai.com; HttpOnly;
-        Secure; SameSite=None
-      - _cfuvid=_GOc_k0GXR2OQrgB5MlXovPHlRdjiQaBNVKMNfhwxmc-1769005849459-0.0.1.1-604800000;
-        path=/; domain=.api.openai.com; HttpOnly; Secure; SameSite=None
-      Strict-Transport-Security:
-      - max-age=31536000; includeSubDomains; preload
-      Transfer-Encoding:
-      - chunked
-      X-Content-Type-Options:
-      - nosniff
+      access-control-expose-headers:
+      - X-Request-ID
+      - CF-Ray
+      - CF-Ray
       alt-svc:
       - h3=":443"; ma=86400
       cf-cache-status:
       - DYNAMIC
+      cf-ray:
+      - a49102409d5bfc2b-LHR
+      connection:
+      - keep-alive
+      content-encoding:
+      - gzip
+      content-type:
+      - application/json
+      date:
+      - Sun, 11 Oct 2026 21:37:57 GMT
       openai-organization:
       - user-xzaeeoqlanzncr8pomspsknu
       openai-processing-ms:
-      - '1378'
+      - '1272'
       openai-project:
       - proj_aT4OgTR5NJ9iNjg4xWc82hiE
       openai-version:
       - '2020-10-01'
-      x-envoy-upstream-service-time:
-      - '1397'
+      server:
+      - cloudflare
+      set-cookie:
+      - __cf_bm=pknvvOA9FtKTiOQ_xMYkclcFasPhyFEAPOyUsILYkS8-1791754675.2961082-1.0.1.1-oi.M9H_Qqk2EclxYflgDFyLW9t9nxMrx0nHNfNtA5B_jqNpEJU8yNt9f7RXsOb.VJGgauxJ0dPvBLaRfEW1hNzAj2ZojujNnyEggHTZF1gtj8Xw8w94zIo2U7bos8uyQ;
+        HttpOnly; SameSite=None; Secure; Path=/; Domain=api.openai.com; Expires=Sun,
+        11 Oct 2026 22:07:57 GMT
+      strict-transport-security:
+      - max-age=31536000; includeSubDomains; preload
+      transfer-encoding:
+      - chunked
+      x-content-type-options:
+      - nosniff
       x-ratelimit-limit-requests:
       - '30000'
       x-ratelimit-limit-tokens:
@@ -91,7 +95,7 @@ interactions:
       x-ratelimit-reset-tokens:
       - 0s
       x-request-id:
-      - req_e1205ee4ff2145fd96c7e01319efa72a
+      - req_e4d2343507e4434b8c5b67b7086f80de
     status:
       code: 200
       message: OK

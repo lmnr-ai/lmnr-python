@@ -46,7 +46,6 @@ def register_default_initializers() -> None:
             Instruments.MICROSOFT_AGENT_FRAMEWORK: (
                 initializers.MicrosoftAgentFrameworkInstrumentorInitializer()
             ),
-            Instruments.MILVUS: initializers.MilvusInstrumentorInitializer(),
             Instruments.MISTRAL: initializers.MistralInstrumentorInitializer(),
             Instruments.OLLAMA: initializers.OllamaInstrumentorInitializer(),
             Instruments.OPENAI: initializers.OpenAIInstrumentorInitializer(),
@@ -54,7 +53,6 @@ def register_default_initializers() -> None:
             Instruments.OPENROUTER: initializers.OpenRouterInstrumentorInitializer(),
             Instruments.OPENTELEMETRY: initializers.OpenTelemetryInstrumentorInitializer(),
             Instruments.PATCHRIGHT: initializers.PatchrightInstrumentorInitializer(),
-            Instruments.PINECONE: initializers.PineconeInstrumentorInitializer(),
             Instruments.PLAYWRIGHT: initializers.PlaywrightInstrumentorInitializer(),
             Instruments.PYDANTIC_AI: initializers.PydanticAIInstrumentorInitializer(),
             Instruments.QDRANT: initializers.QdrantInstrumentorInitializer(),

@@ -11,6 +11,7 @@ the migration actually moves.
 """
 
 import importlib
+import inspect
 import sys
 import types
 from collections.abc import Callable, Generator, Sequence
@@ -202,6 +203,29 @@ def _reachable(targets: set[tuple[str, str]]) -> set[tuple[str, str]]:
     return ok
 
 
+# Targets a third-party instrumentor wraps too
+# (opentelemetry-instrumentation-langchain>=0.62 wraps Pregel.stream / astream),
+# and whose layer its own uninstrument never removes. `_is_wrapped` cannot tell
+# whose layer it sees, so these targets are run bare (wrapt layers stripped) for
+# the cycle and the exact originals are put back after. Removing only our layer
+# from a stack is covered in tests/test_shared_instrumentor.py.
+SHARED_TARGET_INSTRUMENTORS = {"langgraph"}
+
+
+def _strip_wrapt_layers(
+    targets: set[tuple[str, str]],
+) -> list[tuple[object, str, object]]:
+    saved: list[tuple[object, str, object]] = []
+    for module_name, target in _reachable(targets):
+        holder, attr = _resolve(module_name, target)
+        value = inspect.getattr_static(holder, attr)
+        saved.append((holder, attr, value))
+        while is_wrapt_proxy(value):
+            value = cast(Any, value).__wrapped__
+        setattr(holder, attr, value)
+    return saved
+
+
 def _instrumentor(key: str) -> tuple[BaseInstrumentor, set[tuple[str, str]]]:
     module_path, class_name, targets = INSTRUMENTOR_TARGETS[key]
     module = importlib.import_module(module_path)
@@ -220,6 +244,7 @@ def reinstrumented(request: Any) -> Generator[tuple[BaseInstrumentor, set[tuple[
     """
     instrumentor, targets = _instrumentor(request.param)
     was_instrumented = instrumentor.is_instrumented_by_opentelemetry
+    saved = _strip_wrapt_layers(targets) if request.param in SHARED_TARGET_INSTRUMENTORS else []
     try:
         yield instrumentor, targets
     finally:
@@ -230,6 +255,8 @@ def reinstrumented(request: Any) -> Generator[tuple[BaseInstrumentor, set[tuple[
             instrumentor.instrument()
         elif not was_instrumented and instrumentor.is_instrumented_by_opentelemetry:
             instrumentor.uninstrument()
+        for holder, attr, value in saved:
+            setattr(holder, attr, value)
 
 
 @pytest.mark.parametrize("reinstrumented", sorted(INSTRUMENTOR_TARGETS), indirect=True)
