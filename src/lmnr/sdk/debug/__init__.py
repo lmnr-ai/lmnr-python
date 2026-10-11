@@ -63,7 +63,7 @@ class DebugRuntime:
         self._lock: threading.Lock = threading.Lock()
         # Captured at construction (SDK init) so the pointer's `started_at`
         # reflects when the run began, not when the pointer is emitted (shutdown).
-        self._started_at: str = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        self._started_at: str = datetime.datetime.now(datetime.UTC).isoformat()
 
     @property
     def session_id(self) -> str:

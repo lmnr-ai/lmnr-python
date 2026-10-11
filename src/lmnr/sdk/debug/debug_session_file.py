@@ -79,8 +79,7 @@ def read_debug_session_file(directory: str | None = None) -> DebugSessionFile | 
             "cache_until": _str(r.get("cache_until")),
             "debugger_url": _str(r.get("debugger_url")),
             "started_at": (
-                _str(r.get("started_at"))
-                or datetime.datetime.now(datetime.timezone.utc).isoformat()
+                _str(r.get("started_at")) or datetime.datetime.now(datetime.UTC).isoformat()
             ),
         }
     except Exception:

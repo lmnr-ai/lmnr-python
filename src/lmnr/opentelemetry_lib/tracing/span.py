@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from contextvars import Token
 from logging import Logger
 from types import TracebackType
-from typing import Any, Literal, cast
+from typing import Any, Literal, Self, cast
 
 import orjson
 from opentelemetry.context import Context, detach
@@ -18,7 +18,7 @@ from opentelemetry.sdk.util.instrumentation import (
 from opentelemetry.trace import Link, Span, SpanContext, SpanKind, Status
 from opentelemetry.trace.status import StatusCode
 from opentelemetry.util.types import Attributes, AttributeValue
-from typing_extensions import Self, override
+from typing_extensions import override
 
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,

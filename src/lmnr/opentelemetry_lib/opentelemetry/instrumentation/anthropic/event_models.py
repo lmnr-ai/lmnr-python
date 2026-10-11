@@ -1,7 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Literal, TypedDict
-
-from typing_extensions import NotRequired
+from typing import Any, Literal, NotRequired, TypedDict
 
 
 class AnthropicUsage(TypedDict):

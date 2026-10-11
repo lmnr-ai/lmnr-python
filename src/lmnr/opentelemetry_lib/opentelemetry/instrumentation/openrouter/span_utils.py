@@ -1,9 +1,8 @@
 import os
 from collections.abc import Iterable
-from typing import TypedDict, cast
+from typing import Any, NotRequired, TypedDict, cast
 
 from opentelemetry.trace import Span
-from typing_extensions import Any, NotRequired
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     dont_throw,

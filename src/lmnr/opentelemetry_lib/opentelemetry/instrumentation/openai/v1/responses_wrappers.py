@@ -2,7 +2,7 @@ import json
 import re
 import time
 from collections.abc import Awaitable, Callable, Sequence
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, NotRequired, cast
 
 import pydantic
 from opentelemetry import context as context_api
@@ -17,7 +17,7 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
 )
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.trace import Span, SpanKind, StatusCode
-from typing_extensions import NotRequired, TypeVar
+from typing_extensions import TypeVar
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.helpers import (
     DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY,

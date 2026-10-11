@@ -4,9 +4,9 @@ Laminar HTTP client. Used to send data to/from the Laminar API.
 
 import re
 from types import TracebackType
+from typing import Self
 
 import httpx
-from typing_extensions import Self
 
 from lmnr.sdk.client.synchronous.resources import (
     BrowserEvents,

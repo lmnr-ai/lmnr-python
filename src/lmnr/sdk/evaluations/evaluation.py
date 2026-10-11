@@ -3,7 +3,7 @@ import re
 import uuid
 from asyncio.tasks import Task
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from logging import Logger
 from typing import Any, cast
 
@@ -373,7 +373,7 @@ class Evaluation:
                         partial_datapoint.dataset_link = EvaluationDatapointDatasetLink(
                             dataset_id=self._source_dataset.id,
                             datapoint_id=datapoint.id or uuid.UUID(int=0),
-                            created_at=datapoint.created_at or datetime.now(timezone.utc),
+                            created_at=datapoint.created_at or datetime.now(UTC),
                         )
                     # First, create datapoint with trace_id so that we can show the dp in the UI
                     await self.client.evals.save_datapoints(
@@ -440,7 +440,7 @@ class Evaluation:
             eval_datapoint.dataset_link = EvaluationDatapointDatasetLink(
                 dataset_id=self._source_dataset.id,
                 datapoint_id=datapoint.id or uuid.UUID(int=0),
-                created_at=datapoint.created_at or datetime.now(timezone.utc),
+                created_at=datapoint.created_at or datetime.now(UTC),
             )
 
         # Create background upload task without awaiting it

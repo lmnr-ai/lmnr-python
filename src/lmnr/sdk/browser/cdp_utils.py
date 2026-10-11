@@ -29,6 +29,7 @@ from lmnr.sdk.types import MaskInputOptions
 
 logger = get_default_logger(__name__)
 
+
 # https://github.com/browser-use/browser-use/blob/c75e8476e26d18b7617643bc2ae082fae8eae431/browser_use/browser/session.py#L88
 # mimics class CDPSession from browser-use. Redefine here for nicer typing.
 # Avoid installing heavy browser-use package as a dev dep just for typing
@@ -36,6 +37,7 @@ class BrowserSession(Protocol):
     cdp_client: CDPClient
     session_id: SessionID
     target_id: TargetID
+
 
 OLD_BUFFER_TIMEOUT = 60
 CDP_OPERATION_TIMEOUT_SECONDS = 10
@@ -524,7 +526,9 @@ def register_on_frame_navigated(
         logger.debug("Failed to register frame navigated handler", exc_info=True)
 
 
-async def is_recorder_present(cdp_session: BrowserSession, isolated_context_id: int | None = None) -> bool:
+async def is_recorder_present(
+    cdp_session: BrowserSession, isolated_context_id: int | None = None
+) -> bool:
     # This function returns True on any error, because it is safer to not record
     # events than to try to inject the recorder into a broken context.
     cdp_client = cdp_session.cdp_client
