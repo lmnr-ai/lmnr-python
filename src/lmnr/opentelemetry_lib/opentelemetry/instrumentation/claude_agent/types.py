@@ -1,4 +1,6 @@
-from typing import Any, TypedDict
+from typing import Any
+
+from typing_extensions import TypedDict
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.proxy import (
     LaminarProxyServer,

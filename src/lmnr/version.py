@@ -1,10 +1,11 @@
 import sys
-from typing import TypedDict, cast
+from typing import cast
 
 import httpx
 from packaging import version
+from typing_extensions import TypedDict
 
-__version__ = "0.7.67"
+__version__ = "0.8.0"
 PYTHON_VERSION = f"{sys.version_info.major}.{sys.version_info.minor}"
 
 

@@ -1,10 +1,10 @@
 from collections.abc import AsyncGenerator, AsyncIterator, Callable, Generator, Sequence
 from inspect import iscoroutine
-from typing import Any, TypedDict, cast
+from typing import Any, cast
 
 from opentelemetry.trace import Status, StatusCode
 from opentelemetry.util.types import AttributeValue
-from typing_extensions import TypeVar
+from typing_extensions import TypedDict, TypeVar
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.litellm.rollout import (
     DualIteratorWrapper,

@@ -1,12 +1,12 @@
 from collections.abc import AsyncGenerator, Awaitable, Callable, Generator, Sequence
-from typing import Any, TypedDict, cast
+from typing import Any, cast
 
 from opentelemetry import context as context_api
 from opentelemetry.context import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.trace import Span
 from opentelemetry.trace.status import Status, StatusCode
-from typing_extensions import TypeVar
+from typing_extensions import TypedDict, TypeVar
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.shared import (
     is_streaming_response,

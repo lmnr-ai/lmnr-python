@@ -6,7 +6,8 @@ import os
 import re
 import sys
 from argparse import Namespace
-from typing import TypedDict
+
+from typing_extensions import TypedDict
 
 from lmnr.sdk.evaluations.control_vars import EVALUATION_INSTANCES, PREPARE_ONLY
 from lmnr.sdk.evaluations.evaluation import Evaluation

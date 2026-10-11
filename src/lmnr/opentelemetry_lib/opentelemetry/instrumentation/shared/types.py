@@ -1,5 +1,7 @@
 from collections.abc import Callable, Sequence
-from typing import Any, TypedDict, TypeVar
+from typing import Any, TypeVar
+
+from typing_extensions import TypedDict
 
 
 class LaminarInstrumentationScopeAttributes(TypedDict):

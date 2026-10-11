@@ -1,5 +1,7 @@
 from dataclasses import dataclass
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal
+
+from typing_extensions import TypedDict
 
 
 class _FunctionToolCall(TypedDict):

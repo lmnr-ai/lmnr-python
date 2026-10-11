@@ -3,14 +3,14 @@ from __future__ import annotations
 import threading
 from collections.abc import AsyncGenerator, Awaitable, Callable, Generator, Sequence
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, Never, NotRequired, Self, TypedDict, cast
+from typing import TYPE_CHECKING, Any, Never, NotRequired, Self, cast
 
 from opentelemetry import context as context_api
 from opentelemetry.context import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.trace import Span
 from opentelemetry.trace.status import Status, StatusCode
-from typing_extensions import TypeVar, override
+from typing_extensions import TypedDict, TypeVar, override
 from wrapt import ObjectProxy
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.shared import (

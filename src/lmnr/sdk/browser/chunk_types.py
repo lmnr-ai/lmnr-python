@@ -6,7 +6,7 @@ unlike the surrounding wrapt/CDP payloads, it is not a third-party shape, so it
 is fully typed rather than `dict[str, Any]`.
 """
 
-from typing import TypedDict
+from typing_extensions import TypedDict
 
 
 class ChunkMessage(TypedDict):

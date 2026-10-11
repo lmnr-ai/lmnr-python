@@ -1,12 +1,13 @@
 from collections import defaultdict
 from collections.abc import AsyncGenerator, Generator, Iterator
-from typing import Any, TypedDict, TypeVar, cast
+from typing import Any, TypeVar, cast
 
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_USAGE_INPUT_TOKENS,
     GEN_AI_USAGE_OUTPUT_TOKENS,
 )
 from opentelemetry.trace import Span, Status, StatusCode
+from typing_extensions import TypedDict
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     dont_throw,

@@ -21,7 +21,9 @@ session has no trace yet).
 import datetime
 import json
 import os
-from typing import Any, TypedDict, cast
+from typing import Any, cast
+
+from typing_extensions import TypedDict
 
 # Directory the debug-session file lives in, relative to the working dir.
 DEBUG_SESSION_DIR = ".lmnr"

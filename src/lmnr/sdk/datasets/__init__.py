@@ -3,9 +3,9 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 from logging import Logger
 from pathlib import Path
-from typing import Any, TypedDict, cast
+from typing import Any, cast
 
-from typing_extensions import override
+from typing_extensions import TypedDict, override
 
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
 from lmnr.sdk.datasets.file_utils import load_from_paths

@@ -2,9 +2,10 @@ import datetime
 import json
 import uuid
 from collections.abc import Awaitable, Callable, Mapping
-from typing import Any, TypedDict
+from typing import Any
 
 from pydantic import BaseModel, Field
+from typing_extensions import TypedDict
 
 from lmnr.sdk.types import (
     EvaluationDatapointData,

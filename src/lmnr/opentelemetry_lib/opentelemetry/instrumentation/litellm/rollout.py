@@ -14,10 +14,10 @@ the result, so the cache lookup is a blocking HTTP call even on the async path
 
 import json
 from collections.abc import AsyncGenerator, Callable, Generator, Iterator, Sequence
-from typing import Any, NotRequired, TypedDict, cast
+from typing import Any, NotRequired, cast
 
 from opentelemetry.trace import Span
-from typing_extensions import TypeVar
+from typing_extensions import TypedDict, TypeVar
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     set_span_attribute,
