@@ -127,8 +127,8 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
             module_name: The name of the module containing the function
             function_name: The name of the function to unwrap
             own_wrapper: The wrapper we installed; when another instrumentor has
-                wrapped on top of it, only our layer is spliced out and the
-                aliases (which point at their outer layer) are left alone
+                wrapped the module attribute on top of it, only our layer is
+                spliced out from under theirs
         """
         key = (module_name, function_name)
         original = (self._module_function_originals or {}).get(key)
@@ -141,7 +141,12 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
 
         current = getattr(module, function_name, None)
         if own_wrapper is not None and getattr(current, "_self_wrapper", None) is not own_wrapper:
-            _ = self._remove_own_layer(module, function_name, own_wrapper)
+            removed = self._remove_own_layer(module, function_name, own_wrapper)
+            # The later wrap only replaced the module attribute; every alias we
+            # retargeted at instrument time (`from module import fn` bindings,
+            # litellm's dispatch `_PYTHON_*` fallback) still holds our layer
+            if removed is not None:
+                self._replace_function_aliases(removed, removed.__wrapped__)
         else:
             setattr(module, function_name, original)
             if current is not None:
@@ -150,7 +155,7 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
             del self._module_function_originals[key]
 
     @staticmethod
-    def _remove_own_layer(holder: object, attr: str, wrapper: WraptWrapper) -> bool:
+    def _remove_own_layer(holder: object, attr: str, wrapper: WraptWrapper) -> Any:
         """Remove the wrapt layer whose wrapper is `wrapper` from `holder.attr`.
 
         `opentelemetry.instrumentation.utils.unwrap` always strips the OUTERMOST
@@ -163,7 +168,8 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
         of a wrapt proxy returns a freshly bound proxy, and writing that back
         would replace the stored descriptor.
 
-        Returns True if our layer was found and removed.
+        Returns the removed layer (so callers can retarget references to it),
+        or None if our layer was not found.
         """
         outer: Any = None
         current: Any = vars(holder).get(attr)
@@ -173,9 +179,9 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
                     setattr(holder, attr, current.__wrapped__)
                 else:
                     outer.__wrapped__ = current.__wrapped__
-                return True
+                return current
             outer, current = current, current.__wrapped__
-        return False
+        return None
 
     # default implementation, can be overridden by subclasses
     @override
@@ -244,7 +250,7 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
                     )
                     for part in object_name.split(".") if object_name else []:
                         holder = getattr(holder, part)
-                    if not self._remove_own_layer(holder, method_name, own_wrapper):
+                    if self._remove_own_layer(holder, method_name, own_wrapper) is None:
                         self.logger.debug(f"{package_name}.{target} was no longer wrapped by us")
                 elif object_name:
                     # `unwrap` resolves its first argument as `module.attr`

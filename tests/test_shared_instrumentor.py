@@ -381,6 +381,35 @@ def test_alias_uninstrument_keeps_a_foreign_layer_stacked_on_top(
     assert calls == ["foreign"]
 
 
+def test_alias_uninstrument_restores_aliases_under_a_foreign_layer(
+    probe_module: types.ModuleType,
+):
+    """Alias replacement points every `from module import func` binding (and
+    e.g. litellm's dispatch `_PYTHON_*` fallback) at our wrapper. A foreign layer
+    wraps only the module attribute, so splicing our layer out from under it is
+    not enough: the aliases must be pointed back at the original too."""
+    original = probe_module.func
+    alias_module = types.ModuleType("_lmnr_stack_probe_alias")
+    alias_module.func = original  # pyright: ignore[reportAttributeAccessIssue]
+    sys.modules[alias_module.__name__] = alias_module
+    try:
+        calls: list[str] = []
+        inst = _stack_instrumentor(
+            calls, _spec(package_name=_PROBE_MODULE, method_name="func", replace_aliases=True)
+        )
+        inst.instrument()
+        assert alias_module.func is not original
+        wrap_function_wrapper(_PROBE_MODULE, "func", _recording_wrapper(calls, "foreign"))
+
+        inst.uninstrument()
+
+        assert alias_module.func is original
+        assert alias_module.func() == "original"
+        assert calls == []
+    finally:
+        del sys.modules[alias_module.__name__]
+
+
 # ---------------------------------------------------------------------------
 # Every span-creating instrumentor stamps its scope
 # ---------------------------------------------------------------------------
