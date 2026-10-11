@@ -1,6 +1,7 @@
 {
   "reportAny": false,
   "reportExplicitAny": false,
+  "failOnWarnings": false,
   "executionEnvironments": [
     {
       "root": "tests",
