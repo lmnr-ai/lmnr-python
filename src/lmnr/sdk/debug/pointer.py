@@ -50,7 +50,7 @@ def build_debug_session_file(
         "replay_trace_id": replay_trace_id,
         "cache_until": cache_until,
         "debugger_url": debugger_url,
-        "started_at": (started_at or datetime.datetime.now(datetime.timezone.utc).isoformat()),
+        "started_at": (started_at or datetime.datetime.now(datetime.UTC).isoformat()),
     }
 
 

@@ -7,11 +7,11 @@ import uuid
 from collections import OrderedDict
 from collections.abc import Iterator, Mapping, Sequence
 from datetime import UTC, date, datetime
-from typing import Any, ClassVar, cast
+from typing import Any, ClassVar, cast, overload
 
 import pytest
 from pydantic import BaseModel, ConfigDict
-from typing_extensions import TypeVar, overload, override
+from typing_extensions import TypeVar, override
 
 from lmnr.sdk.utils import format_id, is_otel_attribute_value_type, json_dumps
 
@@ -921,7 +921,7 @@ def test_json_dumps_key_names_do_not_depend_on_the_retry_path():
         7: 4,
         2.5: 5,
         uuid.UUID(int=1): 6,
-        datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc): 7,
+        datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC): 7,
         datetime.date(2026, 1, 1): 8,
         datetime.time(1, 2, 3): 9,
         Color.RED: 10,

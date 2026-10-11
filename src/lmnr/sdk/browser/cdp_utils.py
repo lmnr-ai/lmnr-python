@@ -7,7 +7,12 @@ from typing import Any, cast
 from weakref import WeakKeyDictionary
 
 import orjson
+from cdp_use import CDPClient
+from cdp_use.cdp.runtime import BindingCalledEvent
+from cdp_use.cdp.target import SessionID, TargetID
+from cdp_use.cdp.target.events import TargetCreatedEvent
 from opentelemetry import trace
+from typing_extensions import Protocol
 
 from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from lmnr.opentelemetry_lib.tracing.wrapper import get_session_recording_options
@@ -23,6 +28,16 @@ from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import MaskInputOptions
 
 logger = get_default_logger(__name__)
+
+
+# https://github.com/browser-use/browser-use/blob/c75e8476e26d18b7617643bc2ae082fae8eae431/browser_use/browser/session.py#L88
+# mimics class CDPSession from browser-use. Redefine here for nicer typing.
+# Avoid installing heavy browser-use package as a dev dep just for typing
+class BrowserSession(Protocol):
+    cdp_client: CDPClient
+    session_id: SessionID
+    target_id: TargetID
+
 
 OLD_BUFFER_TIMEOUT = 60
 CDP_OPERATION_TIMEOUT_SECONDS = 10
@@ -64,7 +79,7 @@ with open(os.path.join(current_dir, "inject_script.js"), "r") as f:
     INJECT_SCRIPT_CONTENT = f.read()
 
 
-async def should_skip_page(cdp_session: Any):
+async def should_skip_page(cdp_session: BrowserSession):
     """Checks if the page url is an error page or an empty page.
     This function returns True in case of any error in our code, because
     it is safer to not record events than to try to inject the recorder
@@ -148,7 +163,7 @@ async def should_skip_page(cdp_session: Any):
 
         return False
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.debug("Timeout error when checking if error page")
         return True
     except Exception:
@@ -180,8 +195,7 @@ def get_mask_input_setting() -> MaskInputOptions:
         )
 
 
-# browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
-async def get_isolated_context_id(cdp_session: Any) -> int | None:
+async def get_isolated_context_id(cdp_session: BrowserSession) -> int | None:
     async with get_lock():
         tree = {}
         try:
@@ -189,17 +203,17 @@ async def get_isolated_context_id(cdp_session: Any) -> int | None:
                 cdp_session.cdp_client.send.Page.getFrameTree(session_id=cdp_session.session_id),
                 timeout=CDP_OPERATION_TIMEOUT_SECONDS,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.debug("Timeout error when getting frame tree")
             return None
         except Exception:
             logger.debug("Failed to get frame tree", exc_info=True)
             return None
-        frame: dict[str, Any] = (tree.get("frameTree") or {}).get("frame") or {}
+        frame = (tree.get("frameTree") or {}).get("frame") or {}
         frame_id = frame.get("id")
         loader_id = frame.get("loaderId")
 
-        if frame_id is None or loader_id is None:
+        if frame_id is None or loader_id is None:  # pyright: ignore[reportUnnecessaryComparison]
             logger.debug("Failed to get frame id or loader id")
             return None
         key = f"{frame_id}_{loader_id}"
@@ -208,7 +222,7 @@ async def get_isolated_context_id(cdp_session: Any) -> int | None:
             return frame_to_isolated_context_id[key]
 
         try:
-            result: dict[str, int] = await asyncio.wait_for(
+            result = await asyncio.wait_for(
                 cdp_session.cdp_client.send.Page.createIsolatedWorld(
                     {
                         "frameId": frame_id,
@@ -218,7 +232,7 @@ async def get_isolated_context_id(cdp_session: Any) -> int | None:
                 ),
                 timeout=CDP_OPERATION_TIMEOUT_SECONDS,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.debug("Timeout error when getting isolated context id")
             return None
         except Exception:
@@ -229,8 +243,7 @@ async def get_isolated_context_id(cdp_session: Any) -> int | None:
         return isolated_context_id
 
 
-# browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
-async def inject_session_recorder(cdp_session: Any) -> int | None:
+async def inject_session_recorder(cdp_session: BrowserSession) -> int | None:
     """Injects the session recorder base as well as the recorder itself.
     Returns the isolated context id if successful.
     """
@@ -264,7 +277,7 @@ async def inject_session_recorder(cdp_session: Any) -> int | None:
 
         async def load_session_recorder():
             try:
-                await asyncio.wait_for(
+                _res = await asyncio.wait_for(
                     cdp_client.send.Runtime.evaluate(
                         {
                             "expression": f"({RRWEB_CONTENT})()",
@@ -276,7 +289,7 @@ async def inject_session_recorder(cdp_session: Any) -> int | None:
                 )
                 logger.debug(f"Loaded session recorder base for context {isolated_context_id}")
                 return True
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.debug("Timeout error when loading session recorder base")
                 return False
             except Exception:
@@ -292,7 +305,7 @@ async def inject_session_recorder(cdp_session: Any) -> int | None:
             return
 
         try:
-            await asyncio.wait_for(
+            _res = await asyncio.wait_for(
                 cdp_client.send.Runtime.evaluate(
                     {
                         "expression": f"({INJECT_SCRIPT_CONTENT})({orjson.dumps(get_mask_input_setting()).decode('utf-8')}, true)",
@@ -304,7 +317,7 @@ async def inject_session_recorder(cdp_session: Any) -> int | None:
             )
             logger.debug(f"Injected session recorder for context {isolated_context_id}")
             return isolated_context_id
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.debug("Timeout error when injecting session recorder")
         except Exception:
             logger.debug("Failed to inject recorder", exc_info=True)
@@ -313,10 +326,9 @@ async def inject_session_recorder(cdp_session: Any) -> int | None:
         logger.debug("Error during session recorder injection", exc_info=True)
 
 
-# browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
 @observe(name="cdp_use.session", ignore_input=True, ignore_output=True)
 async def start_recording_events(
-    cdp_session: Any,
+    cdp_session: BrowserSession,
     lmnr_session_id: str,
     client: AsyncLaminarClient,
 ):
@@ -394,10 +406,9 @@ async def start_recording_events(
     # Track valid context IDs so the callback accepts events after navigation
     valid_context_ids: set[int] = set()
 
-    # cdp_use.cdp.runtime.events.BindingCalledEvent
-    async def send_events_callback(
-        event: dict[str, Any],
-        _cdp_session_id: str | None = None,
+    def send_events_callback(
+        event: BindingCalledEvent,
+        _cdp_session_id: SessionID | None = None,
     ):
         if event["name"] != "lmnrSendEvents":
             return
@@ -412,7 +423,7 @@ async def start_recording_events(
         if context_id in valid_context_ids:
             return True
         try:
-            await asyncio.wait_for(
+            _res = await asyncio.wait_for(
                 cdp_client.send.Runtime.addBinding(
                     {
                         "name": "lmnrSendEvents",
@@ -454,9 +465,9 @@ async def start_recording_events(
 
 
 # browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
-async def enable_target_discovery(cdp_session: Any):
+async def enable_target_discovery(cdp_session: BrowserSession):
     cdp_client = cdp_session.cdp_client
-    await cdp_client.send.Target.setDiscoverTargets(
+    _res = await cdp_client.send.Target.setDiscoverTargets(
         {
             "discover": True,
         },
@@ -466,10 +477,9 @@ async def enable_target_discovery(cdp_session: Any):
 
 # browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
 def register_on_target_created(
-    cdp_session: Any, _lmnr_session_id: str, _client: AsyncLaminarClient
+    cdp_session: BrowserSession, _lmnr_session_id: str, _client: AsyncLaminarClient
 ):
-    # cdp_use.cdp.target.events.TargetCreatedEvent - coerced down to only what we use here
-    def on_target_created(event: dict[str, dict[str, str]], _cdp_session_id: str | None = None):
+    def on_target_created(event: TargetCreatedEvent, _cdp_session_id: SessionID | None = None):
         target_info = event["targetInfo"]
         if target_info["type"] == "page":
             _inject_task = asyncio.create_task(inject_session_recorder(cdp_session=cdp_session))
@@ -516,8 +526,9 @@ def register_on_frame_navigated(
         logger.debug("Failed to register frame navigated handler", exc_info=True)
 
 
-# browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
-async def is_recorder_present(cdp_session: Any, isolated_context_id: int | None = None) -> bool:
+async def is_recorder_present(
+    cdp_session: BrowserSession, isolated_context_id: int | None = None
+) -> bool:
     # This function returns True on any error, because it is safer to not record
     # events than to try to inject the recorder into a broken context.
     cdp_client = cdp_session.cdp_client
@@ -541,7 +552,7 @@ async def is_recorder_present(cdp_session: Any, isolated_context_id: int | None 
         if result and "result" in result and "value" in result["result"]:
             return result["result"]["value"]
         return False
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.debug("Timeout error when checking if session recorder is present")
         return True
     except Exception:
@@ -585,10 +596,10 @@ async def take_full_snapshot(cdp_session: Any) -> bool:
         if result and "result" in result and "value" in result["result"]:
             return result["result"]["value"]
         return False
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.debug("Timeout error when taking full snapshot")
         return False
     except Exception:
         logger.debug("Error when taking full snapshot", exc_info=True)
         return False
-    return False
+    return False  # pyright: ignore[reportUnreachable]

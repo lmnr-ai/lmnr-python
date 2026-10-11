@@ -12,7 +12,7 @@ authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
 ]
 readme = "README.md"
-requires-python = ">=3.10,<4"
+requires-python = ">=3.11,<4"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 dependencies = [
@@ -44,7 +44,6 @@ dependencies = [
 # systems don't, so we need to specify them manually.
 classifiers = [
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
@@ -124,6 +123,7 @@ dev = [
   "agent-framework-core==1.20.0",
   "agent-framework-openai==1.15.0",
   "basedpyright>=1.39.10",
+  "cdp-use==1.4.5",
   "claude-agent-sdk==0.2.128",
   "google-adk==2.11.0",
   "daytona==0.198.0",  # higher versions pin pydantic to >= 2.13; which conflicts with openrouter's < 2.13
@@ -146,10 +146,11 @@ dev = [
   "pytest-asyncio==1.3.0",
   "pytest-recording==0.13.4",
   "pytest-sugar==1.1.1",
+  "ruff>=0.17.0",
+  "skyvern==1.0.48",
   "temporalio==1.31.0",
   "typesafe-sdk==0.7.0",
-  "vcrpy==8.3.0",
-  "ruff>=0.17.0",
+  "vcrpy==8.3.0"
 ]
 
 [build-system]
@@ -160,7 +161,7 @@ build-backend = "uv_build"
 members = ["examples/fastapi-app"]
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 100
 
 [tool.ruff.lint]

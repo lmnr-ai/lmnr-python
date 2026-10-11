@@ -259,8 +259,9 @@ def test_instrumentation_enables_content_capture():
 def test_workflow_spans_keep_span_path(span_exporter: InMemorySpanExporter):
     # Workflow spans are named with the framework's `OtelAttr` str enum. Left
     # as is, OTel drops `lmnr.span.path` for them and every descendant.
+    from typing import Never
+
     from agent_framework import Executor, WorkflowBuilder, WorkflowContext, handler
-    from typing_extensions import Never
 
     class Upper(Executor):
         @handler
