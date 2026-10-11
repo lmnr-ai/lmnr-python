@@ -26,7 +26,6 @@ def _exercise(span: Span):
     span.set_trace_metadata({"k": "v"})
     span.set_attribute("k", "v")
     assert span.name == ""
-    assert span.attributes == {}
     assert span.get_span_context().trace_id != 0
     span.end()
 
@@ -93,4 +92,15 @@ def test_use_span_forwards_writes_to_a_foreign_span(uninitialized: None):
         assert isinstance(span, LaminarSpan)
         assert span.is_recording()
         span.set_attribute("k", "v")
-    assert foreign.attrs == {"k": "v"}
+        span.set_tags(["a"])
+        span.add_tags(["b"])
+    assert foreign.attrs["k"] == "v"
+    # add_tags must see the tags already written, not overwrite them.
+    assert sorted(foreign.attrs["lmnr.association.properties.tags"]) == ["a", "b"]
+
+
+def test_tags_accumulate_on_a_noop_span(uninitialized):
+    span = Laminar.start_span("x")
+    span.set_tags(["a"])
+    span.add_tags(["b"])
+    assert sorted(span.tags) == ["a", "b"]

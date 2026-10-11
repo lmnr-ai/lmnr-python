@@ -412,7 +412,10 @@ class _NoOpSDKSpan(NonRecordingSpan):
 
     def __init__(self, span_context: SpanContext, inner: Span | None = None):
         super().__init__(span_context)
-        self.attributes = {}
+        # Seeded from the foreign span when it exposes attributes, and mirrored
+        # on every write below, so read-modify-write helpers like `add_tags`
+        # see what is already there.
+        self.attributes = dict(getattr(inner, "attributes", None) or {})
         # A foreign (non-SDK) span the caller handed us; writes are forwarded
         # to it so they are not silently discarded.
         self._inner = inner
@@ -423,11 +426,13 @@ class _NoOpSDKSpan(NonRecordingSpan):
 
     @override
     def set_attribute(self, key: str, value: AttributeValue) -> None:
+        self.attributes[key] = value
         if self._inner:
             self._inner.set_attribute(key, value)
 
     @override
     def set_attributes(self, attributes: Mapping[str, AttributeValue]) -> None:
+        self.attributes.update(attributes)
         if self._inner:
             self._inner.set_attributes(attributes)
 
