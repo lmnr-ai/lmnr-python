@@ -15,7 +15,7 @@ from opentelemetry.sdk.util.instrumentation import (
     InstrumentationInfo,
     InstrumentationScope,
 )
-from opentelemetry.trace import Link, Span, SpanContext, SpanKind, Status
+from opentelemetry.trace import Link, NonRecordingSpan, Span, SpanContext, SpanKind, Status
 from opentelemetry.trace.status import StatusCode
 from opentelemetry.util.types import Attributes, AttributeValue
 from typing_extensions import override
@@ -390,6 +390,42 @@ class SpanDelegationMixin:
         return self.span.to_json(indent)
 
 
+class _NoOpSDKSpan(NonRecordingSpan):
+    """A `NonRecordingSpan` that also answers the `ReadableSpan` reads
+    `LaminarSpan` delegates to, so a `LaminarSpan` can wrap it when the SDK is
+    not initialized. Every write is a no-op and nothing is ever exported."""
+
+    name: str = ""
+    parent: SpanContext | None = None
+    start_time: int | None = None
+    end_time: int | None = None
+    attributes: dict[str, AttributeValue]
+    events: tuple[Event, ...] = ()
+    links: tuple[Link, ...] = ()
+    kind: SpanKind = SpanKind.INTERNAL
+    status: Status = Status(StatusCode.UNSET)
+    dropped_attributes: int = 0
+    dropped_events: int = 0
+    dropped_links: int = 0
+    instrumentation_scope: InstrumentationScope | None = None
+    instrumentation_info: InstrumentationInfo | None = None
+
+    def __init__(self, *args: Any, **kwargs: Any):
+        super().__init__(*args, **kwargs)
+        self.attributes = {}
+
+    @property
+    def context(self) -> SpanContext:
+        return self.get_span_context()
+
+    @property
+    def resource(self) -> Resource:
+        return Resource.get_empty()
+
+    def to_json(self, indent: int | None = 4) -> str:
+        return "{}"
+
+
 class LaminarSpan(LaminarSpanInterfaceMixin, SpanDelegationMixin, Span, ReadableSpan):
     """
     Laminar's span wrapper that complies with OpenTelemetry's Span and ReadableSpan interfaces.
@@ -411,6 +447,13 @@ class LaminarSpan(LaminarSpanInterfaceMixin, SpanDelegationMixin, Span, Readable
         self.logger: Logger = get_default_logger(__name__)
         self.span = span
         super(ReadableSpan, self).__init__()
+
+    @classmethod
+    def non_recording(cls, span_context: SpanContext) -> Self:
+        """A LaminarSpan that records nothing. Returned by the `Laminar` span
+        APIs when the SDK is not initialized, so callers always get the full
+        `LaminarSpan` interface."""
+        return cls(cast(SDKSpan, cast(object, _NoOpSDKSpan(span_context))))
 
     @override
     def end(self, end_time: int | None = None) -> None:
