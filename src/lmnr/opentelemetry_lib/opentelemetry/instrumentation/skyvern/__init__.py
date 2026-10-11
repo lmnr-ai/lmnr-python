@@ -25,7 +25,7 @@ from lmnr.sdk.utils import JsonValue, get_input_from_func_args, json_dumps
 logger = get_default_logger(__name__)
 
 try:
-    from skyvern import Skyvern  # pyright: ignore[reportMissingImports]: # noqa: F401 TODO: Python 3.11 upgrade and install as a dev dep
+    from skyvern import Skyvern  # noqa: F401
 except ImportError as e:
     raise ImportError(
         f"Attempted to import {__file__}, but it is designed "
@@ -89,10 +89,10 @@ def instrument_llm_handler(
     has been started, which is the normal state at `Laminar.initialize()` time —
     hence the guard at the call site.
     """
-    from skyvern.forge import app  # pyright: ignore[reportMissingImports]: TODO: Python 3.11 upgrade and install as a dev dep
+    from skyvern.forge import app
 
     # Store the original handler
-    original_handler = app.LLM_API_HANDLER  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    original_handler = app.LLM_API_HANDLER
 
     async def wrapped_llm_handler(*args: Any, **kwargs: Any) -> Any:
 
@@ -112,23 +112,23 @@ def instrument_llm_handler(
         ) as span:
             set_instrumentation_scope_attributes(span, scope)
             try:
-                result = await original_handler(*args, **kwargs)  # pyright: ignore[reportUnknownVariableType]
+                result = await original_handler(*args, **kwargs)
 
-                to_serialize = result  # pyright: ignore[reportUnknownVariableType]
+                to_serialize = result
                 serialized = (
                     to_serialize.model_dump_json()
                     if isinstance(to_serialize, pydantic.BaseModel)
-                    else json_dumps(to_serialize)  # pyright: ignore[reportUnknownArgumentType]
+                    else json_dumps(to_serialize)
                 )
                 span.set_attribute("lmnr.span.output", serialized)
-                return result  # pyright: ignore[reportUnknownVariableType]
+                return result
             except Exception as e:
                 span.record_exception(e)
                 raise
 
     # Replace the global handler
     app.LLM_API_HANDLER = wrapped_llm_handler
-    return original_handler  # pyright: ignore[reportUnknownVariableType]
+    return original_handler
 
 
 WRAPPED_FUNCTIONS: list[WrappedFunctionSpec] = [
@@ -250,7 +250,7 @@ class SkyvernInstrumentor(BaseLaminarInstrumentor):
         # instrument/uninstrument cycle layered another wrapper on it.
         if self._original_llm_handler is not None:
             try:
-                from skyvern.forge import app  # pyright: ignore[reportMissingImports]: TODO: Python 3.11 upgrade and install as a dev dep
+                from skyvern.forge import app
 
                 app.LLM_API_HANDLER = self._original_llm_handler
             except Exception:
