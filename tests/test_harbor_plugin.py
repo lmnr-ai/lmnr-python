@@ -193,6 +193,14 @@ def write_trajectory(job: FakeJob, trial_name: str, trajectory=TRAJECTORY) -> No
     (agent_dir / "trajectory.json").write_text(json.dumps(trajectory))
 
 
+@pytest.fixture(autouse=True)
+def initialized_project_key():
+    # Other test modules re-initialize Laminar with their own keys, and the
+    # plugin rejects a key that differs from the initialized one.
+    with patch.object(Laminar, "get_project_api_key", return_value="test_key"):
+        yield
+
+
 @pytest.fixture
 def client():
     client = MagicMock()
