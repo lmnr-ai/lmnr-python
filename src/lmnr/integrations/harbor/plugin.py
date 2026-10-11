@@ -73,6 +73,10 @@ class _TrialState:
     # The trial's latest upload. Every upload waits for it, since saves upsert
     # by datapoint id and a retry must not be overwritten by an earlier attempt.
     last_upload: asyncio.Task | None = None
+    # The finished attempt's datapoint while it has no rewards. Its zero
+    # scores cover only the reward keys seen so far, so it is re-saved when a
+    # later trial reveals new keys.
+    unscored_datapoint: EvaluationResultDatapoint | None = None
 
 
 class LaminarPlugin:
@@ -185,12 +189,33 @@ class LaminarPlugin:
         return get_evaluation_url(self._project_id, str(self._eval_id), self.base_url)
 
     async def _start_evaluation(self, job: "Job") -> None:
+        already_initialized = Laminar.is_initialized()
+        if already_initialized:
+            # Spans go through the existing tracer, so the evaluation must be
+            # created in the same project or its datapoints would link to
+            # traces it can't see.
+            initialized_key = Laminar.get_project_api_key()
+            if (
+                self.project_api_key
+                and initialized_key
+                and self.project_api_key != initialized_key
+            ):
+                raise ValueError(
+                    "Laminar is already initialized with a different project API "
+                    "key than the one passed to the Harbor plugin, so trial "
+                    "traces would be exported to another project than the "
+                    "evaluation. Use the same key for both."
+                )
+            self.project_api_key = self.project_api_key or initialized_key
         if not self.project_api_key:
             raise ValueError(
                 "Laminar project API key is not set. Set LMNR_PROJECT_API_KEY or "
                 "pass --pk project_api_key=..."
             )
-        if not Laminar.is_initialized():
+        if already_initialized:
+            # Send evaluation requests to the endpoint spans are exported to.
+            client_url, client_port = Laminar.get_base_http_url(), None
+        else:
             # Harbor-process agents (e.g. terminus-2) call LLMs through LiteLLM
             # outside of any span we own, so auto-instrumentation would only
             # produce orphan traces. Their calls are recovered from the
@@ -205,10 +230,11 @@ class LaminarPlugin:
                 instruments=set(),
                 set_global_tracer_provider=False,
             )
+            client_url, client_port = self.base_url, self.http_port
         self._client = AsyncLaminarClient(
-            base_url=self.base_url,
+            base_url=client_url,
             project_api_key=self.project_api_key,
-            port=self.http_port,
+            port=client_port,
         )
 
         config = job.config
@@ -297,6 +323,7 @@ class LaminarPlugin:
             if state.root_span is not None:
                 state.root_span.end()
             state.cancelled = False
+            state.unscored_datapoint = None
             state.setup_emitted = False
             state.agent_span = None
             state.agent_exception = None
@@ -439,18 +466,26 @@ class LaminarPlugin:
             metadata["exception_type"] = exception.exception_type
         if state.cancelled:
             metadata["cancelled"] = True
+        scored = bool(rewards) and not state.cancelled
+        scores = self._scores(rewards, cancelled=state.cancelled)
+        new_reward_keys = scored and self._record_reward_keys(scores)
         datapoint = EvaluationResultDatapoint(
             id=state.datapoint_id,
             index=state.index,
             data=state.data,
             target={},
             executor_output=self._executor_output(event),
-            scores=self._scores(rewards, cancelled=state.cancelled),
+            scores=scores,
             trace_id=state.trace_id,
             executor_span_id=_uuid(executor_span_id),
             metadata=metadata,
         )
         state.last_upload = self._upload([datapoint], after=state.last_upload)
+        state.unscored_datapoint = (
+            datapoint if not scored and not state.cancelled else None
+        )
+        if new_reward_keys:
+            self._rescore_unscored()
 
     def _emit_agent(
         self, parent: Any, event: "TrialHookEvent", exception: Any = None
@@ -507,6 +542,8 @@ class LaminarPlugin:
     def _scores(
         self, rewards: dict[str, Any] | None, cancelled: bool
     ) -> dict[str, float | int]:
+        if cancelled:
+            return {}
         if rewards:
             scores = {}
             for key, value in rewards.items():
@@ -514,14 +551,29 @@ class LaminarPlugin:
                     value = int(value)
                 if isinstance(value, (int, float)):
                     scores[key] = value
-                    if key not in self._seen_reward_keys:
-                        self._seen_reward_keys.append(key)
             return scores
-        if cancelled:
-            return {}
         # Harbor counts a trial without rewards (e.g. the agent crashed) as 0
         # in its metrics; do the same so Laminar averages match Harbor's.
         return {key: 0 for key in self._seen_reward_keys or ["reward"]}
+
+    def _record_reward_keys(self, scores: dict[str, float | int]) -> bool:
+        new_keys = [key for key in scores if key not in self._seen_reward_keys]
+        self._seen_reward_keys.extend(new_keys)
+        return bool(new_keys)
+
+    def _rescore_unscored(self) -> None:
+        # Laminar averages each score over the datapoints that have it, so
+        # trials saved before a reward key was seen must get a 0 for it too.
+        # Saves replace the whole datapoint, which also drops the "reward"
+        # fallback when the verifier uses other keys.
+        for state in self._trials.values():
+            if state.unscored_datapoint is None:
+                continue
+            datapoint = state.unscored_datapoint.model_copy(
+                update={"scores": self._scores(None, cancelled=False)}
+            )
+            state.unscored_datapoint = datapoint
+            state.last_upload = self._upload([datapoint], after=state.last_upload)
 
     # Uploads
 

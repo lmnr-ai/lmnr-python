@@ -595,6 +595,72 @@ async def test_failed_and_retried_trials(
 
 
 @pytest.mark.asyncio
+async def test_unscored_trials_are_rescored_when_reward_keys_appear(
+    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+):
+    job = FakeJob(tmp_path / "job")
+    task_dir = make_task_dir(tmp_path, "t")
+    plugin = LaminarPlugin(project_api_key="test_key")
+    await plugin.on_job_start(job)
+
+    crashed = make_event(job, task_dir, "crashed")
+    await job.emit("start", crashed)
+    await job.emit("end", crashed)
+    passed = make_event(job, task_dir, "passed", rewards={"accuracy": 1})
+    await job.emit("start", passed)
+    await job.emit("end", passed)
+    both = make_event(job, task_dir, "both", rewards={"accuracy": 0, "f1": 0.5})
+    await job.emit("start", both)
+    await job.emit("end", both)
+    await plugin.on_job_end(SimpleNamespace())
+
+    full = [
+        dp
+        for dp in saved_datapoints(client)
+        if isinstance(dp, EvaluationResultDatapoint)
+    ]
+    crashed_saves = [dp for dp in full if dp.metadata["trial_name"] == "crashed"]
+    # Saved before any reward key was known, then re-saved with each new key.
+    assert [dp.scores for dp in crashed_saves] == [
+        {"reward": 0},
+        {"accuracy": 0},
+        {"accuracy": 0, "f1": 0},
+    ]
+    assert len({dp.id for dp in crashed_saves}) == 1
+    assert len({dp.trace_id for dp in crashed_saves}) == 1
+    # Scored trials are not re-saved.
+    assert [dp.metadata["trial_name"] for dp in full].count("passed") == 1
+
+
+@pytest.mark.asyncio
+async def test_cancelled_trial_with_rewards_has_no_scores(
+    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+):
+    job = FakeJob(tmp_path / "job")
+    task_dir = make_task_dir(tmp_path, "t")
+    plugin = LaminarPlugin(project_api_key="test_key")
+    await plugin.on_job_start(job)
+    event = make_event(job, task_dir, "t1", rewards={"reward": 1})
+    await job.emit("start", event)
+    await job.emit("cancel", event)
+    await job.emit("end", event)
+    # A cancelled trial's keys don't trigger re-saves either.
+    later = make_event(job, task_dir, "t2")
+    await job.emit("start", later)
+    await job.emit("end", later)
+    await plugin.on_job_end(SimpleNamespace())
+
+    cancelled, later_dp = [
+        dp
+        for dp in saved_datapoints(client)
+        if isinstance(dp, EvaluationResultDatapoint)
+    ]
+    assert cancelled.scores == {}
+    assert cancelled.metadata["cancelled"] is True
+    assert later_dp.scores == {"reward": 0}
+
+
+@pytest.mark.asyncio
 async def test_cancelled_trial_has_no_scores(
     span_exporter: InMemorySpanExporter, client, tmp_path: Path
 ):
@@ -842,9 +908,45 @@ async def test_missing_api_key_skips_reporting(
     with patch("lmnr.integrations.harbor.plugin.from_env", return_value=None):
         plugin = LaminarPlugin()
     job = FakeJob(tmp_path / "job")
+    with patch.object(Laminar, "is_initialized", return_value=False):
+        await plugin.on_job_start(job)
+    assert job.hooks == {}
+    client.evals.init.assert_not_awaited()
+    await plugin.on_job_end(SimpleNamespace())
+
+
+@pytest.mark.asyncio
+async def test_already_initialized_laminar_with_another_key_is_rejected(
+    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+):
+    # Spans would go to the initialized project, the evaluation to another one.
+    job = FakeJob(tmp_path / "job")
+    plugin = LaminarPlugin(project_api_key="other_project_key")
     await plugin.on_job_start(job)
     assert job.hooks == {}
     client.evals.init.assert_not_awaited()
+    await plugin.on_job_end(SimpleNamespace())
+
+    strict = LaminarPlugin(project_api_key="other_project_key", fail_fast=True)
+    with pytest.raises(ValueError, match="different project API key"):
+        await strict.on_job_start(FakeJob(tmp_path / "job2"))
+
+
+@pytest.mark.asyncio
+async def test_already_initialized_laminar_sets_evaluation_destination(
+    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+):
+    with patch("lmnr.integrations.harbor.plugin.from_env", return_value=None):
+        plugin = LaminarPlugin(base_url="https://elsewhere.example.com")
+    with patch(
+        "lmnr.integrations.harbor.plugin.AsyncLaminarClient", return_value=client
+    ) as client_cls:
+        await plugin.on_job_start(FakeJob(tmp_path / "job"))
+    client_cls.assert_called_once_with(
+        base_url=Laminar.get_base_http_url(),
+        project_api_key=Laminar.get_project_api_key(),
+        port=None,
+    )
     await plugin.on_job_end(SimpleNamespace())
 
 
