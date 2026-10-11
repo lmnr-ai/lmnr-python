@@ -118,7 +118,7 @@ def process_completion_response(
         set_span_attribute(
             span,
             "gen_ai.usage.reasoning_tokens",
-            to_dict(output_details).get("reasoning_tokens"),
+            output_details.get("reasoning_tokens"),
         )
     if input_details := usage.get("prompt_tokens_details"):
         details = to_dict(input_details)

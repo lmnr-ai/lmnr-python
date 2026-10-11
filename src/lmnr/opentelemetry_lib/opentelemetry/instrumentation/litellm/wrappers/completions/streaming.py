@@ -115,7 +115,7 @@ def _set_accumulated_attributes(
                 set_span_attribute(
                     span,
                     "gen_ai.usage.reasoning_tokens",
-                    to_dict(output_details).get("reasoning_tokens"),
+                    output_details.get("reasoning_tokens"),
                 )
 
             input_details = to_dict(usage.get("prompt_tokens_details", {}))
