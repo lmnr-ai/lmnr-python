@@ -10,3 +10,5 @@ lmnr_engine/
 .claude
 # Local debug-session state written by LMNR_DEBUG runs (default-on, per-cwd).
 .lmnr/
+
+node_modules/
