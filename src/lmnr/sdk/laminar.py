@@ -892,7 +892,7 @@ class Laminar:
         session_id: str | None = None,
         metadata: dict[str, AttributeValue] | None = None,
         attributes: dict[str, AttributeValue] | None = None,
-    ) -> Generator[LaminarSpan, None, None]:
+    ) -> Generator[LaminarSpan]:
         """Start a new span as the current span. Useful for manual
         instrumentation. If `span_type` is set to `"LLM"`, you should report
         usage and response attributes manually. See `Laminar.set_span_attributes`
@@ -939,14 +939,14 @@ class Laminar:
         """
 
         if not cls.is_initialized():
-            non_recording_span = trace.NonRecordingSpan(
+            non_recording_span = LaminarSpan.non_recording(
                 trace.SpanContext(
                     trace_id=RandomIdGenerator().generate_trace_id(),
                     span_id=RandomIdGenerator().generate_span_id(),
                     is_remote=False,
                 )
             )
-            yield non_recording_span  # pyright: ignore[reportReturnType]
+            yield non_recording_span
             return
 
         with get_tracer_with_context() as (tracer, isolated_context):
@@ -1086,7 +1086,7 @@ class Laminar:
         metadata: dict[str, AttributeValue] | None = None,
         attributes: dict[str, AttributeValue] | None = None,
         start_time: int | None = None,
-    ) -> LaminarSpan | Span:
+    ) -> LaminarSpan:
         """Start a new span. Useful for manual instrumentation.
         If `span_type` is set to `"LLM"`, you should report usage and response
         attributes manually. See `Laminar.set_span_attributes` for more
@@ -1171,7 +1171,7 @@ class Laminar:
                 span_id = RandomIdGenerator().generate_span_id()
             except Exception:
                 cls.__logger.warning("failed to generate trace or span ID, continuing with nil")
-            return trace.NonRecordingSpan(
+            return LaminarSpan.non_recording(
                 trace.SpanContext(
                     trace_id=trace_id,
                     span_id=span_id,
@@ -1304,7 +1304,7 @@ class Laminar:
         end_on_exit: bool = False,
         record_exception: bool = True,
         set_status_on_exception: bool = True,
-    ) -> Generator[LaminarSpan | Span, None, None]:
+    ) -> Generator[LaminarSpan]:
         """Use a span as the current span. Useful for manual instrumentation.
 
         Fully copies the implementation of `use_span` from opentelemetry.trace
@@ -1324,7 +1324,12 @@ class Laminar:
         """
         if not cls.is_initialized():
             with use_span(span, end_on_exit, record_exception, set_status_on_exception) as s:
-                yield s
+                if isinstance(s, LaminarSpan):
+                    yield s
+                elif isinstance(s, SDKSpan):
+                    yield LaminarSpan(s)
+                else:
+                    yield LaminarSpan.non_recording(s.get_span_context(), s)
             return
 
         context_token = None
@@ -1390,7 +1395,7 @@ class Laminar:
     def use_span_context(
         cls,
         parent_span_context: LaminarSpanContext | LaminarSpanContextDict | str,
-    ) -> Generator[None, None, None]:
+    ) -> Generator[None]:
         """Activate a remote `LaminarSpanContext` as the parent for spans created
         inside this block, WITHOUT creating a span of its own.
 
@@ -1486,7 +1491,7 @@ class Laminar:
         session_id: str | None = None,
         metadata: dict[str, AttributeValue] | None = None,
         attributes: dict[str, AttributeValue] | None = None,
-    ) -> LaminarSpan | Span:
+    ) -> LaminarSpan:
         """Start a span and mark it as active within the current context.
         All spans started after this one will be children of this span.
         Useful for manual instrumentation. Must be ended manually.
@@ -1580,10 +1585,6 @@ class Laminar:
         )
         if not cls.is_initialized():
             return span
-        # start_span always returns a LaminarSpan once initialized; the
-        # `LaminarSpan | Span` return type only accounts for the
-        # not-initialized early-return above.
-        span = cast(LaminarSpan, span)
 
         # Set association props in context before push_span_context
         # so child spans inherit them

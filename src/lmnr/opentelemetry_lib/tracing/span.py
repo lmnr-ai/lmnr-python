@@ -15,7 +15,7 @@ from opentelemetry.sdk.util.instrumentation import (
     InstrumentationInfo,
     InstrumentationScope,
 )
-from opentelemetry.trace import Link, Span, SpanContext, SpanKind, Status
+from opentelemetry.trace import Link, NonRecordingSpan, Span, SpanContext, SpanKind, Status
 from opentelemetry.trace.status import StatusCode
 from opentelemetry.util.types import Attributes, AttributeValue
 from typing_extensions import override
@@ -390,6 +390,100 @@ class SpanDelegationMixin:
         return self.span.to_json(indent)
 
 
+class _NoOpSDKSpan(NonRecordingSpan):
+    """A `NonRecordingSpan` that also answers the `ReadableSpan` reads
+    `LaminarSpan` delegates to, so a `LaminarSpan` can wrap it when the SDK is
+    not initialized. Every write is a no-op and nothing is ever exported."""
+
+    name: str = ""
+    parent: SpanContext | None = None
+    start_time: int | None = None
+    end_time: int | None = None
+    attributes: dict[str, AttributeValue]
+    events: tuple[Event, ...] = ()
+    links: tuple[Link, ...] = ()
+    kind: SpanKind = SpanKind.INTERNAL
+    status: Status = Status(StatusCode.UNSET)
+    dropped_attributes: int = 0
+    dropped_events: int = 0
+    dropped_links: int = 0
+    instrumentation_scope: InstrumentationScope | None = None
+    instrumentation_info: InstrumentationInfo | None = None
+
+    def __init__(self, span_context: SpanContext, inner: Span | None = None):
+        super().__init__(span_context)
+        # Seeded from the foreign span when it exposes attributes, and mirrored
+        # on every write below, so read-modify-write helpers like `add_tags`
+        # see what is already there.
+        self.attributes = dict(getattr(inner, "attributes", None) or {})
+        # A foreign (non-SDK) span the caller handed us; writes are forwarded
+        # to it so they are not silently discarded.
+        self._inner = inner
+
+    @override
+    def is_recording(self) -> bool:
+        return self._inner.is_recording() if self._inner else False
+
+    @override
+    def set_attribute(self, key: str, value: AttributeValue) -> None:
+        self.attributes[key] = value
+        if self._inner:
+            self._inner.set_attribute(key, value)
+
+    @override
+    def set_attributes(self, attributes: Mapping[str, AttributeValue]) -> None:
+        self.attributes.update(attributes)
+        if self._inner:
+            self._inner.set_attributes(attributes)
+
+    @override
+    def add_event(
+        self,
+        name: str,
+        attributes: Attributes = None,
+        timestamp: int | None = None,
+    ) -> None:
+        if self._inner:
+            self._inner.add_event(name, attributes, timestamp)
+
+    @override
+    def update_name(self, name: str) -> None:
+        if self._inner:
+            self._inner.update_name(name)
+
+    @override
+    def set_status(self, status: Status | StatusCode, description: str | None = None) -> None:
+        if self._inner:
+            self._inner.set_status(status, description)
+
+    @override
+    def record_exception(
+        self,
+        exception: BaseException,
+        attributes: Attributes = None,
+        timestamp: int | None = None,
+        escaped: bool = False,
+    ) -> None:
+        if self._inner:
+            self._inner.record_exception(exception, attributes, timestamp, escaped)
+
+    @override
+    def end(self, end_time: int | None = None) -> None:
+        if self._inner:
+            self._inner.end(end_time)
+
+    @property
+    def context(self) -> SpanContext:
+        return self.get_span_context()
+
+    @property
+    def resource(self) -> Resource:
+        return Resource.get_empty()
+
+    def to_json(self, indent: int | None = 4) -> str:
+        return "{}"
+
+
 class LaminarSpan(LaminarSpanInterfaceMixin, SpanDelegationMixin, Span, ReadableSpan):
     """
     Laminar's span wrapper that complies with OpenTelemetry's Span and ReadableSpan interfaces.
@@ -411,6 +505,13 @@ class LaminarSpan(LaminarSpanInterfaceMixin, SpanDelegationMixin, Span, Readable
         self.logger: Logger = get_default_logger(__name__)
         self.span = span
         super(ReadableSpan, self).__init__()
+
+    @classmethod
+    def non_recording(cls, span_context: SpanContext, inner: Span | None = None) -> Self:
+        """A LaminarSpan that records nothing. Returned by the `Laminar` span
+        APIs when the SDK is not initialized, so callers always get the full
+        `LaminarSpan` interface."""
+        return cls(cast(SDKSpan, cast(object, _NoOpSDKSpan(span_context, inner))))
 
     @override
     def end(self, end_time: int | None = None) -> None:
