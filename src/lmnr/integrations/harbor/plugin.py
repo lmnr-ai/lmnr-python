@@ -18,7 +18,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from lmnr.sdk.types import LaminarSpanType
 from opentelemetry.context import Context
 from opentelemetry.trace import Status, StatusCode
 
@@ -33,6 +32,7 @@ from lmnr.sdk.evaluations.models import EvaluationResultDatapoint, PartialEvalua
 from lmnr.sdk.evaluations.utils import get_evaluation_url
 from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.types import LaminarSpanType
 from lmnr.sdk.utils import from_env, json_dumps
 
 if TYPE_CHECKING:
@@ -126,9 +126,7 @@ class LaminarPlugin:
         self.base_url: str | None = base_url or from_env("LMNR_BASE_URL")
         self.http_port: int | None = int(http_port) if http_port is not None else None
         self.grpc_port: int | None = int(grpc_port) if grpc_port is not None else None
-        resolved_evaluation_name = evaluation_name or from_env(
-            "HARBOR_LAMINAR_EVALUATION"
-        )
+        resolved_evaluation_name = evaluation_name or from_env("HARBOR_LAMINAR_EVALUATION")
         self.evaluation_name: str | None = (
             str(resolved_evaluation_name) if resolved_evaluation_name else None
         )
@@ -204,11 +202,7 @@ class LaminarPlugin:
             # created in the same project or its datapoints would link to
             # traces it can't see.
             initialized_key = Laminar.get_project_api_key()
-            if (
-                self.project_api_key
-                and initialized_key
-                and self.project_api_key != initialized_key
-            ):
+            if self.project_api_key and initialized_key and self.project_api_key != initialized_key:
                 raise ValueError(
                     "Laminar is already initialized with a different project API "
                     + "key than the one passed to the Harbor plugin, so trial "
@@ -279,9 +273,7 @@ class LaminarPlugin:
         try:
             self._start_trial(event)
         except Exception as e:
-            self._handle_error(
-                f"Failed to start Laminar trace for {event.trial_name}", e
-            )
+            self._handle_error(f"Failed to start Laminar trace for {event.trial_name}", e)
 
     async def _on_agent_started(self, event: "TrialHookEvent") -> None:
         # Environment and agent setup are done by now.
@@ -495,28 +487,27 @@ class LaminarPlugin:
             metadata=metadata,
         )
         state.last_upload = self._upload([datapoint], after=state.last_upload)
-        state.unscored_datapoint = (
-            datapoint if not scored and not state.cancelled else None
-        )
+        state.unscored_datapoint = datapoint if not scored and not state.cancelled else None
         if new_reward_keys:
             self._rescore_unscored()
 
-    def _emit_agent(
-        self, parent: Any, event: "TrialHookEvent", exception: Any = None
-    ) -> Any:
+    def _emit_agent(self, parent: Any, event: "TrialHookEvent", exception: Any = None) -> Any:
         result = event.result
         timing = result.agent_execution
         if timing is None:
             return None
         agent_result = result.agent_result
-        span = cast(LaminarSpan, Laminar.start_span(
-            "agent",
-            input=_read_instruction(event),
-            span_type="EXECUTOR",
-            parent_span_context=parent,
-            attributes=_agent_attributes(result),
-            start_time=parse_timestamp_ns(timing.started_at),
-        ))
+        span = cast(
+            LaminarSpan,
+            Laminar.start_span(
+                "agent",
+                input=_read_instruction(event),
+                span_type="EXECUTOR",
+                parent_span_context=parent,
+                attributes=_agent_attributes(result),
+                start_time=parse_timestamp_ns(timing.started_at),
+            ),
+        )
         end_ns = parse_timestamp_ns(timing.finished_at)
         if self.trajectory_spans:
             trajectory_path = _trajectory_path(event)
@@ -528,14 +519,10 @@ class LaminarPlugin:
                         start_ns=parse_timestamp_ns(timing.started_at),
                     )
                 except Exception as e:
-                    logger.warning(
-                        f"Could not convert trajectory {trajectory_path}: {e}"
-                    )
+                    logger.warning(f"Could not convert trajectory {trajectory_path}: {e}")
         span.set_output(self._executor_output(event))
         if agent_result is not None and agent_result.metadata:
-            span.set_attribute(
-                "harbor.agent.metadata", json_dumps(agent_result.metadata)
-            )
+            span.set_attribute("harbor.agent.metadata", json_dumps(agent_result.metadata))
         if exception is not None:
             _record_exception(span, exception)
             span.set_status(Status(StatusCode.ERROR, exception.exception_message))
@@ -553,9 +540,7 @@ class LaminarPlugin:
             return agent_result.metadata
         return None
 
-    def _scores(
-        self, rewards: dict[str, Any] | None, cancelled: bool
-    ) -> dict[str, float | int]:
+    def _scores(self, rewards: dict[str, Any] | None, cancelled: bool) -> dict[str, float | int]:
         if cancelled:
             return {}
         if rewards:
@@ -603,9 +588,7 @@ class LaminarPlugin:
             if after is not None:
                 # Upserts by id: saves of a datapoint must land in order.
                 _results = await asyncio.gather(after, return_exceptions=True)
-            await client.evals.save_datapoints(
-                eval_id, datapoints, self._resolved_group_name
-            )
+            await client.evals.save_datapoints(eval_id, datapoints, self._resolved_group_name)
 
         task = asyncio.ensure_future(upload())
         self._uploads.append(task)
@@ -778,13 +761,16 @@ def _emit_phase(
 ) -> Any:
     if timing is None or timing.started_at is None:
         return None
-    span = cast(LaminarSpan, Laminar.start_span(
-        name,
-        input=input,
-        span_type=cast(LaminarSpanType, span_type),
-        parent_span_context=parent,
-        start_time=parse_timestamp_ns(timing.started_at),
-    ))
+    span = cast(
+        LaminarSpan,
+        Laminar.start_span(
+            name,
+            input=input,
+            span_type=cast(LaminarSpanType, span_type),
+            parent_span_context=parent,
+            start_time=parse_timestamp_ns(timing.started_at),
+        ),
+    )
     if output is not None:
         span.set_output(output)
     if exception is not None:

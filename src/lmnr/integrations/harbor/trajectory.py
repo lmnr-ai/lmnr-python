@@ -90,9 +90,7 @@ def content_to_text(content: Any) -> str:
                 parts.append(part.get("text") or "")
             else:
                 source = part.get("source") or {}
-                parts.append(
-                    f"[{part.get('type', 'attachment')}: {source.get('path')}]"
-                )
+                parts.append(f"[{part.get('type', 'attachment')}: {source.get('path')}]")
         return "\n".join(parts)
     return str(content)
 
@@ -104,9 +102,7 @@ def _tool_call_to_openai(tool_call: dict[str, Any]) -> dict[str, Any]:
         "type": "function",
         "function": {
             "name": tool_call.get("function_name"),
-            "arguments": (
-                arguments if isinstance(arguments, str) else json.dumps(arguments)
-            ),
+            "arguments": (arguments if isinstance(arguments, str) else json.dumps(arguments)),
         },
     }
 
@@ -189,11 +185,14 @@ class TrajectoryConverter:
         steps = [s for s in (trajectory.get("steps") or []) if isinstance(s, dict)]
         agent = trajectory.get("agent") or {}
         default_model = agent.get("model_name")
-        subagents = cast(dict[str, Any], {
-            sub.get("trajectory_id"): sub
-            for sub in (trajectory.get("subagent_trajectories") or [])
-            if isinstance(sub, dict) and sub.get("trajectory_id")
-        })
+        subagents = cast(
+            dict[str, Any],
+            {
+                sub.get("trajectory_id"): sub
+                for sub in (trajectory.get("subagent_trajectories") or [])
+                if isinstance(sub, dict) and sub.get("trajectory_id")
+            },
+        )
 
         # Latest span start and latest tool span end so far at this level, used
         # to keep sibling start times in trajectory order. Saved and restored
@@ -225,12 +224,8 @@ class TrajectoryConverter:
             )
             if is_llm_step:
                 llm_start = prev_ns if prev_ns is not None else step_ns
-                llm_start = _not_before(
-                    llm_start, _shift(self._last_start, ORDER_GAP_NS)
-                )
-                llm_start = _not_before(
-                    llm_start, _shift(self._tools_end, ORDER_GAP_NS)
-                )
+                llm_start = _not_before(llm_start, _shift(self._last_start, ORDER_GAP_NS))
+                llm_start = _not_before(llm_start, _shift(self._tools_end, ORDER_GAP_NS))
                 self._emit_llm_span(
                     step,
                     list(history),
@@ -285,22 +280,23 @@ class TrajectoryConverter:
                 output_tokens or 0
             )
         if metrics.get("cached_tokens") is not None:
-            attributes["gen_ai.usage.cache_read_input_tokens"] = metrics[
-                "cached_tokens"
-            ]
+            attributes["gen_ai.usage.cache_read_input_tokens"] = metrics["cached_tokens"]
         if metrics.get("cost_usd") is not None:
             attributes[Attributes.TOTAL_COST.value] = metrics["cost_usd"]
         if step.get("step_id") is not None:
             attributes["harbor.step_id"] = step["step_id"]
 
-        span = cast(LaminarSpan, Laminar.start_span(
-            model or "llm",
-            input=history,
-            span_type="LLM",
-            parent_span_context=parent,
-            attributes=attributes,
-            start_time=start_ns,
-        ))
+        span = cast(
+            LaminarSpan,
+            Laminar.start_span(
+                model or "llm",
+                input=history,
+                span_type="LLM",
+                parent_span_context=parent,
+                attributes=attributes,
+                start_time=start_ns,
+            ),
+        )
         span.set_output([assistant_message(step)])
         span.end(end_time=end_ns)
         self.span_count += 1
@@ -362,13 +358,16 @@ class TrajectoryConverter:
                 _shift(self._last_start, ORDER_GAP_NS),
             )
             end_ns = _not_before(max(ends) if ends else None, start_ns)
-            span = cast(LaminarSpan, Laminar.start_span(
-                tool_call.get("function_name") or "tool",
-                input=tool_call.get("arguments"),
-                span_type="TOOL",
-                parent_span_context=parent,
-                start_time=start_ns,
-            ))
+            span = cast(
+                LaminarSpan,
+                Laminar.start_span(
+                    tool_call.get("function_name") or "tool",
+                    input=tool_call.get("arguments"),
+                    span_type="TOOL",
+                    parent_span_context=parent,
+                    start_time=start_ns,
+                ),
+            )
             output = "\n".join(content_to_text(r.get("content")) for r in results)
             span.set_output(output if results else None)
             for sub, sub_start, sub_end in spawned:
@@ -395,12 +394,15 @@ class TrajectoryConverter:
         depth: int,
     ) -> None:
         agent = trajectory.get("agent") or {}
-        span = cast(LaminarSpan, Laminar.start_span(
-            agent.get("name") or "subagent",
-            input=trajectory.get("trajectory_id") or trajectory.get("session_id"),
-            parent_span_context=parent,
-            start_time=start_ns,
-        ))
+        span = cast(
+            LaminarSpan,
+            Laminar.start_span(
+                agent.get("name") or "subagent",
+                input=trajectory.get("trajectory_id") or trajectory.get("session_id"),
+                parent_span_context=parent,
+                start_time=start_ns,
+            ),
+        )
         self.emit(
             trajectory,
             span.get_laminar_span_context(),
@@ -433,8 +435,7 @@ def _time_range(trajectory: dict[str, Any]) -> tuple[int | None, int | None]:
     times = [
         t
         for step in trajectory.get("steps") or []
-        if isinstance(step, dict)
-        and (t := parse_timestamp_ns(step.get("timestamp"))) is not None
+        if isinstance(step, dict) and (t := parse_timestamp_ns(step.get("timestamp"))) is not None
     ]
     if not times:
         return None, None
