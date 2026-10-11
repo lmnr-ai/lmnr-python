@@ -4,18 +4,22 @@ Harbor requires Python 3.12+, so these tests drive the plugin with lightweight
 fakes of Harbor's `Job` and `TrialHookEvent` instead of importing `harbor`.
 """
 
+from __future__ import annotations
+
 import datetime
 import itertools
 import json
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-from opentelemetry.trace import StatusCode
+from opentelemetry.trace import SpanContext, StatusCode
 
 from lmnr import Laminar
 from lmnr.integrations.harbor import LaminarPlugin
@@ -25,10 +29,16 @@ from lmnr.integrations.harbor.trajectory import (
     parse_timestamp_ns,
     split_model_name,
 )
-from lmnr.sdk.evaluations import get_evaluation_url
-from lmnr.sdk.types import EvaluationResultDatapoint, PartialEvaluationDatapoint
+from lmnr.sdk.evaluations.models import EvaluationResultDatapoint, PartialEvaluationDatapoint
+from lmnr.sdk.evaluations.utils import get_evaluation_url
 
-T0 = datetime.datetime(2026, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc)
+T0 = datetime.datetime(2026, 1, 1, 12, 0, 0, tzinfo=datetime.UTC)
+
+
+def _ctx(span: ReadableSpan) -> SpanContext:
+    ctx = span.get_span_context()
+    assert ctx is not None
+    return ctx
 
 
 def ts(seconds: float) -> datetime.datetime:
@@ -41,8 +51,8 @@ def iso(seconds: float) -> str:
 
 class FakeJob:
     def __init__(self, job_dir: Path, dataset_name: str | None = "hello-world"):
-        self.id = uuid.uuid4()
-        self.config = SimpleNamespace(
+        self.id: uuid.UUID = uuid.uuid4()
+        self.config: SimpleNamespace = SimpleNamespace(
             job_name="2026-01-01__12-00-00",
             datasets=(
                 [SimpleNamespace(name=dataset_name, path=None, version="1.0")]
@@ -58,29 +68,29 @@ class FakeJob:
                 )
             ],
         )
-        self.job_dir = job_dir
-        self.hooks: dict[str, list] = {}
+        self.job_dir: Path = job_dir
+        self.hooks: dict[str, list[Any]] = {}
 
-    def _add(self, name: str, callback) -> "FakeJob":
+    def _add(self, name: str, callback: Callable[..., Any]) -> FakeJob:
         self.hooks.setdefault(name, []).append(callback)
         return self
 
-    def on_trial_started(self, cb):
+    def on_trial_started(self, cb: Callable[..., Any]) -> FakeJob:
         return self._add("start", cb)
 
-    def on_agent_started(self, cb):
+    def on_agent_started(self, cb: Callable[..., Any]) -> FakeJob:
         return self._add("agent_start", cb)
 
-    def on_verification_started(self, cb):
+    def on_verification_started(self, cb: Callable[..., Any]) -> FakeJob:
         return self._add("verification_start", cb)
 
-    def on_trial_cancelled(self, cb):
+    def on_trial_cancelled(self, cb: Callable[..., Any]) -> FakeJob:
         return self._add("cancel", cb)
 
-    def on_trial_ended(self, cb):
+    def on_trial_ended(self, cb: Callable[..., Any]) -> FakeJob:
         return self._add("end", cb)
 
-    async def emit(self, name: str, event) -> None:
+    async def emit(self, name: str, event: Any) -> None:
         for cb in self.hooks.get(name, []):
             await cb(event)
 
@@ -88,7 +98,7 @@ class FakeJob:
 def make_task_dir(root: Path, name: str) -> Path:
     task_dir = root / "tasks" / name
     task_dir.mkdir(parents=True)
-    (task_dir / "instruction.md").write_text(f"Solve {name}.")
+    _bytes_written = (task_dir / "instruction.md").write_text(f"Solve {name}.")
     return task_dir
 
 
@@ -113,9 +123,7 @@ def make_event(
             cost_usd=0.01,
             metadata={"n_episodes": 2},
         ),
-        verifier_result=(
-            SimpleNamespace(rewards=rewards) if rewards is not None else None
-        ),
+        verifier_result=(SimpleNamespace(rewards=rewards) if rewards is not None else None),
         exception_info=exception,
         started_at=ts(0),
         finished_at=ts(30),
@@ -166,9 +174,7 @@ TRAJECTORY = {
                     "arguments": {"command": "ls"},
                 }
             ],
-            "observation": {
-                "results": [{"source_call_id": "call_1", "content": "hello.txt"}]
-            },
+            "observation": {"results": [{"source_call_id": "call_1", "content": "hello.txt"}]},
             "metrics": {
                 "prompt_tokens": 100,
                 "completion_tokens": 20,
@@ -187,10 +193,10 @@ TRAJECTORY = {
 }
 
 
-def write_trajectory(job: FakeJob, trial_name: str, trajectory=TRAJECTORY) -> None:
+def write_trajectory(job: FakeJob, trial_name: str, trajectory: Any = TRAJECTORY) -> None:
     agent_dir = job.job_dir / trial_name / "agent"
     agent_dir.mkdir(parents=True)
-    (agent_dir / "trajectory.json").write_text(json.dumps(trajectory))
+    _bytes_written = (agent_dir / "trajectory.json").write_text(json.dumps(trajectory))
 
 
 @pytest.fixture(autouse=True)
@@ -204,25 +210,19 @@ def initialized_project_key():
 @pytest.fixture
 def client():
     client = MagicMock()
-    client.evals.init = AsyncMock(
-        return_value=SimpleNamespace(id=uuid.uuid4(), projectId=uuid.uuid4())
-    )
+    client.evals.init = AsyncMock(return_value={"id": uuid.uuid4(), "projectId": uuid.uuid4()})
     client.evals.save_datapoints = AsyncMock()
     client.close = AsyncMock()
-    with patch(
-        "lmnr.integrations.harbor.plugin.AsyncLaminarClient", return_value=client
-    ):
+    with patch("lmnr.integrations.harbor.plugin.AsyncLaminarClient", return_value=client):
         yield client
 
 
-def saved_datapoints(client) -> list:
-    return [
-        dp for call in client.evals.save_datapoints.call_args_list for dp in call[0][1]
-    ]
+def saved_datapoints(client) -> list[Any]:
+    return [dp for call in client.evals.save_datapoints.call_args_list for dp in call[0][1]]
 
 
-def spans_by_name(exporter: InMemorySpanExporter) -> dict[str, list]:
-    result: dict[str, list] = {}
+def spans_by_name(exporter: InMemorySpanExporter) -> dict[str, list[Any]]:
+    result: dict[str, list[Any]] = {}
     for span in exporter.get_finished_spans():
         result.setdefault(span.name, []).append(span)
     return result
@@ -230,7 +230,7 @@ def spans_by_name(exporter: InMemorySpanExporter) -> dict[str, list]:
 
 @pytest.mark.asyncio
 async def test_job_reports_trials_as_evaluation(
-    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+    span_exporter: InMemorySpanExporter, client: MagicMock, tmp_path: Path
 ):
     job = FakeJob(tmp_path / "job")
     task_dir = make_task_dir(tmp_path, "hello-world")
@@ -261,6 +261,7 @@ async def test_job_reports_trials_as_evaluation(
     }
     assert full.scores == {"reward": 1.0}
     assert full.executor_output == "Done"
+    assert full.metadata is not None
     assert full.metadata["agent"] == "terminus-2"
     client.close.assert_awaited_once()
 
@@ -270,9 +271,7 @@ async def test_job_reports_trials_as_evaluation(
     assert root.parent is None
     assert root.start_time == parse_timestamp_ns(ts(0))
     assert root.end_time == parse_timestamp_ns(ts(30))
-    assert json.loads(root.attributes["lmnr.span.output"]) == {
-        "rewards": {"reward": 1.0}
-    }
+    assert json.loads(root.attributes["lmnr.span.output"]) == {"rewards": {"reward": 1.0}}
 
     agent = spans["agent"][0]
     assert agent.attributes["lmnr.span.type"] == "EXECUTOR"
@@ -282,22 +281,19 @@ async def test_job_reports_trials_as_evaluation(
     assert spans["environment_setup"][0].parent.span_id == root.context.span_id
 
     # Every span belongs to the evaluation trace and carries the evaluation id.
-    trace_ids = {s.context.trace_id for s in span_exporter.get_finished_spans()}
+    trace_ids = {_ctx(s).trace_id for s in span_exporter.get_finished_spans()}
     assert trace_ids == {root.context.trace_id}
-    eval_id = str(client.evals.init.return_value.id)
+    eval_id = str(client.evals.init.return_value["id"])
     for span in span_exporter.get_finished_spans():
-        assert (
-            span.attributes["lmnr.association.properties.metadata.evaluation_id"]
-            == eval_id
-        )
-        assert span.attributes["lmnr.association.properties.trace_type"] == (
-            "EVALUATION"
-        )
+        assert (span.attributes or {})[
+            "lmnr.association.properties.metadata.evaluation_id"
+        ] == eval_id
+        assert (span.attributes or {})["lmnr.association.properties.trace_type"] == ("EVALUATION")
 
 
 @pytest.mark.asyncio
 async def test_trajectory_becomes_llm_and_tool_spans(
-    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+    span_exporter: InMemorySpanExporter, client: MagicMock, tmp_path: Path
 ):
     job = FakeJob(tmp_path / "job")
     task_dir = make_task_dir(tmp_path, "hello-world")
@@ -312,7 +308,7 @@ async def test_trajectory_becomes_llm_and_tool_spans(
 
     spans = spans_by_name(span_exporter)
     agent = spans["agent"][0]
-    llm_spans = sorted(spans["claude-sonnet-4-5"], key=lambda s: s.start_time)
+    llm_spans = sorted(spans["claude-sonnet-4-5"], key=lambda s: s.start_time or 0)
     assert len(llm_spans) == 2
     first, second = llm_spans
     for span in llm_spans:
@@ -350,7 +346,9 @@ async def test_trajectory_becomes_llm_and_tool_spans(
     }
     assert json.loads(second.attributes["lmnr.span.output"])[0]["content"] == "Done"
     # It starts once the previous step's tool call is done, not at the same time.
-    assert second.start_time == parse_timestamp_ns(ts(10)) + ORDER_GAP_NS
+    ts_10 = parse_timestamp_ns(ts(10))
+    assert ts_10 is not None
+    assert second.start_time == ts_10 + ORDER_GAP_NS
     assert second.end_time == parse_timestamp_ns(ts(15))
 
     tool = spans["bash"][0]
@@ -365,7 +363,7 @@ async def test_trajectory_becomes_llm_and_tool_spans(
 
 @pytest.mark.asyncio
 async def test_embedded_subagent_is_nested_under_tool(
-    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+    span_exporter: InMemorySpanExporter, client: MagicMock, tmp_path: Path
 ):
     trajectory = {
         "agent": {"name": "main", "model_name": "openai/gpt-5"},
@@ -449,20 +447,16 @@ async def test_embedded_subagent_is_nested_under_tool(
 
 @pytest.mark.asyncio
 async def test_spans_start_in_trajectory_order(
-    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+    span_exporter: InMemorySpanExporter, client: MagicMock, tmp_path: Path
 ):
-    def agent_step(step_id: int, seconds: float, calls: list[str]) -> dict:
+    def agent_step(step_id: int, seconds: float, calls: list[str]) -> dict[str, Any]:
         return {
             "step_id": step_id,
             "timestamp": iso(seconds),
             "source": "agent",
             "message": f"step {step_id}",
-            "tool_calls": [
-                {"tool_call_id": c, "function_name": c, "arguments": {}} for c in calls
-            ],
-            "observation": {
-                "results": [{"source_call_id": c, "content": "ok"} for c in calls]
-            },
+            "tool_calls": [{"tool_call_id": c, "function_name": c, "arguments": {}} for c in calls],
+            "observation": {"results": [{"source_call_id": c, "content": "ok"} for c in calls]},
         }
 
     trajectory = {
@@ -492,17 +486,19 @@ async def test_spans_start_in_trajectory_order(
         if s.parent is not None and s.parent.span_id == agent.context.span_id
     ]
     emitted = [s.name for s in children]
-    by_start = [s.name for s in sorted(children, key=lambda s: s.start_time)]
+    by_start = [s.name for s in sorted(children, key=lambda s: s.start_time or 0)]
     assert emitted == ["gpt-5", "read", "grep", "gpt-5", "edit", "gpt-5"]
     assert by_start == emitted
-    starts = [s.start_time for s in children]
+    starts = [s.start_time or 0 for s in children]
     assert all(b - a >= ORDER_GAP_NS for a, b in itertools.pairwise(starts))
-    assert all(s.end_time >= s.start_time for s in children)
+    assert all((s.end_time or 0) >= (s.start_time or 0) for s in children)
 
 
 @pytest.mark.asyncio
 async def test_bare_step_model_takes_agent_provider(
-    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+    span_exporter: InMemorySpanExporter,
+    client: MagicMock,
+    tmp_path: Path,
 ):
     # terminus-2 records the model the API returned, without the provider.
     trajectory = {
@@ -544,7 +540,9 @@ async def test_bare_step_model_takes_agent_provider(
 
 @pytest.mark.asyncio
 async def test_unattributed_observation_goes_on_last_tool(
-    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+    span_exporter: InMemorySpanExporter,
+    client: MagicMock,
+    tmp_path: Path,
 ):
     # terminus-2 records one terminal observation per step, not one per call.
     trajectory = {
@@ -576,14 +574,14 @@ async def test_unattributed_observation_goes_on_last_tool(
 
     spans = spans_by_name(span_exporter)
     assert "lmnr.span.output" not in spans["first"][0].attributes
-    assert json.loads(spans["second"][0].attributes["lmnr.span.output"]) == (
-        "$ ls\nfile.txt"
-    )
+    assert json.loads(spans["second"][0].attributes["lmnr.span.output"]) == ("$ ls\nfile.txt")
 
 
 @pytest.mark.asyncio
 async def test_failed_and_retried_trials(
-    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+    span_exporter: InMemorySpanExporter,
+    client: MagicMock,
+    tmp_path: Path,
 ):
     job = FakeJob(tmp_path / "job", dataset_name=None)
     task_dir = make_task_dir(tmp_path, "t")
@@ -609,16 +607,12 @@ async def test_failed_and_retried_trials(
     await job.emit("end", retry)
     await plugin.on_job_end(SimpleNamespace())
 
-    full = [
-        dp
-        for dp in saved_datapoints(client)
-        if isinstance(dp, EvaluationResultDatapoint)
-    ]
+    full = [dp for dp in saved_datapoints(client) if isinstance(dp, EvaluationResultDatapoint)]
     ok_dp, failed_dp, retried_dp = full
     assert ok_dp.scores == {"reward": 1, "passed": 1}
     # Harbor counts a trial without rewards as 0.
     assert failed_dp.scores == {"reward": 0, "passed": 0}
-    assert failed_dp.metadata["exception_type"] == "AgentTimeoutError"
+    assert (failed_dp.metadata or {})["exception_type"] == "AgentTimeoutError"
     # A retry overwrites the same datapoint with a new trace.
     assert retried_dp.id == failed_dp.id
     assert retried_dp.index == failed_dp.index == 1
@@ -647,7 +641,9 @@ async def test_failed_and_retried_trials(
 
 @pytest.mark.asyncio
 async def test_unscored_trials_are_rescored_when_reward_keys_appear(
-    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+    span_exporter: InMemorySpanExporter,
+    client: MagicMock,
+    tmp_path: Path,
 ):
     job = FakeJob(tmp_path / "job")
     task_dir = make_task_dir(tmp_path, "t")
@@ -665,12 +661,8 @@ async def test_unscored_trials_are_rescored_when_reward_keys_appear(
     await job.emit("end", both)
     await plugin.on_job_end(SimpleNamespace())
 
-    full = [
-        dp
-        for dp in saved_datapoints(client)
-        if isinstance(dp, EvaluationResultDatapoint)
-    ]
-    crashed_saves = [dp for dp in full if dp.metadata["trial_name"] == "crashed"]
+    full = [dp for dp in saved_datapoints(client) if isinstance(dp, EvaluationResultDatapoint)]
+    crashed_saves = [dp for dp in full if (dp.metadata or {})["trial_name"] == "crashed"]
     # Saved before any reward key was known, then re-saved with each new key.
     assert [dp.scores for dp in crashed_saves] == [
         {"reward": 0},
@@ -680,12 +672,14 @@ async def test_unscored_trials_are_rescored_when_reward_keys_appear(
     assert len({dp.id for dp in crashed_saves}) == 1
     assert len({dp.trace_id for dp in crashed_saves}) == 1
     # Scored trials are not re-saved.
-    assert [dp.metadata["trial_name"] for dp in full].count("passed") == 1
+    assert [(dp.metadata or {})["trial_name"] for dp in full].count("passed") == 1
 
 
 @pytest.mark.asyncio
 async def test_cancelled_trial_with_rewards_has_no_scores(
-    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+    span_exporter: InMemorySpanExporter,
+    client: MagicMock,
+    tmp_path: Path,
 ):
     job = FakeJob(tmp_path / "job")
     task_dir = make_task_dir(tmp_path, "t")
@@ -702,18 +696,18 @@ async def test_cancelled_trial_with_rewards_has_no_scores(
     await plugin.on_job_end(SimpleNamespace())
 
     cancelled, later_dp = [
-        dp
-        for dp in saved_datapoints(client)
-        if isinstance(dp, EvaluationResultDatapoint)
+        dp for dp in saved_datapoints(client) if isinstance(dp, EvaluationResultDatapoint)
     ]
     assert cancelled.scores == {}
-    assert cancelled.metadata["cancelled"] is True
+    assert (cancelled.metadata or {})["cancelled"] is True
     assert later_dp.scores == {"reward": 0}
 
 
 @pytest.mark.asyncio
 async def test_cancelled_trial_has_no_scores(
-    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+    span_exporter: InMemorySpanExporter,
+    client: MagicMock,
+    tmp_path: Path,
 ):
     job = FakeJob(tmp_path / "job")
     task_dir = make_task_dir(tmp_path, "t")
@@ -734,7 +728,9 @@ async def test_cancelled_trial_has_no_scores(
 
 @pytest.mark.asyncio
 async def test_laminar_errors_do_not_break_the_job(
-    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+    span_exporter: InMemorySpanExporter,
+    client: MagicMock,
+    tmp_path: Path,
 ):
     client.evals.save_datapoints.side_effect = RuntimeError("network down")
     job = FakeJob(tmp_path / "job")
@@ -757,7 +753,9 @@ async def test_laminar_errors_do_not_break_the_job(
 
 @pytest.mark.asyncio
 async def test_span_emission_failure_still_ends_root(
-    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+    span_exporter: InMemorySpanExporter,
+    client: MagicMock,
+    tmp_path: Path,
 ):
     job = FakeJob(tmp_path / "job")
     task_dir = make_task_dir(tmp_path, "t")
@@ -765,9 +763,7 @@ async def test_span_emission_failure_still_ends_root(
     await plugin.on_job_start(job)
     event = make_event(job, task_dir, "t1", rewards={"reward": 1})
     await job.emit("start", event)
-    with patch.object(
-        plugin, "_emit_agent", side_effect=RuntimeError("bad trajectory")
-    ):
+    with patch.object(plugin, "_emit_agent", side_effect=RuntimeError("bad trajectory")):
         await job.emit("end", event)
     await plugin.on_job_end(SimpleNamespace())
 
@@ -778,7 +774,9 @@ async def test_span_emission_failure_still_ends_root(
 
 @pytest.mark.asyncio
 async def test_spans_are_exported_while_trial_runs(
-    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+    span_exporter: InMemorySpanExporter,
+    client: MagicMock,
+    tmp_path: Path,
 ):
     job = FakeJob(tmp_path / "job")
     task_dir = make_task_dir(tmp_path, "t")
@@ -844,7 +842,9 @@ async def test_spans_are_exported_while_trial_runs(
 
 @pytest.mark.asyncio
 async def test_verifier_exception_without_verifier_span_goes_on_root(
-    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+    span_exporter: InMemorySpanExporter,
+    client: MagicMock,
+    tmp_path: Path,
 ):
     job = FakeJob(tmp_path / "job")
     task_dir = make_task_dir(tmp_path, "t")
@@ -873,7 +873,9 @@ async def test_verifier_exception_without_verifier_span_goes_on_root(
 
 @pytest.mark.asyncio
 async def test_retry_emits_setup_and_agent_again(
-    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+    span_exporter: InMemorySpanExporter,
+    client: MagicMock,
+    tmp_path: Path,
 ):
     job = FakeJob(tmp_path / "job")
     task_dir = make_task_dir(tmp_path, "t")
@@ -896,7 +898,9 @@ async def test_retry_emits_setup_and_agent_again(
 
 @pytest.mark.asyncio
 async def test_phase_spans_carry_setup_and_test_details(
-    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+    span_exporter: InMemorySpanExporter,
+    client: MagicMock,
+    tmp_path: Path,
 ):
     job = FakeJob(tmp_path / "job")
     task_dir = make_task_dir(tmp_path, "t")
@@ -953,7 +957,10 @@ def test_fail_fast_reads_dotenv():
 
 @pytest.mark.asyncio
 async def test_missing_api_key_skips_reporting(
-    span_exporter: InMemorySpanExporter, client, tmp_path: Path, monkeypatch
+    span_exporter: InMemorySpanExporter,
+    client: MagicMock,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.delenv("LMNR_PROJECT_API_KEY", raising=False)
     with patch("lmnr.integrations.harbor.plugin.from_env", return_value=None):
@@ -968,7 +975,9 @@ async def test_missing_api_key_skips_reporting(
 
 @pytest.mark.asyncio
 async def test_already_initialized_laminar_with_another_key_is_rejected(
-    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+    span_exporter: InMemorySpanExporter,
+    client: MagicMock,
+    tmp_path: Path,
 ):
     # Spans would go to the initialized project, the evaluation to another one.
     job = FakeJob(tmp_path / "job")
@@ -985,7 +994,9 @@ async def test_already_initialized_laminar_with_another_key_is_rejected(
 
 @pytest.mark.asyncio
 async def test_already_initialized_laminar_sets_evaluation_destination(
-    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+    span_exporter: InMemorySpanExporter,
+    client: MagicMock,
+    tmp_path: Path,
 ):
     with patch("lmnr.integrations.harbor.plugin.from_env", return_value=None):
         plugin = LaminarPlugin(base_url="https://elsewhere.example.com")
@@ -999,28 +1010,30 @@ async def test_already_initialized_laminar_sets_evaluation_destination(
         port=None,
     )
     # The logged link points at the host that received the evaluation.
-    eval_id = client.evals.init.return_value.id
-    project_id = client.evals.init.return_value.projectId
+    eval_id = client.evals.init.return_value["id"]
+    project_id = client.evals.init.return_value["projectId"]
+    http_url = Laminar.get_base_http_url()
+    assert http_url is not None
     assert plugin.evaluation_url == get_evaluation_url(
-        str(project_id), str(eval_id), Laminar.get_base_http_url().rsplit(":", 1)[0]
+        project_id, eval_id, http_url.rsplit(":", 1)[0]
     )
-    assert "elsewhere.example.com" not in plugin.evaluation_url
+    assert "elsewhere.example.com" not in (plugin.evaluation_url or "")
     await plugin.on_job_end(SimpleNamespace())
 
 
 @pytest.mark.asyncio
 async def test_already_initialized_cloud_laminar_links_to_laminar_sh(
-    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+    span_exporter: InMemorySpanExporter,
+    client: MagicMock,
+    tmp_path: Path,
 ):
     with (
-        patch.object(
-            Laminar, "get_base_http_url", return_value="https://api.lmnr.ai:443"
-        ),
+        patch.object(Laminar, "get_base_http_url", return_value="https://api.lmnr.ai:443"),
         patch("lmnr.integrations.harbor.plugin.from_env", return_value=None),
     ):
         plugin = LaminarPlugin()
         await plugin.on_job_start(FakeJob(tmp_path / "job"))
-    assert plugin.evaluation_url.startswith("https://www.laminar.sh/project/")
+    assert (plugin.evaluation_url or "").startswith("https://www.laminar.sh/project/")
     await plugin.on_job_end(SimpleNamespace())
 
 
@@ -1054,7 +1067,9 @@ def test_helpers():
 
 @pytest.mark.asyncio
 async def test_retry_uploads_wait_for_earlier_attempt(
-    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+    span_exporter: InMemorySpanExporter,
+    client: MagicMock,
+    tmp_path: Path,
 ):
     import asyncio
 
@@ -1092,7 +1107,9 @@ async def test_retry_uploads_wait_for_earlier_attempt(
 
 @pytest.mark.asyncio
 async def test_failed_evaluation_init_closes_client(
-    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+    span_exporter: InMemorySpanExporter,
+    client: MagicMock,
+    tmp_path: Path,
 ):
     client.evals.init.side_effect = RuntimeError("unauthorized")
     job = FakeJob(tmp_path / "job")
@@ -1105,9 +1122,7 @@ async def test_failed_evaluation_init_closes_client(
 
 
 @pytest.mark.asyncio
-async def test_initialize_does_not_take_over_global_tracer_provider(
-    client, tmp_path: Path
-):
+async def test_initialize_does_not_take_over_global_tracer_provider(client, tmp_path: Path):
     # Libraries in the Harbor process that trace with the global provider (the
     # Daytona SDK) must not export a trace per call into the project.
     plugin = LaminarPlugin(project_api_key="test_key")

@@ -12,8 +12,9 @@ Works on plain dicts (the JSON file) so it doesn't depend on `harbor` itself.
 import datetime
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
+from lmnr import LaminarSpan
 from lmnr.opentelemetry_lib.tracing.attributes import Attributes
 from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.log import get_default_logger
@@ -50,13 +51,13 @@ def parse_timestamp_ns(value: Any) -> int | None:
     elif isinstance(value, str):
         try:
             # Python 3.10 `fromisoformat` doesn't accept the `Z` suffix.
-            dt = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+            dt = datetime.datetime.fromisoformat(value)
         except ValueError:
             return None
     else:
         return None
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=datetime.timezone.utc)
+        dt = dt.replace(tzinfo=datetime.UTC)
     return int(dt.timestamp() * 1e9)
 
 
@@ -89,9 +90,7 @@ def content_to_text(content: Any) -> str:
                 parts.append(part.get("text") or "")
             else:
                 source = part.get("source") or {}
-                parts.append(
-                    f"[{part.get('type', 'attachment')}: {source.get('path')}]"
-                )
+                parts.append(f"[{part.get('type', 'attachment')}: {source.get('path')}]")
         return "\n".join(parts)
     return str(content)
 
@@ -103,9 +102,7 @@ def _tool_call_to_openai(tool_call: dict[str, Any]) -> dict[str, Any]:
         "type": "function",
         "function": {
             "name": tool_call.get("function_name"),
-            "arguments": (
-                arguments if isinstance(arguments, str) else json.dumps(arguments)
-            ),
+            "arguments": (arguments if isinstance(arguments, str) else json.dumps(arguments)),
         },
     }
 
@@ -188,11 +185,14 @@ class TrajectoryConverter:
         steps = [s for s in (trajectory.get("steps") or []) if isinstance(s, dict)]
         agent = trajectory.get("agent") or {}
         default_model = agent.get("model_name")
-        subagents = {
-            sub.get("trajectory_id"): sub
-            for sub in (trajectory.get("subagent_trajectories") or [])
-            if isinstance(sub, dict) and sub.get("trajectory_id")
-        }
+        subagents = cast(
+            dict[str, Any],
+            {
+                sub.get("trajectory_id"): sub
+                for sub in (trajectory.get("subagent_trajectories") or [])
+                if isinstance(sub, dict) and sub.get("trajectory_id")
+            },
+        )
 
         # Latest span start and latest tool span end so far at this level, used
         # to keep sibling start times in trajectory order. Saved and restored
@@ -224,12 +224,8 @@ class TrajectoryConverter:
             )
             if is_llm_step:
                 llm_start = prev_ns if prev_ns is not None else step_ns
-                llm_start = _not_before(
-                    llm_start, _shift(self._last_start, ORDER_GAP_NS)
-                )
-                llm_start = _not_before(
-                    llm_start, _shift(self._tools_end, ORDER_GAP_NS)
-                )
+                llm_start = _not_before(llm_start, _shift(self._last_start, ORDER_GAP_NS))
+                llm_start = _not_before(llm_start, _shift(self._tools_end, ORDER_GAP_NS))
                 self._emit_llm_span(
                     step,
                     list(history),
@@ -272,9 +268,9 @@ class TrajectoryConverter:
             attributes[Attributes.REQUEST_MODEL.value] = model
             attributes[Attributes.RESPONSE_MODEL.value] = model
 
-        metrics = step.get("metrics") or {}
-        input_tokens = metrics.get("prompt_tokens")
-        output_tokens = metrics.get("completion_tokens")
+        metrics = cast(dict[str, int | float], step.get("metrics") or {})
+        input_tokens = cast(int | None, metrics.get("prompt_tokens"))
+        output_tokens = cast(int | None, metrics.get("completion_tokens"))
         if input_tokens is not None:
             attributes[Attributes.INPUT_TOKEN_COUNT.value] = input_tokens
         if output_tokens is not None:
@@ -284,21 +280,22 @@ class TrajectoryConverter:
                 output_tokens or 0
             )
         if metrics.get("cached_tokens") is not None:
-            attributes["gen_ai.usage.cache_read_input_tokens"] = metrics[
-                "cached_tokens"
-            ]
+            attributes["gen_ai.usage.cache_read_input_tokens"] = metrics["cached_tokens"]
         if metrics.get("cost_usd") is not None:
             attributes[Attributes.TOTAL_COST.value] = metrics["cost_usd"]
         if step.get("step_id") is not None:
             attributes["harbor.step_id"] = step["step_id"]
 
-        span = Laminar.start_span(
-            model or "llm",
-            input=history,
-            span_type="LLM",
-            parent_span_context=parent,
-            attributes=attributes,
-            start_time=start_ns,
+        span = cast(
+            LaminarSpan,
+            Laminar.start_span(
+                model or "llm",
+                input=history,
+                span_type="LLM",
+                parent_span_context=parent,
+                attributes=attributes,
+                start_time=start_ns,
+            ),
         )
         span.set_output([assistant_message(step)])
         span.end(end_time=end_ns)
@@ -327,7 +324,7 @@ class TrajectoryConverter:
 
         tool_calls = [c for c in step.get("tool_calls") or [] if isinstance(c, dict)]
         for i, tool_call in enumerate(tool_calls):
-            results = results_by_call.get(tool_call.get("tool_call_id"), [])
+            results = results_by_call.get(tool_call.get("tool_call_id") or "", [])
             if i == len(tool_calls) - 1:
                 # Agents like terminus-2 record one terminal observation per step
                 # without a source_call_id; it is the output left after the
@@ -361,12 +358,15 @@ class TrajectoryConverter:
                 _shift(self._last_start, ORDER_GAP_NS),
             )
             end_ns = _not_before(max(ends) if ends else None, start_ns)
-            span = Laminar.start_span(
-                tool_call.get("function_name") or "tool",
-                input=tool_call.get("arguments"),
-                span_type="TOOL",
-                parent_span_context=parent,
-                start_time=start_ns,
+            span = cast(
+                LaminarSpan,
+                Laminar.start_span(
+                    tool_call.get("function_name") or "tool",
+                    input=tool_call.get("arguments"),
+                    span_type="TOOL",
+                    parent_span_context=parent,
+                    start_time=start_ns,
+                ),
             )
             output = "\n".join(content_to_text(r.get("content")) for r in results)
             span.set_output(output if results else None)
@@ -394,11 +394,14 @@ class TrajectoryConverter:
         depth: int,
     ) -> None:
         agent = trajectory.get("agent") or {}
-        span = Laminar.start_span(
-            agent.get("name") or "subagent",
-            input=trajectory.get("trajectory_id") or trajectory.get("session_id"),
-            parent_span_context=parent,
-            start_time=start_ns,
+        span = cast(
+            LaminarSpan,
+            Laminar.start_span(
+                agent.get("name") or "subagent",
+                input=trajectory.get("trajectory_id") or trajectory.get("session_id"),
+                parent_span_context=parent,
+                start_time=start_ns,
+            ),
         )
         self.emit(
             trajectory,
@@ -424,7 +427,7 @@ class TrajectoryConverter:
             except Exception as e:
                 logger.debug(f"Could not read subagent trajectory {path}: {e}")
                 return None
-        return subagents.get(ref.get("trajectory_id"))
+        return subagents.get(ref.get("trajectory_id") or "")
 
 
 def _time_range(trajectory: dict[str, Any]) -> tuple[int | None, int | None]:
@@ -432,8 +435,7 @@ def _time_range(trajectory: dict[str, Any]) -> tuple[int | None, int | None]:
     times = [
         t
         for step in trajectory.get("steps") or []
-        if isinstance(step, dict)
-        and (t := parse_timestamp_ns(step.get("timestamp"))) is not None
+        if isinstance(step, dict) and (t := parse_timestamp_ns(step.get("timestamp"))) is not None
     ]
     if not times:
         return None, None
