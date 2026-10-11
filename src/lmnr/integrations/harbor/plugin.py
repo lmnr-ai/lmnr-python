@@ -12,6 +12,7 @@ recorded step. Verifier rewards become evaluation scores.
 """
 
 import asyncio
+import re
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -215,6 +216,10 @@ class LaminarPlugin:
         if already_initialized:
             # Send evaluation requests to the endpoint spans are exported to.
             client_url, client_port = Laminar.get_base_http_url(), None
+            # The evaluation link must point there too. The URL carries an
+            # explicit port (":443"), which the frontend URL mapping doesn't
+            # expect.
+            self.base_url = re.sub(r":\d+$", "", client_url)
         else:
             # Harbor-process agents (e.g. terminus-2) call LLMs through LiteLLM
             # outside of any span we own, so auto-instrumentation would only

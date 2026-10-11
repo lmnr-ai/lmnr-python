@@ -25,6 +25,7 @@ from lmnr.integrations.harbor.trajectory import (
     parse_timestamp_ns,
     split_model_name,
 )
+from lmnr.sdk.evaluations import get_evaluation_url
 from lmnr.sdk.types import EvaluationResultDatapoint, PartialEvaluationDatapoint
 
 T0 = datetime.datetime(2026, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc)
@@ -947,6 +948,29 @@ async def test_already_initialized_laminar_sets_evaluation_destination(
         project_api_key=Laminar.get_project_api_key(),
         port=None,
     )
+    # The logged link points at the host that received the evaluation.
+    eval_id = client.evals.init.return_value.id
+    project_id = client.evals.init.return_value.projectId
+    assert plugin.evaluation_url == get_evaluation_url(
+        str(project_id), str(eval_id), Laminar.get_base_http_url().rsplit(":", 1)[0]
+    )
+    assert "elsewhere.example.com" not in plugin.evaluation_url
+    await plugin.on_job_end(SimpleNamespace())
+
+
+@pytest.mark.asyncio
+async def test_already_initialized_cloud_laminar_links_to_laminar_sh(
+    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+):
+    with (
+        patch.object(
+            Laminar, "get_base_http_url", return_value="https://api.lmnr.ai:443"
+        ),
+        patch("lmnr.integrations.harbor.plugin.from_env", return_value=None),
+    ):
+        plugin = LaminarPlugin()
+        await plugin.on_job_start(FakeJob(tmp_path / "job"))
+    assert plugin.evaluation_url.startswith("https://www.laminar.sh/project/")
     await plugin.on_job_end(SimpleNamespace())
 
 
