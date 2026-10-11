@@ -1075,6 +1075,7 @@ class Laminar:
         session_id: str | None = None,
         metadata: dict[str, AttributeValue] | None = None,
         attributes: dict[str, AttributeValue] | None = None,
+        start_time: int | None = None,
     ) -> LaminarSpan | Span:
         """Start a new span. Useful for manual instrumentation.
         If `span_type` is set to `"LLM"`, you should report usage and response
@@ -1147,6 +1148,10 @@ class Laminar:
             attributes (dict[str, AttributeValue] | None, optional): attributes to\
                 set for the span. This function may override attributes by laminar\
                 internal values, such as tags or metadata. Defaults to None.
+            start_time (int | None, optional): start time of the span in\
+                nanoseconds since the epoch. Useful for recording spans after\
+                the fact; pair it with `span.end(end_time=...)`. Defaults to\
+                None, i.e. now.
         """
         if not cls.is_initialized():
             trace_id = 0
@@ -1279,6 +1284,7 @@ class Laminar:
                     **(tag_props),
                     **(association_props),
                 },
+                start_time=start_time,
             )
 
             if not isinstance(span, LaminarSpan):
