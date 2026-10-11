@@ -17,10 +17,11 @@ from collections.abc import Callable, Generator, Sequence
 from typing import Any, cast
 
 import pytest
+from _wrapt_compat import is_wrapt_proxy
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import unwrap
 from typing_extensions import TypeVar
-from wrapt import ObjectProxy, wrap_function_wrapper
+from wrapt import wrap_function_wrapper
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
@@ -170,10 +171,10 @@ def _is_wrapped(module_name: str, target: str) -> bool:
     `create` methods with `@required_args`, which uses `functools.wraps`. Those
     targets therefore look "wrapped" straight out of the box, so the weaker
     probe reports an uninstrumented method as still-instrumented. Every
-    instrumentor here wraps through wrapt, which produces an `ObjectProxy`.
+    instrumentor here wraps through wrapt, which produces a wrapt proxy.
     """
     holder, attr = _resolve(module_name, target)
-    return isinstance(getattr(holder, attr), ObjectProxy)
+    return is_wrapt_proxy(getattr(holder, attr))
 
 
 def _reachable(targets: set[tuple[str, str]]) -> set[tuple[str, str]]:
@@ -446,10 +447,16 @@ def test_unwrap_silently_no_ops_on_the_wrapt_argument_split():
     literally named "Object.method", find nothing, and return WITHOUT raising.
     The instrumentor looks like it uninstrumented; the method stays wrapped.
     """
+
     # A throwaway package so this is hermetic: the real instrumentors have
     # already wrapped their own targets session-wide via conftest, and layering
     # a second wrap on those would make the assertions ambiguous. It needs two
     # levels because `unwrap` rsplits the string it is given.
+    def _passthrough(
+        wrapped: Callable[..., Any], instance: Any, args: tuple[Any, ...], kwargs: dict[str, Any]
+    ) -> Any:
+        return wrapped(*args, **kwargs)
+
     parent = types.ModuleType("_lmnr_probe")
     child = types.ModuleType("_lmnr_probe.mod")
     parent.mod = child  # pyright: ignore[reportAttributeAccessIssue]
@@ -465,7 +472,7 @@ def test_unwrap_silently_no_ops_on_the_wrapt_argument_split():
         wrap_function_wrapper(
             "_lmnr_probe.mod",
             "Target.method",
-            lambda wrapped, instance, args, kwargs: wrapped(*args, **kwargs),  # pyright: ignore[reportUnknownLambdaType]
+            _passthrough,
         )
         assert hasattr(Target.method, "__wrapped__")
 

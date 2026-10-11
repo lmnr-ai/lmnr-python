@@ -3,7 +3,7 @@ from __future__ import annotations
 import threading
 from collections.abc import AsyncGenerator, Awaitable, Callable, Generator, Sequence
 from types import TracebackType
-from typing import Any, Never, NotRequired, Self, TypedDict, cast
+from typing import TYPE_CHECKING, Any, Never, NotRequired, Self, TypedDict, cast
 
 from opentelemetry import context as context_api
 from opentelemetry.context import _SUPPRESS_INSTRUMENTATION_KEY
@@ -161,7 +161,7 @@ async def achat_wrapper(
     instance: Any,
     args: Sequence[Any],
     kwargs: dict[str, Any],
-) -> T | AsyncGenerator[Any, Never] | None:
+) -> T | AsyncGenerator[Any, Never] | ChatStream | None:
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
 
@@ -321,7 +321,14 @@ def _set_completions(span: Span, choices: list[dict[str, Any]] | None):
     set_span_attribute(span, "gen_ai.output.messages", json_dumps(choices))
 
 
-class ChatStream(ObjectProxy):  # pyright: ignore[reportUntypedBaseClass]
+if TYPE_CHECKING:
+    _ChatStreamBase = ObjectProxy[Any]
+else:
+    # wrapt 1.x proxies are not subscriptable at runtime
+    _ChatStreamBase = ObjectProxy
+
+
+class ChatStream(_ChatStreamBase):
     _record_raw_response: bool = False
     _complete_response: ChatStreamResponse
     _cleanup_completed: bool = False
@@ -333,7 +340,7 @@ class ChatStream(ObjectProxy):  # pyright: ignore[reportUntypedBaseClass]
         response: Any,
         record_raw_response: bool = False,
     ):
-        super().__init__(response)  # pyright: ignore[reportUnknownMemberType]
+        super().__init__(response)
 
         self._span: Span = span
         self._record_raw_response = record_raw_response
@@ -355,9 +362,11 @@ class ChatStream(ObjectProxy):  # pyright: ignore[reportUntypedBaseClass]
         if hasattr(self, "_cleanup_completed") and not self._cleanup_completed:
             self._ensure_cleanup()
 
+    @override
     def __enter__(self) -> Self:  # pyright: ignore[reportMissingSuperCall]
         return self
 
+    @override
     def __exit__(  # pyright: ignore[reportMissingSuperCall]
         self,
         exc_type: type[BaseException] | None,
@@ -383,9 +392,11 @@ class ChatStream(ObjectProxy):  # pyright: ignore[reportUntypedBaseClass]
 
         return result
 
+    @override
     async def __aenter__(self) -> Self:
         return self
 
+    @override
     async def __aexit__(
         self,
         exc_type: type[BaseException] | None,
@@ -395,6 +406,7 @@ class ChatStream(ObjectProxy):  # pyright: ignore[reportUntypedBaseClass]
         if hasattr(self.__wrapped__, "__aexit__"):
             await self.__wrapped__.__aexit__(exc_type, exc_val, exc_tb)
 
+    @override
     def __iter__(self) -> Self:
         return self
 

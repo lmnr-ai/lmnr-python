@@ -6,6 +6,7 @@
 - Newer instrumentors build on `shared/base_instrumentor.py::BaseLaminarInstrumentor` + `WrappedFunctionSpec` (`shared/types.py`), which stamps `lmnr.span.instrumentation_scope.{name,version}`.
 - `rollout.py` in `openai/`, `anthropic/`, `google_genai/`, `litellm/` holds the debug-replay wrappers; see `src/lmnr/sdk/debug/AGENTS.md`.
 - **Provider instrumentors** extend OpenTelemetry's base instrumentor and are dynamically initialized based on `Instruments` enum
+- **wrapt 1.x and 2.x are both supported** (`wrapt>=1.14,<3`). In 2.x `FunctionWrapper` derives from `BaseObjectProxy`, not `ObjectProxy`, so never detect a wrapped function with `isinstance(..., wrapt.ObjectProxy)` (tests use `tests/_wrapt_compat.py::is_wrapt_proxy`). Don't import 2.x-only names (`BaseObjectProxy`, ...) in src, and don't subscript proxy classes at runtime (`ObjectProxy[Any]` only under `TYPE_CHECKING`; see `ChatStream`).
 
 ## GenAI message attributes
 

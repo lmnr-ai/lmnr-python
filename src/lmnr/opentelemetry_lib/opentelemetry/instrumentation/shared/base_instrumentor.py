@@ -105,11 +105,11 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
         if key not in self._module_function_originals:
             self._module_function_originals[key] = original
 
-        wrapped_function = FunctionWrapper(original, wrapper)  # pyright: ignore[reportUnknownVariableType]
+        wrapped_function = FunctionWrapper(original, wrapper)
         setattr(module, function_name, wrapped_function)
 
         # Replace all existing references to the original function across ALL loaded modules
-        self._replace_function_aliases(original, wrapped_function)  # pyright: ignore[reportUnknownArgumentType]
+        self._replace_function_aliases(original, wrapped_function)
 
         return True
 
