@@ -20,6 +20,5 @@ jobs:
           activate-environment: true
       - name: Install the project
         run: uv sync --all-extras --dev
-      # basedpyright exits non-zero only on errors; warnings do not fail the job
       - name: Run basedpyright
         run: uv run basedpyright

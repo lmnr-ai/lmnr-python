@@ -1,9 +1,8 @@
 import asyncio
 import json
 import threading
-from collections.abc import Awaitable
-from types import CoroutineType
-from typing import Any
+from collections.abc import Awaitable, Coroutine
+from typing import Any, cast
 
 from typing_extensions import TypeVar, override
 
@@ -87,18 +86,20 @@ def extract_response_data(response: Any) -> dict[str, Any]:
     return {}
 
 
-def run_async(method: CoroutineType[Any, Any, Any] | Awaitable[None]):
+def run_async(method: Coroutine[Any, Any, Any] | Awaitable[None]):
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         loop = None
 
     if loop and loop.is_running():
-        thread = threading.Thread(target=lambda: asyncio.run(method))
+        thread = threading.Thread(
+            target=lambda: asyncio.run(cast(Coroutine[Any, Any, Any], method))
+        )
         thread.start()
         thread.join()
     else:
-        asyncio.run(method)
+        asyncio.run(cast(Coroutine[Any, Any, Any], method))
 
 
 class JSONEncoder(json.JSONEncoder):

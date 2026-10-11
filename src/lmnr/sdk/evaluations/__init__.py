@@ -1,5 +1,5 @@
 import asyncio
-from types import CoroutineType
+from collections.abc import Coroutine
 from typing import Any
 
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
@@ -34,7 +34,7 @@ def evaluate(
     disabled_instruments: (set[Instruments] | list[Instruments] | tuple[Instruments] | None) = None,
     max_export_batch_size: int | None = MAX_EXPORT_BATCH_SIZE,
     trace_export_timeout_seconds: int | None = None,
-) -> EvaluationRunResult | CoroutineType[Any, Any, EvaluationRunResult] | None:
+) -> EvaluationRunResult | Coroutine[Any, Any, EvaluationRunResult] | None:
     """
     If added to the file which is called through `lmnr eval` command, then
     registers the evaluation; otherwise, runs the evaluation.

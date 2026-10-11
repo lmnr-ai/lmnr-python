@@ -1,7 +1,7 @@
 import asyncio
 import threading
+from collections.abc import Coroutine
 from importlib.metadata import version
-from types import CoroutineType
 from typing import Any
 
 from packaging.version import parse
@@ -37,7 +37,7 @@ def is_metrics_enabled() -> bool:
     return False
 
 
-def run_async(method: CoroutineType[None, None, Any]):
+def run_async(method: Coroutine[None, None, Any]):
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:

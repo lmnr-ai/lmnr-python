@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import asyncio
 import threading
 import time
 from collections.abc import Awaitable, Callable, Sequence
 from enum import Enum
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from opentelemetry import context as context_api
 from opentelemetry._logs import Logger, LogRecord, get_logger
@@ -36,12 +38,10 @@ from lmnr.version import __version__
 
 log = get_default_logger(__name__)
 
-try:
+if TYPE_CHECKING:
     from daytona import SessionExecuteRequest, SessionExecuteResponse
     from daytona._async.process import AsyncProcess
     from daytona._sync.process import Process
-except Exception:
-    log.debug("Failed to import from daytona", exc_info=True)
 
 
 T = TypeVar("T")
