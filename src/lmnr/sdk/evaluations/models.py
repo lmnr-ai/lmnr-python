@@ -1,7 +1,7 @@
 import datetime
 import json
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Any, TypedDict
 
 from pydantic import BaseModel, Field
@@ -130,7 +130,7 @@ class EvaluationResultDatapoint(BaseModel):
     data: EvaluationDatapointData
     target: EvaluationDatapointTarget
     executor_output: ExecutorFunctionReturnType
-    scores: dict[str, Numeric | None]
+    scores: Mapping[str, Numeric | None]
     trace_id: uuid.UUID
     executor_span_id: uuid.UUID
     metadata: EvaluationDatapointMetadata = Field(default=None)
