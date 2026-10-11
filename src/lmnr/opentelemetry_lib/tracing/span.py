@@ -410,9 +410,62 @@ class _NoOpSDKSpan(NonRecordingSpan):
     instrumentation_scope: InstrumentationScope | None = None
     instrumentation_info: InstrumentationInfo | None = None
 
-    def __init__(self, *args: Any, **kwargs: Any):
-        super().__init__(*args, **kwargs)
+    def __init__(self, span_context: SpanContext, inner: Span | None = None):
+        super().__init__(span_context)
         self.attributes = {}
+        # A foreign (non-SDK) span the caller handed us; writes are forwarded
+        # to it so they are not silently discarded.
+        self._inner = inner
+
+    @override
+    def is_recording(self) -> bool:
+        return self._inner.is_recording() if self._inner else False
+
+    @override
+    def set_attribute(self, key: str, value: AttributeValue) -> None:
+        if self._inner:
+            self._inner.set_attribute(key, value)
+
+    @override
+    def set_attributes(self, attributes: Mapping[str, AttributeValue]) -> None:
+        if self._inner:
+            self._inner.set_attributes(attributes)
+
+    @override
+    def add_event(
+        self,
+        name: str,
+        attributes: Attributes = None,
+        timestamp: int | None = None,
+    ) -> None:
+        if self._inner:
+            self._inner.add_event(name, attributes, timestamp)
+
+    @override
+    def update_name(self, name: str) -> None:
+        if self._inner:
+            self._inner.update_name(name)
+
+    @override
+    def set_status(self, status: Status | StatusCode, description: str | None = None) -> None:
+        if self._inner:
+            self._inner.set_status(status, description)
+
+    @override
+    def record_exception(
+        self,
+        exception: BaseException,
+        attributes: Attributes = None,
+        timestamp: int | None = None,
+        escaped: bool = False,
+    ) -> None:
+        if self._inner:
+            self._inner.record_exception(exception, attributes, timestamp, escaped)
+
+    @override
+    def end(self, end_time: int | None = None) -> None:
+        if self._inner:
+            self._inner.end(end_time)
 
     @property
     def context(self) -> SpanContext:
@@ -449,11 +502,11 @@ class LaminarSpan(LaminarSpanInterfaceMixin, SpanDelegationMixin, Span, Readable
         super(ReadableSpan, self).__init__()
 
     @classmethod
-    def non_recording(cls, span_context: SpanContext) -> Self:
+    def non_recording(cls, span_context: SpanContext, inner: Span | None = None) -> Self:
         """A LaminarSpan that records nothing. Returned by the `Laminar` span
         APIs when the SDK is not initialized, so callers always get the full
         `LaminarSpan` interface."""
-        return cls(cast(SDKSpan, cast(object, _NoOpSDKSpan(span_context))))
+        return cls(cast(SDKSpan, cast(object, _NoOpSDKSpan(span_context, inner))))
 
     @override
     def end(self, end_time: int | None = None) -> None:

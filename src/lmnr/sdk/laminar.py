@@ -1324,11 +1324,12 @@ class Laminar:
         """
         if not cls.is_initialized():
             with use_span(span, end_on_exit, record_exception, set_status_on_exception) as s:
-                yield (
-                    s
-                    if isinstance(s, LaminarSpan)
-                    else LaminarSpan.non_recording(s.get_span_context())
-                )
+                if isinstance(s, LaminarSpan):
+                    yield s
+                elif isinstance(s, SDKSpan):
+                    yield LaminarSpan(s)
+                else:
+                    yield LaminarSpan.non_recording(s.get_span_context(), s)
             return
 
         context_token = None
