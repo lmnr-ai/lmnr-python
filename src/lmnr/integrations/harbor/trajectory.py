@@ -261,6 +261,10 @@ class TrajectoryConverter:
     ) -> None:
         model_name = step.get("model_name") or default_model
         provider, model = split_model_name(model_name)
+        if provider is None:
+            # Agents like terminus-2 record the bare model the API returned
+            # ("claude-sonnet-4-5-20250929"); the agent's model has the provider.
+            provider = split_model_name(default_model)[0]
         attributes: dict[str, Any] = {}
         if provider:
             attributes[Attributes.PROVIDER.value] = provider

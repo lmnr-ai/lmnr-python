@@ -501,6 +501,48 @@ async def test_spans_start_in_trajectory_order(
 
 
 @pytest.mark.asyncio
+async def test_bare_step_model_takes_agent_provider(
+    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+):
+    # terminus-2 records the model the API returned, without the provider.
+    trajectory = {
+        "agent": {"name": "terminus-2", "model_name": "anthropic/claude-sonnet-4-5"},
+        "steps": [
+            {"step_id": 1, "timestamp": iso(6), "source": "user", "message": "go"},
+            {
+                "step_id": 2,
+                "timestamp": iso(7),
+                "source": "agent",
+                "model_name": "claude-sonnet-4-5-20250929",
+                "message": "done",
+            },
+            {
+                "step_id": 3,
+                "timestamp": iso(8),
+                "source": "agent",
+                "model_name": "openai/gpt-5-mini",
+                "message": "checked",
+            },
+        ],
+    }
+    job = FakeJob(tmp_path / "job")
+    task_dir = make_task_dir(tmp_path, "t")
+    plugin = LaminarPlugin(project_api_key="test_key")
+    await plugin.on_job_start(job)
+    event = make_event(job, task_dir, "t1", rewards={"reward": 0})
+    write_trajectory(job, "t1", trajectory)
+    await job.emit("start", event)
+    await job.emit("end", event)
+    await plugin.on_job_end(SimpleNamespace())
+
+    spans = spans_by_name(span_exporter)
+    bare = spans["claude-sonnet-4-5-20250929"][0].attributes
+    assert bare["gen_ai.system"] == "anthropic"
+    assert bare["gen_ai.request.model"] == "claude-sonnet-4-5-20250929"
+    assert spans["gpt-5-mini"][0].attributes["gen_ai.system"] == "openai"
+
+
+@pytest.mark.asyncio
 async def test_unattributed_observation_goes_on_last_tool(
     span_exporter: InMemorySpanExporter, client, tmp_path: Path
 ):
