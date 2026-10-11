@@ -190,8 +190,8 @@ def test_framework_spans_use_laminar_provider_without_global_provider():
 
 def test_uninstrument_restores_every_hook():
     import agent_framework._mcp as mcp
+    from _wrapt_compat import is_wrapt_proxy
     from agent_framework import observability
-    from wrapt import ObjectProxy
 
     def wrapped_hooks():
         return {
@@ -214,7 +214,7 @@ def test_uninstrument_restores_every_hook():
                 ),
                 ("_mcp.create_mcp_client_span", mcp.create_mcp_client_span),
             )
-            if isinstance(value, ObjectProxy)
+            if is_wrapt_proxy(value)
         }
 
     instrumentor = maf_instrumentation.MicrosoftAgentFrameworkInstrumentor()

@@ -11,16 +11,18 @@ the migration actually moves.
 """
 
 import importlib
+import inspect
 import sys
 import types
 from collections.abc import Callable, Generator, Sequence
 from typing import Any, cast
 
 import pytest
+from _wrapt_compat import is_wrapt_proxy
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import unwrap
 from typing_extensions import TypeVar
-from wrapt import ObjectProxy, wrap_function_wrapper
+from wrapt import wrap_function_wrapper
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
@@ -170,10 +172,10 @@ def _is_wrapped(module_name: str, target: str) -> bool:
     `create` methods with `@required_args`, which uses `functools.wraps`. Those
     targets therefore look "wrapped" straight out of the box, so the weaker
     probe reports an uninstrumented method as still-instrumented. Every
-    instrumentor here wraps through wrapt, which produces an `ObjectProxy`.
+    instrumentor here wraps through wrapt, which produces a wrapt proxy.
     """
     holder, attr = _resolve(module_name, target)
-    return isinstance(getattr(holder, attr), ObjectProxy)
+    return is_wrapt_proxy(getattr(holder, attr))
 
 
 def _reachable(targets: set[tuple[str, str]]) -> set[tuple[str, str]]:
@@ -201,6 +203,29 @@ def _reachable(targets: set[tuple[str, str]]) -> set[tuple[str, str]]:
     return ok
 
 
+# Targets a third-party instrumentor wraps too
+# (opentelemetry-instrumentation-langchain>=0.62 wraps Pregel.stream / astream),
+# and whose layer its own uninstrument never removes. `_is_wrapped` cannot tell
+# whose layer it sees, so these targets are run bare (wrapt layers stripped) for
+# the cycle and the exact originals are put back after. Removing only our layer
+# from a stack is covered in tests/test_shared_instrumentor.py.
+SHARED_TARGET_INSTRUMENTORS = {"langgraph"}
+
+
+def _strip_wrapt_layers(
+    targets: set[tuple[str, str]],
+) -> list[tuple[object, str, object]]:
+    saved: list[tuple[object, str, object]] = []
+    for module_name, target in _reachable(targets):
+        holder, attr = _resolve(module_name, target)
+        value = inspect.getattr_static(holder, attr)
+        saved.append((holder, attr, value))
+        while is_wrapt_proxy(value):
+            value = cast(Any, value).__wrapped__
+        setattr(holder, attr, value)
+    return saved
+
+
 def _instrumentor(key: str) -> tuple[BaseInstrumentor, set[tuple[str, str]]]:
     module_path, class_name, targets = INSTRUMENTOR_TARGETS[key]
     module = importlib.import_module(module_path)
@@ -219,6 +244,7 @@ def reinstrumented(request: Any) -> Generator[tuple[BaseInstrumentor, set[tuple[
     """
     instrumentor, targets = _instrumentor(request.param)
     was_instrumented = instrumentor.is_instrumented_by_opentelemetry
+    saved = _strip_wrapt_layers(targets) if request.param in SHARED_TARGET_INSTRUMENTORS else []
     try:
         yield instrumentor, targets
     finally:
@@ -229,6 +255,8 @@ def reinstrumented(request: Any) -> Generator[tuple[BaseInstrumentor, set[tuple[
             instrumentor.instrument()
         elif not was_instrumented and instrumentor.is_instrumented_by_opentelemetry:
             instrumentor.uninstrument()
+        for holder, attr, value in saved:
+            setattr(holder, attr, value)
 
 
 @pytest.mark.parametrize("reinstrumented", sorted(INSTRUMENTOR_TARGETS), indirect=True)
@@ -446,10 +474,16 @@ def test_unwrap_silently_no_ops_on_the_wrapt_argument_split():
     literally named "Object.method", find nothing, and return WITHOUT raising.
     The instrumentor looks like it uninstrumented; the method stays wrapped.
     """
+
     # A throwaway package so this is hermetic: the real instrumentors have
     # already wrapped their own targets session-wide via conftest, and layering
     # a second wrap on those would make the assertions ambiguous. It needs two
     # levels because `unwrap` rsplits the string it is given.
+    def _passthrough(
+        wrapped: Callable[..., Any], instance: Any, args: tuple[Any, ...], kwargs: dict[str, Any]
+    ) -> Any:
+        return wrapped(*args, **kwargs)
+
     parent = types.ModuleType("_lmnr_probe")
     child = types.ModuleType("_lmnr_probe.mod")
     parent.mod = child  # pyright: ignore[reportAttributeAccessIssue]
@@ -465,7 +499,7 @@ def test_unwrap_silently_no_ops_on_the_wrapt_argument_split():
         wrap_function_wrapper(
             "_lmnr_probe.mod",
             "Target.method",
-            lambda wrapped, instance, args, kwargs: wrapped(*args, **kwargs),  # pyright: ignore[reportUnknownLambdaType]
+            _passthrough,
         )
         assert hasattr(Target.method, "__wrapped__")
 

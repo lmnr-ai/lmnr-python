@@ -1,6 +1,5 @@
 import asyncio
-import types
-from collections.abc import Callable
+from collections.abc import AsyncGenerator, Callable, Generator
 from functools import wraps
 from typing import Any, Literal, TypeVar, cast
 
@@ -34,6 +33,7 @@ from lmnr.sdk.utils import (
 logger = get_default_logger(__name__)
 
 F = TypeVar("F", bound=Callable[..., Any])
+T = TypeVar("T")
 
 
 def _setup_span(
@@ -248,7 +248,7 @@ def observe_base(
                 else:
                     logger.debug("Not detaching global context, not in the same context")
             # span will be ended in the generator
-            if isinstance(res, types.GeneratorType):
+            if isinstance(res, Generator):
                 return _handle_generator(
                     span,
                     res,
@@ -256,7 +256,7 @@ def observe_base(
                     output_formatter,
                     did_push_context,
                 )
-            if isinstance(res, types.AsyncGeneratorType):
+            if isinstance(res, AsyncGenerator):
                 # async def foo() -> AsyncGenerator[int, None]:
                 # is not considered async in a classical sense in Python,
                 # so we handle this inside the sync wrapper.
@@ -373,7 +373,7 @@ def async_observe_base(
                     logger.debug("Not detaching global context, not in the same context")
 
             # span will be ended in the generator
-            if isinstance(res, types.AsyncGeneratorType):
+            if isinstance(res, AsyncGenerator):
                 # probably unreachable, read the comment in the similar
                 # part of the sync wrapper.
                 return _ahandle_generator(
@@ -395,11 +395,11 @@ def async_observe_base(
 
 def _handle_generator(
     span: Span,
-    res: types.GeneratorType[Any, Any, Any],
+    res: Generator[T, Any, Any],
     ignore_output: bool = False,
     output_formatter: Callable[..., str] | None = None,
     did_push_context: bool = True,
-):
+) -> Generator[T]:
     results = []
     try:
         for part in res:
@@ -415,11 +415,11 @@ def _handle_generator(
 
 async def _ahandle_generator(
     span: Span,
-    res: types.AsyncGeneratorType[Any, Any],
+    res: AsyncGenerator[T, Any],
     ignore_output: bool = False,
     output_formatter: Callable[..., str] | None = None,
     did_push_context: bool = True,
-):
+) -> AsyncGenerator[T]:
     results = []
     try:
         async for part in res:

@@ -51,10 +51,19 @@ class LitellmInstrumentor(BaseLaminarInstrumentor):
         super().__init__()
         self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
             wrapped_functions=[
-                # we are not wrapping `acompletion`, and `aresponses`,
-                # because they call `completion` and `responses` internally respectively
+                # We wrap the Python implementations in `litellm.main` /
+                # `litellm.responses.main`, not the public `litellm.completion` /
+                # `litellm.responses`. Since litellm 1.103 the public names are
+                # `*.dispatch` shims that fall back to these implementations, and
+                # `acompletion` / `aresponses` call the implementation module's
+                # `completion` / `responses` global directly, never the shim. Alias
+                # replacement rewrites both that global and the shim's captured
+                # `_PYTHON_*` fallback. On older litellm the public name IS the
+                # implementation, so this is the same object as before.
+                # `acompletion` / `aresponses` themselves are not wrapped because
+                # they call `completion` / `responses` internally.
                 WrappedFunctionSpec(
-                    package_name="litellm",
+                    package_name="litellm.main",
                     object_name=None,
                     method_name="completion",
                     is_async=False,
@@ -67,7 +76,7 @@ class LitellmInstrumentor(BaseLaminarInstrumentor):
                     instrumentation_scope=self.instrumentation_scope(),
                 ),
                 WrappedFunctionSpec(
-                    package_name="litellm",
+                    package_name="litellm.responses.main",
                     object_name=None,
                     method_name="responses",
                     is_async=False,

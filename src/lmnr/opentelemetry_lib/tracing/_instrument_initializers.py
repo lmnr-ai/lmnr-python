@@ -427,19 +427,6 @@ class MicrosoftAgentFrameworkInstrumentorInitializer(InstrumentorInitializer):
         return MicrosoftAgentFrameworkInstrumentor()
 
 
-class MilvusInstrumentorInitializer(InstrumentorInitializer):
-    @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
-        if not is_package_installed("pymilvus"):
-            return None
-        if not is_package_installed("opentelemetry-instrumentation-milvus"):
-            return None
-
-        from opentelemetry.instrumentation.milvus import MilvusInstrumentor
-
-        return MilvusInstrumentor()
-
-
 class MistralInstrumentorInitializer(InstrumentorInitializer):
     @override
     def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
@@ -529,19 +516,6 @@ class PatchrightInstrumentorInitializer(InstrumentorInitializer):
             return None
 
         return PatchrightInstrumentor(async_client)
-
-
-class PineconeInstrumentorInitializer(InstrumentorInitializer):
-    @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
-        if not is_package_installed("pinecone"):
-            return None
-        if not is_package_installed("opentelemetry-instrumentation-pinecone"):
-            return None
-
-        from opentelemetry.instrumentation.pinecone import PineconeInstrumentor
-
-        return PineconeInstrumentor()
 
 
 class PlaywrightInstrumentorInitializer(InstrumentorInitializer):

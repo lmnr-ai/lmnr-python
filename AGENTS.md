@@ -32,6 +32,7 @@ lmnr datasets pull <id>       # Pull dataset
 ```
 
 - CI: `lint.yml` (ruff check + format check), `typecheck.yml` (basedpyright), `run-tests.yml` (pytest).
+- The `uv run --with openai==3.26.0 ...` overlay step in `run-tests.yml` is a temporary workaround (litellm caps `openai<3`). Do not copy that pattern for other packages/versions.
 - The husky pre-commit hook (`.husky/pre-commit`) runs `ruff check --fix` + `ruff format` on staged Python files and fails the commit if ruff changed anything; re-stage and commit again.
 
 ## Tooling

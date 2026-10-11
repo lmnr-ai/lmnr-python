@@ -49,7 +49,7 @@ def _find_spans_by_attr(
     return [s for s in span_data if s["attributes"].get(key) == value]
 
 
-@pytest.mark.vcr
+@pytest.mark.vcr(record_mode="once")
 def test_simple_agent(instrument_openai_agents: MagicMock, span_exporter: InMemorySpanExporter):
     """Run a simple agent and verify span structure and attributes."""
     agent = Agent(
@@ -98,7 +98,7 @@ def test_simple_agent(instrument_openai_agents: MagicMock, span_exporter: InMemo
     assert resp["attributes"].get(Attributes.RESPONSE_ID.value)
 
 
-@pytest.mark.vcr
+@pytest.mark.vcr(record_mode="once")
 def test_agent_with_tool(instrument_openai_agents: MagicMock, span_exporter: InMemorySpanExporter):
     """Run an agent that calls a tool and verify tool + LLM spans."""
 

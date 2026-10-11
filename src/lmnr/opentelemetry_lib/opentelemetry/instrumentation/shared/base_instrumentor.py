@@ -27,6 +27,10 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
 
     # Store original functions for alias replacement and uninstrumentation
     _module_function_originals: dict[tuple[str, str], Callable[..., Any]] | None = None
+    # The wrapper callable installed per (package_name, target), so uninstrument
+    # can find and remove OUR wrapt layer even when another instrumentor has
+    # stacked its own layer on top of it
+    _own_wrappers: dict[tuple[str, str], WraptWrapper] | None = None
 
     @abstractmethod
     def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
@@ -105,16 +109,16 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
         if key not in self._module_function_originals:
             self._module_function_originals[key] = original
 
-        wrapped_function = FunctionWrapper(original, wrapper)  # pyright: ignore[reportUnknownVariableType]
+        wrapped_function = FunctionWrapper(original, wrapper)
         setattr(module, function_name, wrapped_function)
 
         # Replace all existing references to the original function across ALL loaded modules
-        self._replace_function_aliases(original, wrapped_function)  # pyright: ignore[reportUnknownArgumentType]
+        self._replace_function_aliases(original, wrapped_function)
 
         return True
 
     def _unwrap_module_function_with_alias_replacement(
-        self, module_name: str, function_name: str
+        self, module_name: str, function_name: str, own_wrapper: WraptWrapper | None = None
     ) -> None:
         """
         Restore the original function and replace all aliases back.
@@ -122,6 +126,9 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
         Args:
             module_name: The name of the module containing the function
             function_name: The name of the function to unwrap
+            own_wrapper: The wrapper we installed; when another instrumentor has
+                wrapped the module attribute on top of it, only our layer is
+                spliced out from under theirs
         """
         key = (module_name, function_name)
         original = (self._module_function_originals or {}).get(key)
@@ -133,11 +140,48 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
             return
 
         current = getattr(module, function_name, None)
-        setattr(module, function_name, original)
-        if current is not None:
-            self._replace_function_aliases(current, original)
+        if own_wrapper is not None and getattr(current, "_self_wrapper", None) is not own_wrapper:
+            removed = self._remove_own_layer(module, function_name, own_wrapper)
+            # The later wrap only replaced the module attribute; every alias we
+            # retargeted at instrument time (`from module import fn` bindings,
+            # litellm's dispatch `_PYTHON_*` fallback) still holds our layer
+            if removed is not None:
+                self._replace_function_aliases(removed, removed.__wrapped__)
+        else:
+            setattr(module, function_name, original)
+            if current is not None:
+                self._replace_function_aliases(current, original)
         if self._module_function_originals is not None:
             del self._module_function_originals[key]
+
+    @staticmethod
+    def _remove_own_layer(holder: object, attr: str, wrapper: WraptWrapper) -> Any:
+        """Remove the wrapt layer whose wrapper is `wrapper` from `holder.attr`.
+
+        `opentelemetry.instrumentation.utils.unwrap` always strips the OUTERMOST
+        layer, whoever owns it. When a third-party instrumentor wraps the same
+        target after us (e.g. opentelemetry-instrumentation-langchain wraps
+        `Pregel.stream`), that peels their layer and leaves ours. Instead, walk
+        the chain and splice out only our layer.
+
+        Reads the holder's own `__dict__`, never `getattr`: on a class, getattr
+        of a wrapt proxy returns a freshly bound proxy, and writing that back
+        would replace the stored descriptor.
+
+        Returns the removed layer (so callers can retarget references to it),
+        or None if our layer was not found.
+        """
+        outer: Any = None
+        current: Any = vars(holder).get(attr)
+        while current is not None and hasattr(current, "_self_wrapper"):
+            if current._self_wrapper is wrapper:
+                if outer is None:
+                    setattr(holder, attr, current.__wrapped__)
+                else:
+                    outer.__wrapped__ = current.__wrapped__
+                return current
+            outer, current = current, current.__wrapped__
+        return None
 
     # default implementation, can be overridden by subclasses
     @override
@@ -170,8 +214,11 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
                         self.logger.debug(f"Failed to instrument {package_name}.{target}")
                 else:
                     # Standard class method or module function without alias replacement
-                    wrap_function_wrapper(package_name, target, wrapper)
+                    _ = wrap_function_wrapper(package_name, target, wrapper)
                     self.logger.debug(f"Successfully instrumented {package_name}.{target}")
+                if self._own_wrappers is None:
+                    self._own_wrappers = {}
+                self._own_wrappers[(package_name, target)] = wrapper
             except (AttributeError, ModuleNotFoundError, ImportError):
                 # that's ok, we don't want to fail if some methods do not exist
                 self.logger.debug(f"Failed to instrument {package_name}.{target}", exc_info=True)
@@ -189,11 +236,22 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
             replace_aliases = wrapped_function_spec.get("replace_aliases", False)
 
             target = f"{object_name}.{method_name}" if object_name else method_name
+            own_wrapper = (self._own_wrappers or {}).pop((package_name, target), None)
 
             try:
                 if replace_aliases and not object_name:
                     # Unwrap with alias replacement
-                    self._unwrap_module_function_with_alias_replacement(package_name, method_name)
+                    self._unwrap_module_function_with_alias_replacement(
+                        package_name, method_name, own_wrapper
+                    )
+                elif own_wrapper is not None:
+                    holder: object = sys.modules.get(package_name) or importlib.import_module(
+                        package_name
+                    )
+                    for part in object_name.split(".") if object_name else []:
+                        holder = getattr(holder, part)
+                    if self._remove_own_layer(holder, method_name, own_wrapper) is None:
+                        self.logger.debug(f"{package_name}.{target} was no longer wrapped by us")
                 elif object_name:
                     # `unwrap` resolves its first argument as `module.attr`
                     # and looks the method up on it, so the owning class has

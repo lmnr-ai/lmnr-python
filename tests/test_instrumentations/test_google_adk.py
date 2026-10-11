@@ -410,7 +410,7 @@ def test_uninstrument_unwraps_lazily_imported_binding():
     # uninstrument must leave no live layer on any binding.
     import sys
 
-    import wrapt
+    from _wrapt_compat import is_wrapt_proxy
     from google.adk.telemetry import tracing
 
     from lmnr.opentelemetry_lib.opentelemetry.instrumentation import (
@@ -435,11 +435,11 @@ def test_uninstrument_unwraps_lazily_imported_binding():
     try:
         instrumentor.instrument()
         fresh = sys.modules[module_name]
-        assert isinstance(fresh.trace_merged_tool_calls, wrapt.ObjectProxy)
-        assert not isinstance(fresh.trace_merged_tool_calls.__wrapped__, wrapt.ObjectProxy)
+        assert is_wrapt_proxy(fresh.trace_merged_tool_calls)
+        assert not is_wrapt_proxy(fresh.trace_merged_tool_calls.__wrapped__)
         instrumentor.uninstrument()
-        assert not isinstance(fresh.trace_merged_tool_calls, wrapt.ObjectProxy)
-        assert not isinstance(tracing.trace_merged_tool_calls, wrapt.ObjectProxy)
+        assert not is_wrapt_proxy(fresh.trace_merged_tool_calls)
+        assert not is_wrapt_proxy(tracing.trace_merged_tool_calls)
     finally:
         sys.modules[module_name] = original_module
         setattr(sys.modules[parent_name], attr_name, original_module)
