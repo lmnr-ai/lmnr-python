@@ -210,9 +210,7 @@ def initialized_project_key():
 @pytest.fixture
 def client():
     client = MagicMock()
-    client.evals.init = AsyncMock(
-        return_value=SimpleNamespace(id=uuid.uuid4(), projectId=uuid.uuid4())
-    )
+    client.evals.init = AsyncMock(return_value={"id": uuid.uuid4(), "projectId": uuid.uuid4()})
     client.evals.save_datapoints = AsyncMock()
     client.close = AsyncMock()
     with patch("lmnr.integrations.harbor.plugin.AsyncLaminarClient", return_value=client):
@@ -285,7 +283,7 @@ async def test_job_reports_trials_as_evaluation(
     # Every span belongs to the evaluation trace and carries the evaluation id.
     trace_ids = {_ctx(s).trace_id for s in span_exporter.get_finished_spans()}
     assert trace_ids == {root.context.trace_id}
-    eval_id = str(client.evals.init.return_value.id)
+    eval_id = str(client.evals.init.return_value["id"])
     for span in span_exporter.get_finished_spans():
         assert (span.attributes or {})[
             "lmnr.association.properties.metadata.evaluation_id"
@@ -1012,8 +1010,8 @@ async def test_already_initialized_laminar_sets_evaluation_destination(
         port=None,
     )
     # The logged link points at the host that received the evaluation.
-    eval_id = client.evals.init.return_value.id
-    project_id = client.evals.init.return_value.projectId
+    eval_id = client.evals.init.return_value["id"]
+    project_id = client.evals.init.return_value["projectId"]
     http_url = Laminar.get_base_http_url()
     assert http_url is not None
     assert plugin.evaluation_url == get_evaluation_url(
