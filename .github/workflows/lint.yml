@@ -1,0 +1,26 @@
+name: Lint
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    branches: ["main"]
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.0.0
+        with:
+          activate-environment: true
+      - name: Install the project
+        run: uv sync --all-extras --dev
+      - name: Ruff check
+        run: uv run ruff check
+      - name: Ruff format (check only)
+        run: uv run ruff format --check
