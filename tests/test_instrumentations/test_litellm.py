@@ -9,6 +9,7 @@ from typing import Any, cast
 
 import litellm
 import pytest
+from litellm.responses.streaming_iterator import SyncResponsesAPIStreamingIterator
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import SpanContext
@@ -310,7 +311,7 @@ def test_litellm_completion_streaming(span_exporter: InMemorySpanExporter):
         stream=True,
     )
     response_id = None
-    for chunk in response:
+    for chunk in cast(litellm.CustomStreamWrapper, response):
         # consume the stream
         chunk = cast(litellm.ModelResponseStream, chunk)
         if chunk.id:
@@ -561,7 +562,7 @@ def test_litellm_completion_streaming_openai(span_exporter: InMemorySpanExporter
         stream=True,
     )
     response_id = None
-    for chunk in response:
+    for chunk in cast(litellm.CustomStreamWrapper, response):
         chunk = cast(litellm.ModelResponseStream, chunk)
         if chunk.id:
             response_id = chunk.id
@@ -994,7 +995,7 @@ def test_litellm_completion_streaming_with_tool_call(
 
     response_id = None
     tool_call_id = None
-    for chunk in response:
+    for chunk in cast(litellm.CustomStreamWrapper, response):
         chunk = cast(litellm.ModelResponseStream, chunk)
         if chunk.id:
             response_id = chunk.id
@@ -1064,7 +1065,7 @@ def test_litellm_completion_streaming_with_tool_call_openai(
 
     response_id = None
     tool_call_id = None
-    for chunk in response:
+    for chunk in cast(litellm.CustomStreamWrapper, response):
         chunk = cast(litellm.ModelResponseStream, chunk)
         if chunk.id:
             response_id = chunk.id
@@ -1660,7 +1661,7 @@ def test_litellm_responses_streaming(span_exporter: InMemorySpanExporter):
         os.environ["OPENAI_API_KEY"] = "test-key"
 
     response = cast(
-        Iterator[Any],
+        SyncResponsesAPIStreamingIterator,
         litellm.responses(
             model="gpt-4.1-nano",
             input=[
@@ -1671,7 +1672,7 @@ def test_litellm_responses_streaming(span_exporter: InMemorySpanExporter):
         ),
     )
     final_response = None
-    for chunk in response:
+    for chunk in cast(Iterator[Any], response):
         if chunk.type == "response.completed":
             final_response = chunk.response
 

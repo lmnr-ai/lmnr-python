@@ -41,7 +41,7 @@ have to happen, both per-logger (see `_patch_logger`):
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, Any
 
 from opentelemetry.context import Context
@@ -128,7 +128,7 @@ class LiteLLMLangfuseBridge:
         # No-credentials path still emits through `_tracer_provider`.
         self._provider_attachment.attach(getattr(logger_obj, "_tracer_provider", None))
 
-        orig_get_tracer: Callable[[dict[str, str]], Tracer] | None = getattr(
+        orig_get_tracer: Callable[[Mapping[str, str]], Tracer] | None = getattr(
             logger_obj, "_get_tracer_with_dynamic_headers", None
         )
         orig_get_ctx: Callable[[dict[str, Any], Span | None], tuple[Context, Span]] | None = (
@@ -141,8 +141,8 @@ class LiteLLMLangfuseBridge:
         is_llm_span = self._is_llm_span
 
         def patched_get_tracer(
-            dynamic_headers: dict[str, str],
-            _orig: Callable[[dict[str, str]], Tracer] = orig_get_tracer,
+            dynamic_headers: Mapping[str, str],
+            _orig: Callable[[Mapping[str, str]], Tracer] = orig_get_tracer,
         ) -> Tracer:
             tracer = _orig(dynamic_headers)
             # Attach to every cache provider we haven't seen yet. The cache is
