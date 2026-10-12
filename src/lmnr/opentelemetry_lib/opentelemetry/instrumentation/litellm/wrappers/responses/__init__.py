@@ -113,6 +113,12 @@ def process_responses_response(
         set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, input_tokens)
         set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, output_tokens)
         set_span_attribute(span, "llm.usage.total_tokens", total_tokens)
+        if output_details := usage_dict.get("output_tokens_details"):
+            set_span_attribute(
+                span,
+                "gen_ai.usage.reasoning_tokens",
+                output_details.get("reasoning_tokens"),
+            )
         if input_details := usage_dict.get("input_tokens_details"):
             details = to_dict(input_details)
             cache_read_tokens = details.get("cached_tokens", 0)
