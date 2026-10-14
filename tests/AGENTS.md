@@ -9,7 +9,10 @@
 
 - Tests under `tests/test_instrumentations/**` replay via VCR cassettes in `cassettes/<module-name>/`. Sensitive headers are filtered by the root `vcr_config` (`authorization`, `api-key`, `x-api-key`, `x-goog-api-key`).
 - The sandbox sets `ANTHROPIC_BASE_URL` / `ANTHROPIC_BEDROCK_BASE_URL` to a local proxy; when recording new anthropic cassettes, **unset those two env vars** first or the cassette will record `http://127.0.0.1:...` and fail to replay against `api.anthropic.com`. Use `unset ANTHROPIC_BASE_URL ANTHROPIC_BEDROCK_BASE_URL` before running `pytest --record-mode=once`.
-- Re-record a single module with `rm -rf tests/.../cassettes/<module>/ && pytest <path> --record-mode=once`. VCR's default `record_mode` is `once`, so replays work without flags as long as the cassette exists.
+- Re-record a single module with `rm -rf tests/.../cassettes/<module>/ && pytest <path> --record-mode=once`. The `pytest-recording` default `record_mode` is `none`, not `once`: replays work without flags as long as the cassette exists, but a missing cassette fails with `CannotOverwriteExistingCassetteException`, and recording a new one requires `--record-mode=once`.
+- **Recording a single new test:** pass `-k <test_name> --record-mode=once`, not the whole module. A failed recording still writes a cassette file (e.g. an HTTP 400 from a setup call), so delete the stub before retrying or the next run replays the error.
+- **Real API keys for recording:** tests that need a live key read it from the environment (e.g. `Client(api_key=os.getenv("GEMINI_API_KEY", "123"))`), so replay works with the `"123"` placeholder. Keys are never written to cassettes: `x-goog-api-key` is a filtered header and Gemini's `key` query parameter is filtered by `filter_query_parameters`. Check a new cassette with `grep -c AIza` before committing.
+- **Provider minimums apply to recorded content:** Gemini rejects cached content under 2048 tokens (`Cached content is too small`), so cache fixtures need a large corpus, not a short string.
 
 ## Spy tests on global httpx
 

@@ -28,7 +28,6 @@ if TYPE_CHECKING:
     from lmnr.sdk.types import LaminarSpanContext
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.helpers import (
-    DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY,
     export_span_data,
     map_span_type,
     name_from_span_data,
@@ -38,6 +37,9 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.helpers 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.span_data import (
     apply_span_data,
     apply_span_error,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.context_keys import (
+    DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY,
 )
 from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from lmnr.opentelemetry_lib.tracing.span import LaminarSpan

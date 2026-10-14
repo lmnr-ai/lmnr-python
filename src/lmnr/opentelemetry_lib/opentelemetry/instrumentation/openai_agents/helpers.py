@@ -1,23 +1,17 @@
 """Span naming, type mapping, and utility helpers for OpenAI Agents instrumentation."""
 
-import contextvars
-from typing import Any
+from __future__ import annotations
 
-from agents.tracing import Span
-from opentelemetry.context import create_key
+import contextvars
+from typing import TYPE_CHECKING, Any
 
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import LaminarSpanType
 
+if TYPE_CHECKING:
+    from agents.tracing import Span
+
 logger = get_default_logger(__name__)
-
-
-DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY_RAW = (
-    "LMNR_DISABLE_OPENAI_RESPONSES_INSTRUMENTATION"
-)
-DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY = create_key(
-    DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY_RAW
-)
 
 
 # Task-local system instructions for the currently-executing model call.
@@ -35,12 +29,12 @@ def get_current_system_instructions() -> str | None:
 
 def set_current_system_instructions(
     value: str | None,
-) -> "contextvars.Token[str | None]":
+) -> contextvars.Token[str | None]:
     return _current_system_instructions.set(value)
 
 
 def reset_current_system_instructions(
-    token: "contextvars.Token[str | None]",
+    token: contextvars.Token[str | None],
 ) -> None:
     _current_system_instructions.reset(token)
 

@@ -19,7 +19,7 @@ from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.trace import Span, SpanKind, StatusCode
 from typing_extensions import TypeVar
 
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.helpers import (
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.context_keys import (
     DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
