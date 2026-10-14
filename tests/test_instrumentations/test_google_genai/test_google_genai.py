@@ -1,5 +1,6 @@
 import base64
 import json
+import os
 from typing import cast
 
 import httpx
@@ -1227,6 +1228,102 @@ def test_google_genai_no_content(span_exporter: InMemorySpanExporter):
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content_stream"
     assert full_response == "".join(part for part in expected_parts if part is not None)
+
+
+def _cache_corpus() -> str:
+    # Gemini only creates a cache above a minimum token count.
+    return "\n".join(
+        (
+            f"Reference paragraph {i}: "
+            "This is long reusable context for geography Q&A. "
+            "It includes facts about countries, capitals, demography, "
+            "trade, climate, and history. The content is intentionally long "
+            "to make cache token behavior obvious in usage metadata."
+        )
+        for i in range(1, 50)
+    )
+
+
+def _cache_client() -> Client:
+    # Recording needs a real key; replay matches on method and URL only, and the
+    # key header is filtered by vcr_config.
+    return Client(api_key=os.getenv("GEMINI_API_KEY", "123"))
+
+
+@pytest.mark.vcr
+def test_google_genai_cache_read_tokens(span_exporter: InMemorySpanExporter):
+    client = _cache_client()
+    cached_content = client.caches.create(
+        model="gemini-2.5-flash-lite",
+        config=types.CreateCachedContentConfig(
+            ttl="300s",
+            display_name="integration-cache-non-streaming",
+            system_instruction="You are a concise assistant.",
+            contents=_cache_corpus(),
+        ),
+    )
+    assert cached_content.name is not None
+
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash-lite",
+            contents="What is the capital of France?",
+            config=types.GenerateContentConfig(cached_content=cached_content.name),
+        )
+    finally:
+        client.caches.delete(name=cached_content.name)
+
+    usage = response.usage_metadata
+    assert usage is not None
+    assert usage.cached_content_token_count
+    assert usage.cached_content_token_count > 0
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "gemini.generate_content"
+    assert (spans[0].attributes or {})["gen_ai.usage.cache_read_input_tokens"] == (
+        usage.cached_content_token_count
+    )
+
+
+@pytest.mark.vcr
+def test_google_genai_cache_read_tokens_streaming(span_exporter: InMemorySpanExporter):
+    client = _cache_client()
+    cached_content = client.caches.create(
+        model="gemini-2.5-flash-lite",
+        config=types.CreateCachedContentConfig(
+            ttl="300s",
+            display_name="integration-cache-streaming",
+            system_instruction="You are a concise assistant.",
+            contents=_cache_corpus(),
+        ),
+    )
+    assert cached_content.name is not None
+
+    try:
+        stream = client.models.generate_content_stream(
+            model="gemini-2.5-flash-lite",
+            contents="What is the capital of France?",
+            config=types.GenerateContentConfig(cached_content=cached_content.name),
+        )
+        # Usage metadata arrives on the chunks, not as a separate final response.
+        usage: types.GenerateContentResponseUsageMetadata | None = None
+        for chunk in stream:
+            if chunk.usage_metadata:
+                usage = chunk.usage_metadata
+    finally:
+        client.caches.delete(name=cached_content.name)
+
+    assert usage is not None
+    assert usage.cached_content_token_count
+    assert usage.cached_content_token_count > 0
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "gemini.generate_content_stream"
+    assert (spans[0].attributes or {})["gen_ai.usage.cache_read_input_tokens"] == (
+        usage.cached_content_token_count
+    )
 
 
 # Tests for merge_text_parts function

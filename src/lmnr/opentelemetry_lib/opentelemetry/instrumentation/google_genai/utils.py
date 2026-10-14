@@ -118,6 +118,11 @@ def process_stream_chunk(
         aggregated_usage_metadata["total_token_count"] += (
             usage_dict.get("candidates_token_count") or 0
         )
+        # cached tokens describe the request's cache hit, not a per-chunk delta,
+        # so take the reported value rather than summing it across chunks
+        cached_content_token_count = usage_dict.get("cached_content_token_count")
+        if cached_content_token_count is not None:
+            aggregated_usage_metadata["cached_content_token_count"] = cached_content_token_count
     return ProcessChunkResult(
         role=role,
         model_version=model_version,
