@@ -18,16 +18,17 @@ permissions:
 jobs:
   deploy:
     # amd64-only: pypa/gh-action-pypi-publish has no arm64 image
-    runs-on: ubuntu-24.04
+    # https://github.com/pypa/gh-action-pypi-publish/issues/356
+    runs-on: ubuntu-latest
     environment:
       name: pypi
       url: https://pypi.org/p/lmnr/
     permissions:
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - name: Install dependencies
