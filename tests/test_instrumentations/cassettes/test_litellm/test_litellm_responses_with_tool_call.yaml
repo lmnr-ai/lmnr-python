@@ -1,0 +1,102 @@
+interactions:
+- request:
+    body: '{"model":"gpt-4.1-nano","input":[{"content":"Be very crisp in your response.","role":"system"},{"content":"What
+      is the weather in Tokyo?","role":"user"}],"tools":[{"type":"function","name":"get_weather","description":"Get
+      the current weather for a location","parameters":{"type":"object","properties":{"location":{"type":"string","description":"Location
+      of the weather to get, e.g. San Francisco, CA or Paris, France"}},"required":["location"]}}]}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '447'
+      content-type:
+      - application/json
+      cookie:
+      - _cfuvid=2q0Bej910mNnS5jnLQgCHWGa1CGhLdgc0_z8GhaNNGU-1769005437269-0.0.1.1-604800000
+      host:
+      - api.openai.com
+      user-agent:
+      - litellm/1.85.2
+    method: POST
+    uri: https://api.openai.com/v1/responses
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAA/61WyY7jNhC9z1cIOtsNyXvPLcggCZA+NJI5JT0QSlRJzZgiFS7tMRr+9xSpxZLa
+        Ti65GFI9stb3Sn7/FEUxL+LPUazRNFlS4OaQPKa7/XqX4DZJkh0wlqT5GjfscNgXK4BkvQNYHzYp
+        S3Ysjxfehcr/QmZ7N0oabO1MI1gsMvBYun9M99vNbr8NmLFgnfF3mKobgXSuvUQR0Zis0arSUPsT
+        0gkRoBzYsdLKSZ9yCcJga+ZCcFmR7Z1eydDAGbV3XeAbCtXQCwGXNqc+2iyrfUBRa6XHIUuNfzuU
+        7Jw1KEHYM4HJQxIwLntnWYEWuJgky6Wx2jHLqR9jew3fM+Vs42xm1RE/glYpkTEQU3e1KlD4mqrG
+        LjcP6VKCVMtVstouk80y3cTDKQ0+5vhuG44sf4b+tF0aRl+y+4PfJpAzP/j8sCse97A6bMs9bFeH
+        EC44secGgxsnQ7Eh9St8b84BBF25GqUN+PtLLBQLyb/En1/ir+p4Vi/x5Xrce87apMOj+7L9xZy2
+        vz49n56Of8Bvpy/P+an6+na9IaEOyVVosxOR8bWlApGBfr+F5jSgyReKad9pdC25GqI0zR9vzJ+g
+        N66cyXrWt7kNbScK140ll+wVsyOe72KauiK7oRFvshprpc/tRElCRskJvZmSFr/bkTvP3LJUemYz
+        rq5B93EHCRgo0Z4pWR+05DghvEH9xqlcy3sJleCEjTvRKo3j7lisG084F8xp15guuy5dyquG6/uI
+        MuFcO44u4zfUuTI8tDmuseCuvkq3HdCrovQ8DM6q+Ao4AxVeo/KaXrMK5TgwlxPZJYtbwEjM/cXB
+        38erXbkjpAMug/O52pPbyP8e1yoLYn6g7/QJ88wgaPY6bpB0dRY2nrGjK5MJmI97ZL4Crvor0DDN
+        m57bP6ONSIMRc1oT+aJOkhFRJIKoV/+/y3fePEMKqmFC/E7VNclKz9rZp9p9skbdJEUSlYn20xuE
+        DHlN7SNvtOm9QhdTdFb8U+cmUmVoQl+8VRHVt4jwoXqIfgcZ/aRBMm6YWkQ//hBRa55Bc7No7RiP
+        glyG58uoEj9ArrEYBjWvYzB+G92CouAeBfE87kT4zH6gli84fPH9JpgtVKuaTKiK+pkPjA3GZrwi
+        NHGl72pccAO56P8BzJU8FW37pf5vzcbtbj1pbm/pp4WLe/KYa3ad3gJuhR0W9j3XM1mmyWHQlzPT
+        ZUwMhgKsZ/f75dPlH2x63guwCQAA
+    headers:
+      access-control-expose-headers:
+      - X-Request-ID
+      - CF-Ray
+      - CF-Ray
+      alt-svc:
+      - h3=":443"; ma=86400
+      cf-cache-status:
+      - DYNAMIC
+      cf-ray:
+      - a49102409d5bfc2b-LHR
+      connection:
+      - keep-alive
+      content-encoding:
+      - gzip
+      content-type:
+      - application/json
+      date:
+      - Sun, 11 Oct 2026 21:37:57 GMT
+      openai-organization:
+      - user-xzaeeoqlanzncr8pomspsknu
+      openai-processing-ms:
+      - '1272'
+      openai-project:
+      - proj_aT4OgTR5NJ9iNjg4xWc82hiE
+      openai-version:
+      - '2020-10-01'
+      server:
+      - cloudflare
+      set-cookie:
+      - __cf_bm=pknvvOA9FtKTiOQ_xMYkclcFasPhyFEAPOyUsILYkS8-1791754675.2961082-1.0.1.1-oi.M9H_Qqk2EclxYflgDFyLW9t9nxMrx0nHNfNtA5B_jqNpEJU8yNt9f7RXsOb.VJGgauxJ0dPvBLaRfEW1hNzAj2ZojujNnyEggHTZF1gtj8Xw8w94zIo2U7bos8uyQ;
+        HttpOnly; SameSite=None; Secure; Path=/; Domain=api.openai.com; Expires=Sun,
+        11 Oct 2026 22:07:57 GMT
+      strict-transport-security:
+      - max-age=31536000; includeSubDomains; preload
+      transfer-encoding:
+      - chunked
+      x-content-type-options:
+      - nosniff
+      x-ratelimit-limit-requests:
+      - '30000'
+      x-ratelimit-limit-tokens:
+      - '150000000'
+      x-ratelimit-remaining-requests:
+      - '29999'
+      x-ratelimit-remaining-tokens:
+      - '149999707'
+      x-ratelimit-reset-requests:
+      - 2ms
+      x-ratelimit-reset-tokens:
+      - 0s
+      x-request-id:
+      - req_e4d2343507e4434b8c5b67b7086f80de
+    status:
+      code: 200
+      message: OK
+version: 1

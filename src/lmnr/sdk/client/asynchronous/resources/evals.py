@@ -1,19 +1,27 @@
 """Evals resource for interacting with Laminar evaluations API."""
 
-import uuid
-import warnings
+from __future__ import annotations
 
-from typing import Any
+import uuid
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any, cast
 
 from lmnr.sdk.client.asynchronous.resources.base import BaseAsyncResource
 from lmnr.sdk.log import get_default_logger
-from lmnr.sdk.types import (
-    GetDatapointsResponse,
-    InitEvaluationResponse,
-    EvaluationResultDatapoint,
-    PartialEvaluationDatapoint,
-)
-from lmnr.sdk.utils import describe_response, serialize, json_dumps
+from lmnr.sdk.utils import describe_response, json_dumps, serialize
+
+# `lmnr.sdk.evaluations` (a package) transitively imports this client package
+# (via `lmnr.sdk.datasets` -> `LaminarClient`), so importing
+# `lmnr.sdk.evaluations.models` at module level here would be circular.
+# Annotation-only uses are deferred via `TYPE_CHECKING` (safe under
+# `from __future__ import annotations`); actual constructors/functions are
+# imported lazily inside the methods that call them.
+if TYPE_CHECKING:
+    from lmnr.sdk.evaluations.models import (
+        EvaluationResultDatapoint,
+        InitEvaluationResponse,
+        PartialEvaluationDatapoint,
+    )
 
 INITIAL_EVALUATION_DATAPOINT_MAX_DATA_LENGTH = 16_000_000  # 16MB
 logger = get_default_logger(__name__)
@@ -38,6 +46,8 @@ class AsyncEvals(BaseAsyncResource):
         Returns:
             InitEvaluationResponse: The response from the initialization request.
         """
+        from lmnr.sdk.evaluations.models import parse_init_evaluation_response
+
         response = await self._client.post(
             self._base_url + "/v1/evals",
             json={
@@ -50,11 +60,9 @@ class AsyncEvals(BaseAsyncResource):
         if response.status_code != 200:
             if response.status_code == 401:
                 raise ValueError("Unauthorized. Please check your project API key.")
-            raise ValueError(
-                f"Error initializing evaluation: {describe_response(response)}"
-            )
-        resp_json = response.json()
-        return InitEvaluationResponse.model_validate(resp_json)
+            raise ValueError(f"Error initializing evaluation: {describe_response(response)}")
+        resp_json = cast(dict[str, str], response.json())
+        return parse_init_evaluation_response(resp_json)
 
     async def create_evaluation(
         self,
@@ -73,10 +81,8 @@ class AsyncEvals(BaseAsyncResource):
         Returns:
             uuid.UUID: The evaluation ID.
         """
-        evaluation = await self.init(
-            name=name, group_name=group_name, metadata=metadata
-        )
-        return evaluation.id
+        evaluation = await self.init(name=name, group_name=group_name, metadata=metadata)
+        return evaluation["id"]
 
     async def update_evaluation(
         self,
@@ -97,6 +103,8 @@ class AsyncEvals(BaseAsyncResource):
         Returns:
             InitEvaluationResponse: The updated evaluation.
         """
+        from lmnr.sdk.evaluations.models import parse_init_evaluation_response
+
         response = await self._client.post(
             self._base_url + f"/v1/evals/{eval_id}",
             json={
@@ -107,13 +115,9 @@ class AsyncEvals(BaseAsyncResource):
         )
         if response.status_code != 200:
             if response.status_code == 401:
-                raise ValueError(
-                    "Unauthorized. Please check your project API key."
-                )
-            raise ValueError(
-                f"Error updating evaluation: {describe_response(response)}"
-            )
-        return InitEvaluationResponse.model_validate(response.json())
+                raise ValueError("Unauthorized. Please check your project API key.")
+            raise ValueError(f"Error updating evaluation: {describe_response(response)}")
+        return parse_init_evaluation_response(cast(dict[str, str], response.json()))
 
     async def create_datapoint(
         self,
@@ -138,6 +142,7 @@ class AsyncEvals(BaseAsyncResource):
         Returns:
             uuid.UUID: The datapoint ID.
         """
+        from lmnr.sdk.evaluations.models import PartialEvaluationDatapoint
 
         datapoint_id = uuid.uuid4()
 
@@ -145,7 +150,7 @@ class AsyncEvals(BaseAsyncResource):
         partial_datapoint = PartialEvaluationDatapoint(
             id=datapoint_id,
             data=data,
-            target=target,
+            target=target,  # ,
             index=index or 0,
             trace_id=trace_id or uuid.uuid4(),
             executor_span_id=uuid.uuid4(),  # Will be updated when executor runs
@@ -158,7 +163,7 @@ class AsyncEvals(BaseAsyncResource):
     async def save_datapoints(
         self,
         eval_id: uuid.UUID,
-        datapoints: list[EvaluationResultDatapoint | PartialEvaluationDatapoint],
+        datapoints: Sequence[EvaluationResultDatapoint | PartialEvaluationDatapoint],
         group_name: str | None = None,
     ):
         """Save evaluation datapoints.
@@ -186,43 +191,7 @@ class AsyncEvals(BaseAsyncResource):
             return
 
         if response.status_code != 200:
-            raise ValueError(
-                f"Error saving evaluation datapoints: {describe_response(response)}"
-            )
-
-    async def get_datapoints(
-        self,
-        dataset_name: str,
-        offset: int,
-        limit: int,
-    ) -> GetDatapointsResponse:
-        """Get datapoints from a dataset.
-
-        Args:
-            dataset_name (str): The name of the dataset.
-            offset (int): The offset to start from.
-            limit (int): The maximum number of datapoints to return.
-
-        Returns:
-            GetDatapointsResponse: The response containing the datapoints.
-
-        Raises:
-            ValueError: If there's an error fetching the datapoints.
-        """
-        warnings.warn(
-            "Use client.datasets.pull instead",
-            DeprecationWarning,
-        )
-
-        params = {"name": dataset_name, "offset": offset, "limit": limit}
-        response = await self._client.get(
-            self._base_url + "/v1/datasets/datapoints",
-            params=params,
-            headers=self._headers(),
-        )
-        if response.status_code != 200:
-            raise ValueError(f"Error fetching datapoints: {describe_response(response)}")
-        return GetDatapointsResponse.model_validate(response.json())
+            raise ValueError(f"Error saving evaluation datapoints: {describe_response(response)}")
 
     async def update_datapoint(
         self,
@@ -259,14 +228,12 @@ class AsyncEvals(BaseAsyncResource):
         )
 
         if response.status_code != 200:
-            raise ValueError(
-                f"Error updating evaluation datapoint: {describe_response(response)}"
-            )
+            raise ValueError(f"Error updating evaluation datapoint: {describe_response(response)}")
 
     async def _retry_save_datapoints(
         self,
         eval_id: uuid.UUID,
-        datapoints: list[EvaluationResultDatapoint | PartialEvaluationDatapoint],
+        datapoints: Sequence[EvaluationResultDatapoint | PartialEvaluationDatapoint],
         group_name: str | None = None,
         initial_length: int = INITIAL_EVALUATION_DATAPOINT_MAX_DATA_LENGTH,
         max_retries: int = 20,
@@ -277,18 +244,14 @@ class AsyncEvals(BaseAsyncResource):
         while retry < max_retries:
             retry += 1
             length = length // 2
-            logger.debug(
-                f"Retrying save datapoints: {retry} of {max_retries}, length: {length}"
-            )
+            logger.debug(f"Retrying save datapoints: {retry} of {max_retries}, length: {length}")
             if length == 0:
                 raise ValueError(
                     "Error saving evaluation datapoints: the server rejected the payload as too "
-                    "large even after truncating datapoint data to nothing. "
-                    f"Last server response: {describe_response(response)}"
+                    + "large even after truncating datapoint data to nothing. "
+                    + f"Last server response: {describe_response(response)}"
                 )
-            points = [
-                datapoint.to_dict(max_data_length=length) for datapoint in datapoints
-            ]
+            points = [datapoint.to_dict(max_data_length=length) for datapoint in datapoints]
             response = await self._client.post(
                 self._base_url + f"/v1/evals/{eval_id}/datapoints",
                 json={
@@ -300,6 +263,4 @@ class AsyncEvals(BaseAsyncResource):
             if response.status_code != 413:
                 break
         if response is None or response.status_code != 200:
-            raise ValueError(
-                f"Error saving evaluation datapoints: {describe_response(response)}"
-            )
+            raise ValueError(f"Error saving evaluation datapoints: {describe_response(response)}")

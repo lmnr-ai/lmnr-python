@@ -21,12 +21,30 @@ session has no trace yet).
 import datetime
 import json
 import os
-from typing import Any
+from typing import Any, cast
+
+from typing_extensions import TypedDict
 
 # Directory the debug-session file lives in, relative to the working dir.
 DEBUG_SESSION_DIR = ".lmnr"
 # Filename of the debug-session file inside DEBUG_SESSION_DIR.
 DEBUG_SESSION_FILE = "debug-session.json"
+
+
+class DebugSessionFile(TypedDict):
+    """The persisted `.lmnr/debug-session.json` record shape.
+
+    Field order matches the on-disk/console JSON and the TS `DebugSessionFile`
+    contract: `session_id` is first and primary (the field read at startup);
+    `trace_id` is `None` for a freshly-minted session that has no trace yet.
+    """
+
+    session_id: str
+    trace_id: str | None
+    replay_trace_id: str | None
+    cache_until: str | None
+    debugger_url: str | None
+    started_at: str
 
 
 def _str(value: Any) -> str | None:
@@ -38,7 +56,7 @@ def _str(value: Any) -> str | None:
     return value if isinstance(value, str) and len(value) > 0 else None
 
 
-def read_debug_session_file(directory: str | None = None) -> dict[str, Any] | None:
+def read_debug_session_file(directory: str | None = None) -> DebugSessionFile | None:
     """Read `${dir ?? cwd}/.lmnr/debug-session.json`.
 
     Best-effort: returns None on a missing / unreadable / malformed file, or one
@@ -52,6 +70,7 @@ def read_debug_session_file(directory: str | None = None) -> dict[str, Any] | No
             r = json.load(f)
         if not isinstance(r, dict):
             return None
+        r = cast(dict[str, str], r)
         session_id = _str(r.get("session_id"))
         if not session_id:
             return None
@@ -62,8 +81,7 @@ def read_debug_session_file(directory: str | None = None) -> dict[str, Any] | No
             "cache_until": _str(r.get("cache_until")),
             "debugger_url": _str(r.get("debugger_url")),
             "started_at": (
-                _str(r.get("started_at"))
-                or datetime.datetime.now(datetime.timezone.utc).isoformat()
+                _str(r.get("started_at")) or datetime.datetime.now(datetime.UTC).isoformat()
             ),
         }
     except Exception:
@@ -101,9 +119,7 @@ def resolve_debug_session_dir(start_dir: str | None = None) -> str:
     return os.path.abspath(start_dir if start_dir is not None else os.getcwd())
 
 
-def write_debug_session_file(
-    file: dict[str, Any], directory: str | None = None
-) -> bool:
+def write_debug_session_file(file: DebugSessionFile, directory: str | None = None) -> bool:
     """Write the debug-session file (mkdir -p first). Best-effort.
 
     Swallows any IO error so a read-only working directory never breaks a run.
@@ -113,10 +129,8 @@ def write_debug_session_file(
     try:
         target_dir = os.path.join(directory, DEBUG_SESSION_DIR)
         os.makedirs(target_dir, exist_ok=True)
-        with open(
-            os.path.join(target_dir, DEBUG_SESSION_FILE), "w", encoding="utf-8"
-        ) as f:
-            f.write(json.dumps(file, separators=(",", ":")))
+        with open(os.path.join(target_dir, DEBUG_SESSION_FILE), "w", encoding="utf-8") as f:
+            _bytes_written = f.write(json.dumps(file, separators=(",", ":")))
         return True
     except Exception:
         return False

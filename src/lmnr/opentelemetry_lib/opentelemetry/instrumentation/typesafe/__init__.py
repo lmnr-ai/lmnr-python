@@ -1,12 +1,14 @@
 """OpenTelemetry TypeSafe AI (Jev) instrumentation"""
 
+from collections.abc import Awaitable, Callable, Collection, Sequence
 from importlib.metadata import version
-from typing import Collection
+from typing import Any, cast
 
 from opentelemetry import context as context_api
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.trace import Span
 from opentelemetry.trace.status import Status, StatusCode
+from typing_extensions import TypeVar, override
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
     BaseLaminarInstrumentor,
@@ -20,18 +22,22 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     safe_start_span,
     to_dict,
 )
-
-from .span_utils import set_request_attributes, set_response_attributes
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.typesafe.span_utils import (
+    set_request_attributes,
+    set_response_attributes,
+)
+from lmnr.sdk.types import LaminarSpanType
 
 _instruments = ("typesafe-sdk >= 0.5.0",)
+T = TypeVar("T")
 
 # `system_one(state, questions, *, ...)` — the two leading parameters are
 # positional-or-keyword, so merge `args` into the kwargs dict before reading.
 _POSITIONAL_PARAMS = ("state", "questions")
 
 
-def _call_kwargs(args: tuple, kwargs: dict) -> dict:
-    merged = dict(zip(_POSITIONAL_PARAMS, args))
+def _call_kwargs(args: Sequence[Any], kwargs: dict[str, Any]) -> dict[str, Any]:
+    merged: dict[str, Any] = dict(zip(_POSITIONAL_PARAMS, args))
     merged.update(kwargs)
     return merged
 
@@ -39,13 +45,13 @@ def _call_kwargs(args: tuple, kwargs: dict) -> dict:
 def _start_span(to_wrap: WrappedFunctionSpec) -> Span | None:
     scope = to_wrap.get("instrumentation_scope", {})
     return safe_start_span(
-        name=to_wrap["span_name"],
+        name=to_wrap.get("span_name") or "typesafe",
         attributes={
             "gen_ai.system": "typesafe",
-            "lmnr.span.instrumentation_scope.name": scope.get("name"),
-            "lmnr.span.instrumentation_scope.version": scope.get("version"),
+            "lmnr.span.instrumentation_scope.name": cast(str, scope.get("name") or "typesafe-sdk"),
+            "lmnr.span.instrumentation_scope.version": cast(str, scope.get("version") or "unknown"),
         },
-        span_type=to_wrap["span_type"],
+        span_type=cast(LaminarSpanType, to_wrap.get("span_type") or "DEFAULT"),
     )
 
 
@@ -55,7 +61,13 @@ def _record_error(span: Span, error: Exception):
     span.set_status(Status(StatusCode.ERROR, str(error)))
 
 
-def _wrap(to_wrap: WrappedFunctionSpec, wrapped, instance, args, kwargs):
+def _wrap(
+    to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., T],
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T:
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
@@ -76,7 +88,13 @@ def _wrap(to_wrap: WrappedFunctionSpec, wrapped, instance, args, kwargs):
     return response
 
 
-async def _awrap(to_wrap: WrappedFunctionSpec, wrapped, instance, args, kwargs):
+async def _awrap(
+    to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., Awaitable[T]],
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T:
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
 
@@ -102,9 +120,11 @@ class TypeSafeInstrumentor(BaseLaminarInstrumentor):
 
     _scope: LaminarInstrumentationScopeAttributes | None = None
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
+    @override
     def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
         if self._scope is None:
             try:
@@ -118,7 +138,7 @@ class TypeSafeInstrumentor(BaseLaminarInstrumentor):
 
     def __init__(self):
         super().__init__()
-        self.instrumentor_config = LaminarInstrumentorConfig(
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
             wrapped_functions=[
                 WrappedFunctionSpec(
                     # The top-level re-export shares the class object with the

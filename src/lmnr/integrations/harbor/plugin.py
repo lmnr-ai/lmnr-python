@@ -16,7 +16,7 @@ import re
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from opentelemetry.context import Context
 from opentelemetry.trace import Status, StatusCode
@@ -26,17 +26,25 @@ from lmnr.integrations.harbor.trajectory import (
     final_agent_message,
     parse_timestamp_ns,
 )
+from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
-from lmnr.sdk.evaluations import get_evaluation_url
+from lmnr.sdk.evaluations.models import EvaluationResultDatapoint, PartialEvaluationDatapoint
+from lmnr.sdk.evaluations.utils import get_evaluation_url
 from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.log import get_default_logger
-from lmnr.sdk.types import EvaluationResultDatapoint, PartialEvaluationDatapoint
+from lmnr.sdk.types import LaminarSpanType
 from lmnr.sdk.utils import from_env, json_dumps
 
 if TYPE_CHECKING:
-    from harbor.job import Job
-    from harbor.models.job.result import JobResult
-    from harbor.trial.hooks import TrialHookEvent
+    from harbor.job import (  # pyright: ignore[reportMissingImports] harbor conflicts with a lot of other dev deps
+        Job,
+    )
+    from harbor.models.job.result import (  # pyright: ignore[reportMissingImports] harbor conflicts with a lot of other dev deps
+        JobResult,
+    )
+    from harbor.trial.hooks import (  # pyright: ignore[reportMissingImports] harbor conflicts with a lot of other dev deps
+        TrialHookEvent,
+    )
 
 logger = get_default_logger(__name__)
 
@@ -73,7 +81,7 @@ class _TrialState:
     agent_exception: Any = None
     # The trial's latest upload. Every upload waits for it, since saves upsert
     # by datapoint id and a retry must not be overwritten by an earlier attempt.
-    last_upload: asyncio.Task | None = None
+    last_upload: asyncio.Task[Any] | None = None
     # The finished attempt's datapoint while it has no rewards. Its zero
     # scores cover only the reward keys seen so far, so it is re-saved when a
     # later trial reveals new keys.
@@ -114,22 +122,20 @@ class LaminarPlugin:
         trajectory_spans: bool | str | None = None,
         fail_fast: bool | str | None = None,
     ):
-        self.project_api_key = project_api_key or from_env("LMNR_PROJECT_API_KEY")
-        self.base_url = base_url or from_env("LMNR_BASE_URL")
-        self.http_port = int(http_port) if http_port is not None else None
-        self.grpc_port = int(grpc_port) if grpc_port is not None else None
-        resolved_evaluation_name = evaluation_name or from_env(
-            "HARBOR_LAMINAR_EVALUATION"
-        )
-        self.evaluation_name = (
+        self.project_api_key: str | None = project_api_key or from_env("LMNR_PROJECT_API_KEY")
+        self.base_url: str | None = base_url or from_env("LMNR_BASE_URL")
+        self.http_port: int | None = int(http_port) if http_port is not None else None
+        self.grpc_port: int | None = int(grpc_port) if grpc_port is not None else None
+        resolved_evaluation_name = evaluation_name or from_env("HARBOR_LAMINAR_EVALUATION")
+        self.evaluation_name: str | None = (
             str(resolved_evaluation_name) if resolved_evaluation_name else None
         )
         resolved_group_name = group_name or from_env("HARBOR_LAMINAR_GROUP")
-        self.group_name = str(resolved_group_name) if resolved_group_name else None
-        self.trajectory_spans = (
+        self.group_name: str | None = str(resolved_group_name) if resolved_group_name else None
+        self.trajectory_spans: bool = (
             True if trajectory_spans is None else _parse_bool(trajectory_spans)
         )
-        self.fail_fast = _parse_bool(
+        self.fail_fast: bool = _parse_bool(
             fail_fast if fail_fast is not None else from_env("HARBOR_LAMINAR_FAIL_FAST")
         )
 
@@ -138,9 +144,9 @@ class LaminarPlugin:
         self._project_id: str | None = None
         self._resolved_group_name: str = DEFAULT_GROUP_NAME
         self._trials: dict[str, _TrialState] = {}
-        self._uploads: list[asyncio.Task] = []
+        self._uploads: list[asyncio.Task[Any]] = []
         self._seen_reward_keys: list[str] = []
-        self._next_index = 0
+        self._next_index: int = 0
 
     # Harbor JobPlugin protocol
 
@@ -169,7 +175,7 @@ class LaminarPlugin:
                     state.root_span.end()
                     state.root_span = None
             await self._await_uploads()
-            Laminar.flush()
+            _flush_success = Laminar.flush()
         except Exception as e:
             self._handle_error("Failed to finish Laminar evaluation", e)
         finally:
@@ -187,7 +193,7 @@ class LaminarPlugin:
     def evaluation_url(self) -> str | None:
         if self._eval_id is None or self._project_id is None:
             return None
-        return get_evaluation_url(self._project_id, str(self._eval_id), self.base_url)
+        return get_evaluation_url(uuid.UUID(self._project_id), self._eval_id, self.base_url)
 
     async def _start_evaluation(self, job: "Job") -> None:
         already_initialized = Laminar.is_initialized()
@@ -196,26 +202,23 @@ class LaminarPlugin:
             # created in the same project or its datapoints would link to
             # traces it can't see.
             initialized_key = Laminar.get_project_api_key()
-            if (
-                self.project_api_key
-                and initialized_key
-                and self.project_api_key != initialized_key
-            ):
+            if self.project_api_key and initialized_key and self.project_api_key != initialized_key:
                 raise ValueError(
                     "Laminar is already initialized with a different project API "
-                    "key than the one passed to the Harbor plugin, so trial "
-                    "traces would be exported to another project than the "
-                    "evaluation. Use the same key for both."
+                    + "key than the one passed to the Harbor plugin, so trial "
+                    + "traces would be exported to another project than the "
+                    + "evaluation. Use the same key for both."
                 )
             self.project_api_key = self.project_api_key or initialized_key
         if not self.project_api_key:
             raise ValueError(
                 "Laminar project API key is not set. Set LMNR_PROJECT_API_KEY or "
-                "pass --pk project_api_key=..."
+                + "pass --pk project_api_key=..."
             )
         if already_initialized:
             # Send evaluation requests to the endpoint spans are exported to.
             client_url, client_port = Laminar.get_base_http_url(), None
+            client_url = client_url or "https://api.lmnr.ai"
             # The evaluation link must point there too. The URL carries an
             # explicit port (":443"), which the frontend URL mapping doesn't
             # expect.
@@ -260,8 +263,8 @@ class LaminarPlugin:
                 "agents": agents,
             },
         )
-        self._eval_id = evaluation.id
-        self._project_id = str(evaluation.projectId)
+        self._eval_id = evaluation.get("id")
+        self._project_id = str(evaluation.get("projectId"))
         logger.info(f"Laminar evaluation: {self.evaluation_url}")
 
     # Trial hooks
@@ -270,9 +273,7 @@ class LaminarPlugin:
         try:
             self._start_trial(event)
         except Exception as e:
-            self._handle_error(
-                f"Failed to start Laminar trace for {event.trial_name}", e
-            )
+            self._handle_error(f"Failed to start Laminar trace for {event.trial_name}", e)
 
     async def _on_agent_started(self, event: "TrialHookEvent") -> None:
         # Environment and agent setup are done by now.
@@ -481,52 +482,47 @@ class LaminarPlugin:
             target={},
             executor_output=self._executor_output(event),
             scores=scores,
-            trace_id=state.trace_id,
+            trace_id=state.trace_id or uuid.UUID(int=0),
             executor_span_id=_uuid(executor_span_id),
             metadata=metadata,
         )
         state.last_upload = self._upload([datapoint], after=state.last_upload)
-        state.unscored_datapoint = (
-            datapoint if not scored and not state.cancelled else None
-        )
+        state.unscored_datapoint = datapoint if not scored and not state.cancelled else None
         if new_reward_keys:
             self._rescore_unscored()
 
-    def _emit_agent(
-        self, parent: Any, event: "TrialHookEvent", exception: Any = None
-    ) -> Any:
+    def _emit_agent(self, parent: Any, event: "TrialHookEvent", exception: Any = None) -> Any:
         result = event.result
         timing = result.agent_execution
         if timing is None:
             return None
         agent_result = result.agent_result
-        span = Laminar.start_span(
-            "agent",
-            input=_read_instruction(event),
-            span_type="EXECUTOR",
-            parent_span_context=parent,
-            attributes=_agent_attributes(result),
-            start_time=parse_timestamp_ns(timing.started_at),
+        span = cast(
+            LaminarSpan,
+            Laminar.start_span(
+                "agent",
+                input=_read_instruction(event),
+                span_type="EXECUTOR",
+                parent_span_context=parent,
+                attributes=_agent_attributes(result),
+                start_time=parse_timestamp_ns(timing.started_at),
+            ),
         )
         end_ns = parse_timestamp_ns(timing.finished_at)
         if self.trajectory_spans:
             trajectory_path = _trajectory_path(event)
             if trajectory_path is not None:
                 try:
-                    emit_trajectory_spans(
+                    _span_count = emit_trajectory_spans(
                         trajectory_path,
                         span.get_laminar_span_context(),
                         start_ns=parse_timestamp_ns(timing.started_at),
                     )
                 except Exception as e:
-                    logger.warning(
-                        f"Could not convert trajectory {trajectory_path}: {e}"
-                    )
+                    logger.warning(f"Could not convert trajectory {trajectory_path}: {e}")
         span.set_output(self._executor_output(event))
         if agent_result is not None and agent_result.metadata:
-            span.set_attribute(
-                "harbor.agent.metadata", json_dumps(agent_result.metadata)
-            )
+            span.set_attribute("harbor.agent.metadata", json_dumps(agent_result.metadata))
         if exception is not None:
             _record_exception(span, exception)
             span.set_status(Status(StatusCode.ERROR, exception.exception_message))
@@ -544,9 +540,7 @@ class LaminarPlugin:
             return agent_result.metadata
         return None
 
-    def _scores(
-        self, rewards: dict[str, Any] | None, cancelled: bool
-    ) -> dict[str, float | int]:
+    def _scores(self, rewards: dict[str, Any] | None, cancelled: bool) -> dict[str, float | int]:
         if cancelled:
             return {}
         if rewards:
@@ -585,18 +579,16 @@ class LaminarPlugin:
     def _upload(
         self,
         datapoints: list[EvaluationResultDatapoint | PartialEvaluationDatapoint],
-        after: asyncio.Task | None = None,
-    ) -> asyncio.Task:
+        after: asyncio.Task[Any] | None = None,
+    ) -> asyncio.Task[None]:
         client, eval_id = self._client, self._eval_id
         assert client is not None and eval_id is not None
 
         async def upload() -> None:
             if after is not None:
                 # Upserts by id: saves of a datapoint must land in order.
-                await asyncio.gather(after, return_exceptions=True)
-            await client.evals.save_datapoints(
-                eval_id, datapoints, self._resolved_group_name
-            )
+                _results = await asyncio.gather(after, return_exceptions=True)
+            await client.evals.save_datapoints(eval_id, datapoints, self._resolved_group_name)
 
         task = asyncio.ensure_future(upload())
         self._uploads.append(task)
@@ -682,12 +674,7 @@ def _environment_info(event: "TrialHookEvent") -> dict[str, Any] | None:
 def _task_environment(event: "TrialHookEvent") -> dict[str, Any]:
     """The `[environment]` table of the task's task.toml."""
     try:
-        try:
-            import tomllib
-        except ImportError:
-            # Python 3.10. Harbor itself requires 3.12+, so this only matters
-            # outside a real Harbor run (e.g. our tests on 3.10).
-            import tomli as tomllib
+        import tomllib
 
         task_toml = Path(event.config.task.get_local_path()) / "task.toml"
         return tomllib.loads(task_toml.read_text()).get("environment", {})
@@ -774,12 +761,15 @@ def _emit_phase(
 ) -> Any:
     if timing is None or timing.started_at is None:
         return None
-    span = Laminar.start_span(
-        name,
-        input=input,
-        span_type=span_type,
-        parent_span_context=parent,
-        start_time=parse_timestamp_ns(timing.started_at),
+    span = cast(
+        LaminarSpan,
+        Laminar.start_span(
+            name,
+            input=input,
+            span_type=cast(LaminarSpanType, span_type),
+            parent_span_context=parent,
+            start_time=parse_timestamp_ns(timing.started_at),
+        ),
     )
     if output is not None:
         span.set_output(output)

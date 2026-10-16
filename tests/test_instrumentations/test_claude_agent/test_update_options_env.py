@@ -2,27 +2,27 @@
 
 import pytest
 
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.wrappers import (
-    update_options_env_for_proxy,
-    snapshot_options_env_for_proxy,
-    restore_options_env_from_snapshot,
-)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.utils import (
     FOUNDRY_BASE_URL_ENV,
     FOUNDRY_RESOURCE_ENV,
     resolve_target_url_from_env,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.wrappers import (
+    restore_options_env_from_snapshot,
+    snapshot_options_env_for_proxy,
+    update_options_env_for_proxy,
 )
 
 
 class MockOptions:
     """Mock ClaudeAgentOptions for testing."""
 
-    def __init__(self, env=None):
-        self.env = env or {}
+    def __init__(self, env: dict[str, str] | None = None):
+        self.env: dict[str, str] = env or {}
 
 
 @pytest.fixture
-def clean_env(monkeypatch):
+def clean_env(monkeypatch: pytest.MonkeyPatch):
     """Clean up environment variables."""
     monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
     monkeypatch.delenv("ANTHROPIC_ORIGINAL_BASE_URL", raising=False)
@@ -33,7 +33,7 @@ def clean_env(monkeypatch):
     monkeypatch.delenv("HTTPS_PROXY", raising=False)
 
 
-def test_basic_proxy_setup(clean_env):
+def test_basic_proxy_setup(clean_env: dict[str, str]):
     """Test basic proxy setup without foundry."""
     options = MockOptions()
     proxy_url = "http://127.0.0.1:45667"
@@ -46,7 +46,7 @@ def test_basic_proxy_setup(clean_env):
     assert options.env["ANTHROPIC_ORIGINAL_BASE_URL"] == target_url
 
 
-def test_preserves_existing_env_keys(clean_env):
+def test_preserves_existing_env_keys(clean_env: dict[str, str]):
     """Test that existing keys in options.env are preserved."""
     options = MockOptions({"SOME_CUSTOM_KEY": "custom_value"})
     proxy_url = "http://127.0.0.1:45667"
@@ -58,7 +58,7 @@ def test_preserves_existing_env_keys(clean_env):
     assert options.env["SOME_CUSTOM_KEY"] == "custom_value"
 
 
-def test_foundry_in_options_env(clean_env):
+def test_foundry_in_options_env(clean_env: dict[str, str]):
     """Test foundry configuration in options.env (not in os.environ)."""
     options = MockOptions(
         {
@@ -83,7 +83,10 @@ def test_foundry_in_options_env(clean_env):
     assert options.env["ANTHROPIC_ORIGINAL_BASE_URL"] == target_url
 
 
-def test_foundry_in_system_env(monkeypatch, clean_env):
+def test_foundry_in_system_env(
+    monkeypatch: pytest.MonkeyPatch,
+    clean_env: dict[str, str],
+):
     """Test foundry configuration in os.environ (should be copied to options.env)."""
     monkeypatch.setenv("CLAUDE_CODE_USE_FOUNDRY", "1")
     monkeypatch.setenv("ANTHROPIC_FOUNDRY_BASE_URL", "https://foundry.example.com")
@@ -101,7 +104,7 @@ def test_foundry_in_system_env(monkeypatch, clean_env):
     assert options.env["ANTHROPIC_ORIGINAL_BASE_URL"] == target_url
 
 
-def test_foundry_with_resource_in_options_env(clean_env):
+def test_foundry_with_resource_in_options_env(clean_env: dict[str, str]):
     """Test foundry configuration with resource in options.env."""
     options = MockOptions(
         {"CLAUDE_CODE_USE_FOUNDRY": "1", "ANTHROPIC_FOUNDRY_RESOURCE": "my-resource"}
@@ -120,7 +123,7 @@ def test_foundry_with_resource_in_options_env(clean_env):
     assert options.env["ANTHROPIC_ORIGINAL_BASE_URL"] == target_url
 
 
-def test_foundry_misconfigured_in_options_env(clean_env):
+def test_foundry_misconfigured_in_options_env(clean_env: dict[str, str]):
     """Test foundry enabled but misconfigured in options.env."""
     options = MockOptions(
         {
@@ -140,7 +143,10 @@ def test_foundry_misconfigured_in_options_env(clean_env):
     assert options.env["ANTHROPIC_ORIGINAL_BASE_URL"] == target_url
 
 
-def test_anthropic_base_url_from_system_env_is_ignored(monkeypatch, clean_env):
+def test_anthropic_base_url_from_system_env_is_ignored(
+    monkeypatch: pytest.MonkeyPatch,
+    clean_env: dict[str, str],
+):
     """Test that target_url parameter is used regardless of system env."""
     monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://custom.anthropic.com")
 
@@ -156,7 +162,10 @@ def test_anthropic_base_url_from_system_env_is_ignored(monkeypatch, clean_env):
     assert options.env["ANTHROPIC_ORIGINAL_BASE_URL"] == target_url
 
 
-def test_options_env_base_url_gets_overwritten(monkeypatch, clean_env):
+def test_options_env_base_url_gets_overwritten(
+    monkeypatch: pytest.MonkeyPatch,
+    clean_env: dict[str, str],
+):
     """Test that ANTHROPIC_BASE_URL in options.env gets overwritten with proxy URL."""
     options = MockOptions({"ANTHROPIC_BASE_URL": "https://options.anthropic.com"})
     proxy_url = "http://127.0.0.1:45667"
@@ -169,7 +178,7 @@ def test_options_env_base_url_gets_overwritten(monkeypatch, clean_env):
     assert options.env["ANTHROPIC_ORIGINAL_BASE_URL"] == target_url
 
 
-def test_updates_dict_in_place(clean_env):
+def test_updates_dict_in_place(clean_env: dict[str, str]):
     """Test that the function updates the dict in place, doesn't replace it."""
     original_dict = {"SOME_EXISTING_KEY": "existing_value"}
     options = MockOptions(original_dict)
@@ -189,7 +198,10 @@ def test_updates_dict_in_place(clean_env):
     assert options.env["ANTHROPIC_BASE_URL"] == proxy_url
 
 
-def test_sets_anthropic_original_base_url_in_options_env(monkeypatch, clean_env):
+def test_sets_anthropic_original_base_url_in_options_env(
+    monkeypatch: pytest.MonkeyPatch,
+    clean_env: dict[str, str],
+):
     """Test that ANTHROPIC_ORIGINAL_BASE_URL is set in options.env to target URL."""
     options = MockOptions()
     proxy_url = "http://127.0.0.1:45667"
@@ -203,7 +215,7 @@ def test_sets_anthropic_original_base_url_in_options_env(monkeypatch, clean_env)
     assert options.env["ANTHROPIC_ORIGINAL_BASE_URL"] == target_url
 
 
-def test_removes_foundry_resource_from_options_env(clean_env):
+def test_removes_foundry_resource_from_options_env(clean_env: dict[str, str]):
     """Test that FOUNDRY_RESOURCE is removed from options.env if present."""
     options = MockOptions({"ANTHROPIC_FOUNDRY_RESOURCE": "leftover-resource"})
     proxy_url = "http://127.0.0.1:45667"
@@ -216,7 +228,10 @@ def test_removes_foundry_resource_from_options_env(clean_env):
     assert options.env["ANTHROPIC_BASE_URL"] == proxy_url
 
 
-def test_foundry_resource_in_os_environ_is_handled_elsewhere(monkeypatch, clean_env):
+def test_foundry_resource_in_os_environ_is_handled_elsewhere(
+    monkeypatch: pytest.MonkeyPatch,
+    clean_env: dict[str, str],
+):
     """Test that FOUNDRY_RESOURCE from os.environ is handled in wrap_transport_connect."""
     # Set in os.environ but not in options.env
     monkeypatch.setenv(FOUNDRY_RESOURCE_ENV, "my-resource")
@@ -233,7 +248,9 @@ def test_foundry_resource_in_os_environ_is_handled_elsewhere(monkeypatch, clean_
     assert options.env["ANTHROPIC_BASE_URL"] == proxy_url
 
 
-def test_foundry_base_url_and_resource_are_mutually_exclusive(clean_env):
+def test_foundry_base_url_and_resource_are_mutually_exclusive(
+    clean_env: dict[str, str],
+):
     """Test that FOUNDRY_RESOURCE is removed when setting FOUNDRY_BASE_URL."""
     options = MockOptions(
         {
@@ -254,7 +271,7 @@ def test_foundry_base_url_and_resource_are_mutually_exclusive(clean_env):
     assert FOUNDRY_RESOURCE_ENV not in options.env
 
 
-def test_http_proxy_removed_from_options_env(clean_env):
+def test_http_proxy_removed_from_options_env(clean_env: dict[str, str]):
     """Test that HTTP_PROXY is removed from options.env."""
     options = MockOptions(
         {
@@ -276,7 +293,7 @@ def test_http_proxy_removed_from_options_env(clean_env):
     assert options.env["ANTHROPIC_ORIGINAL_BASE_URL"] == target_url
 
 
-def test_https_proxy_removed_from_options_env(clean_env):
+def test_https_proxy_removed_from_options_env(clean_env: dict[str, str]):
     """Test that HTTPS_PROXY is removed from options.env."""
     options = MockOptions(
         {
@@ -298,7 +315,7 @@ def test_https_proxy_removed_from_options_env(clean_env):
     assert options.env["ANTHROPIC_ORIGINAL_BASE_URL"] == target_url
 
 
-def test_both_proxy_vars_removed_from_options_env(clean_env):
+def test_both_proxy_vars_removed_from_options_env(clean_env: dict[str, str]):
     """Test that both HTTP_PROXY and HTTPS_PROXY are removed from options.env."""
     options = MockOptions(
         {
@@ -321,7 +338,10 @@ def test_both_proxy_vars_removed_from_options_env(clean_env):
     assert options.env["ANTHROPIC_ORIGINAL_BASE_URL"] == target_url
 
 
-def test_https_proxy_resolution_from_options_env(monkeypatch, clean_env):
+def test_https_proxy_resolution_from_options_env(
+    monkeypatch: pytest.MonkeyPatch,
+    clean_env: dict[str, str],
+):
     """Test that HTTPS_PROXY from options.env is used for target URL resolution."""
     # Set conflicting values in os.environ
     monkeypatch.setenv("HTTP_PROXY", "http://system-proxy.example.com")
@@ -346,7 +366,10 @@ def test_https_proxy_resolution_from_options_env(monkeypatch, clean_env):
     assert options.env["ANTHROPIC_ORIGINAL_BASE_URL"] == target_url
 
 
-def test_http_proxy_resolution_from_options_env(monkeypatch, clean_env):
+def test_http_proxy_resolution_from_options_env(
+    monkeypatch: pytest.MonkeyPatch,
+    clean_env: dict[str, str],
+):
     """Test that HTTP_PROXY from options.env is used for target URL resolution."""
     # Set conflicting values in os.environ
     monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://system.anthropic.com")
@@ -370,7 +393,7 @@ def test_http_proxy_resolution_from_options_env(monkeypatch, clean_env):
     assert options.env["ANTHROPIC_ORIGINAL_BASE_URL"] == target_url
 
 
-def test_snapshot_and_restore_options_env(clean_env):
+def test_snapshot_and_restore_options_env(clean_env: dict[str, str]):
     """Test that options.env can be snapshotted and restored on error."""
     # Initial state with proxy vars
     options = MockOptions(
@@ -408,7 +431,10 @@ def test_snapshot_and_restore_options_env(clean_env):
     assert options.env["OTHER_VAR"] == "keep_me"  # Still preserved
 
 
-def test_snapshot_and_restore_with_foundry(monkeypatch, clean_env):
+def test_snapshot_and_restore_with_foundry(
+    monkeypatch: pytest.MonkeyPatch,
+    clean_env: dict[str, str],
+):
     """Test snapshot/restore with Foundry configuration."""
     monkeypatch.setenv("CLAUDE_CODE_USE_FOUNDRY", "1")
 
@@ -441,7 +467,7 @@ def test_snapshot_and_restore_with_foundry(monkeypatch, clean_env):
     assert FOUNDRY_BASE_URL_ENV not in options.env  # Was not present originally
 
 
-def test_retry_after_failed_connect_uses_correct_target(clean_env):
+def test_retry_after_failed_connect_uses_correct_target(clean_env: dict[str, str]):
     """
     Test that retrying after failed connection uses the correct target URL.
 
@@ -478,7 +504,10 @@ def test_retry_after_failed_connect_uses_correct_target(clean_env):
     assert retry_target_url != proxy_url
 
 
-def test_snapshot_includes_foundry_use_env(monkeypatch, clean_env):
+def test_snapshot_includes_foundry_use_env(
+    monkeypatch: pytest.MonkeyPatch,
+    clean_env: dict[str, str],
+):
     """
     Test that CLAUDE_CODE_USE_FOUNDRY is included in snapshot and properly restored.
 

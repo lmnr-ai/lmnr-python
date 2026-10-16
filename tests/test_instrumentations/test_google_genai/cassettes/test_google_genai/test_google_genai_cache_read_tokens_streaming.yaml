@@ -1,0 +1,326 @@
+interactions:
+- request:
+    body: '{"model": "models/gemini-2.5-flash-lite", "ttl": "300s", "displayName":
+      "integration-cache-streaming", "contents": [{"parts": [{"text": "Reference paragraph
+      1: This is long reusable context for geography Q&A. It includes facts about
+      countries, capitals, demography, trade, climate, and history. The content is
+      intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 2: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 3: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 4: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 5: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 6: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 7: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 8: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 9: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 10: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 11: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 12: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 13: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 14: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 15: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 16: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 17: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 18: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 19: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 20: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 21: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 22: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 23: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 24: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 25: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 26: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 27: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 28: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 29: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 30: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 31: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 32: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 33: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 34: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 35: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 36: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 37: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 38: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 39: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 40: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 41: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 42: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 43: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 44: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 45: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 46: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 47: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 48: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata.\nReference
+      paragraph 49: This is long reusable context for geography Q&A. It includes facts
+      about countries, capitals, demography, trade, climate, and history. The content
+      is intentionally long to make cache token behavior obvious in usage metadata."}],
+      "role": "user"}], "systemInstruction": {"parts": [{"text": "You are a concise
+      assistant."}], "role": "user"}}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '12490'
+      content-type:
+      - application/json
+      host:
+      - generativelanguage.googleapis.com
+      user-agent:
+      - google-genai-sdk/2.19.0 gl-python/3.14.6
+      x-goog-api-client:
+      - google-genai-sdk/2.19.0 gl-python/3.14.6
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/cachedContents
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAC/5WQsXaDMAxFd76Cw1wTbGwTWDM3E1M3B6vgxNgGm6RtTv69TmDt0E1H70p6evck
+        TTMjRsiaNOtEN4A8WBPABL+7kMVoXtbe/MANd2ftaHVi03W6ysHxwep6PylyItnbc8loJejnllfh
+        dz2MyihEcoY+tfAD0irAinYziACtWq+SgnCEC4Rpi2nDaENoXnLMquJjxRcn/4PDl1PzX3jdkDKn
+        Vcn2nGO8TUjlnRbfxy0GFf/vZxGUNegVCfIhOo7v9JshL3p4hyCiLxEn7rEZ28EGoVt7AXOwiwlR
+        ILSuovZIHskv8Yd1wmkBAAA=
+    headers:
+      alt-svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      content-encoding:
+      - gzip
+      content-type:
+      - application/json; charset=UTF-8
+      date:
+      - Wed, 14 Oct 2026 14:54:24 GMT
+      server:
+      - scaffolding on HTTPServer2
+      server-timing:
+      - gfet4t7; dur=1080
+      transfer-encoding:
+      - chunked
+      vary:
+      - Origin
+      - X-Origin
+      - Referer
+      x-content-type-options:
+      - nosniff
+      x-frame-options:
+      - SAMEORIGIN
+      x-xss-protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"contents": [{"parts": [{"text": "What is the capital of France?"}], "role":
+      "user"}], "cachedContent": "cachedContents/k2unl639snzew1cjlp47b5qvqvdhp6hol98qi2b2",
+      "generationConfig": {}}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '187'
+      content-type:
+      - application/json
+      host:
+      - generativelanguage.googleapis.com
+      user-agent:
+      - google-genai-sdk/2.19.0 gl-python/3.14.6
+      x-goog-api-client:
+      - google-genai-sdk/2.19.0 gl-python/3.14.6
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:streamGenerateContent?alt=sse
+  response:
+    body:
+      string: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"The
+        capital of France is Paris\"}],\"role\": \"model\"},\"index\": 0}],\"usageMetadata\":
+        {\"promptTokenCount\": 2505,\"candidatesTokenCount\": 6,\"totalTokenCount\":
+        2511,\"cachedContentTokenCount\": 2497,\"promptTokensDetails\": [{\"modality\":
+        \"TEXT\",\"tokenCount\": 2505}],\"cacheTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\":
+        2497}],\"serviceTier\": \"standard\"},\"modelVersion\": \"gemini-2.5-flash-lite\",\"responseId\":
+        \"oJfPap6ZJov5xN8P46OUsAg\"}\r\n\r\ndata: {\"candidates\": [{\"content\":
+        {\"parts\": [{\"text\": \".\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\":
+        0}],\"usageMetadata\": {\"promptTokenCount\": 2505,\"candidatesTokenCount\":
+        7,\"totalTokenCount\": 2512,\"cachedContentTokenCount\": 2497,\"promptTokensDetails\":
+        [{\"modality\": \"TEXT\",\"tokenCount\": 2505}],\"cacheTokensDetails\": [{\"modality\":
+        \"TEXT\",\"tokenCount\": 2497}],\"serviceTier\": \"standard\"},\"modelVersion\":
+        \"gemini-2.5-flash-lite\",\"responseId\": \"oJfPap6ZJov5xN8P46OUsAg\"}\r\n\r\n"
+    headers:
+      alt-svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      content-disposition:
+      - attachment
+      content-type:
+      - text/event-stream
+      date:
+      - Wed, 14 Oct 2026 14:54:24 GMT
+      server:
+      - scaffolding on HTTPServer2
+      server-timing:
+      - gfet4t7; dur=500
+      transfer-encoding:
+      - chunked
+      vary:
+      - Origin
+      - X-Origin
+      - Referer
+      x-content-type-options:
+      - nosniff
+      x-frame-options:
+      - SAMEORIGIN
+      x-xss-protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+- request:
+    body: ''
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-type:
+      - application/json
+      host:
+      - generativelanguage.googleapis.com
+      user-agent:
+      - google-genai-sdk/2.19.0 gl-python/3.14.6
+      x-goog-api-client:
+      - google-genai-sdk/2.19.0 gl-python/3.14.6
+    method: DELETE
+    uri: https://generativelanguage.googleapis.com/v1beta/cachedContents/k2unl639snzew1cjlp47b5qvqvdhp6hol98qi2b2
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAC/6uu5QIABrCh3QMAAAA=
+    headers:
+      alt-svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      content-encoding:
+      - gzip
+      content-type:
+      - application/json; charset=UTF-8
+      date:
+      - Wed, 14 Oct 2026 14:54:25 GMT
+      server:
+      - scaffolding on HTTPServer2
+      server-timing:
+      - gfet4t7; dur=652
+      transfer-encoding:
+      - chunked
+      vary:
+      - Origin
+      - X-Origin
+      - Referer
+      x-content-type-options:
+      - nosniff
+      x-frame-options:
+      - SAMEORIGIN
+      x-xss-protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+version: 1

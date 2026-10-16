@@ -1,0 +1,21 @@
+STAGED_PY_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.pyi?$' || true)
+
+if [ -z "$STAGED_PY_FILES" ]; then
+  echo "husky pre-commit: No Python files staged, skipping ruff."
+  exit 0
+fi
+
+echo "husky pre-commit: Running ruff on staged Python files..."
+
+# Snapshot the working-tree state so we can tell whether ruff changed anything
+BEFORE=$(echo "$STAGED_PY_FILES" | xargs git diff --no-ext-diff | git hash-object --stdin)
+
+echo "$STAGED_PY_FILES" | xargs uv run ruff check --fix || exit 1
+echo "$STAGED_PY_FILES" | xargs uv run ruff format || exit 1
+
+AFTER=$(echo "$STAGED_PY_FILES" | xargs git diff --no-ext-diff | git hash-object --stdin)
+
+if [ "$BEFORE" != "$AFTER" ]; then
+  echo "husky pre-commit: ruff modified files. Review the changes, re-stage them and commit again."
+  exit 1
+fi

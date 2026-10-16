@@ -1,17 +1,19 @@
 """Unit tests configuration module."""
 
 import os
+from collections.abc import Generator
 
 import pytest
 from groq import AsyncGroq, Groq
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.groq import GroqInstrumentor
-
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.groq import GroqInstrumentor
 
 
 @pytest.fixture(scope="function", name="tracer_provider")
-def fixture_tracer_provider(span_exporter):
+def fixture_tracer_provider(span_exporter: InMemorySpanExporter):
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(span_exporter))
     return provider
@@ -32,8 +34,8 @@ def async_groq_client():
 
 
 @pytest.fixture(scope="function")
-def instrument_legacy(tracer_provider):
-    instrumentor = GroqInstrumentor(enrich_token_usage=True)
+def instrument_legacy(tracer_provider: TracerProvider) -> Generator[GroqInstrumentor]:
+    instrumentor = GroqInstrumentor()
     instrumentor.instrument(
         tracer_provider=tracer_provider,
     )

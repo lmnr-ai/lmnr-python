@@ -2,9 +2,9 @@
 
 import gzip
 import json
+from typing import Any
 
 from lmnr.sdk.client.synchronous.resources.base import BaseResource
-
 from lmnr.version import PYTHON_VERSION, __version__
 
 
@@ -15,7 +15,7 @@ class BrowserEvents(BaseResource):
         self,
         session_id: str,
         trace_id: str,
-        events: list[dict],
+        events: list[dict[str, Any]],  # rrweb event format
     ):
         url = self._base_url + "/v1/browser-sessions/events"
         payload = {
@@ -35,6 +35,4 @@ class BrowserEvents(BaseResource):
             },
         )
         if response.status_code != 200:
-            raise ValueError(
-                f"Failed to send events: [{response.status_code}] {response.text}"
-            )
+            raise ValueError(f"Failed to send events: [{response.status_code}] {response.text}")

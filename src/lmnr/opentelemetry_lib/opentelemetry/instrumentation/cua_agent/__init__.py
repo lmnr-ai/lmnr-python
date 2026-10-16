@@ -1,34 +1,47 @@
 """OpenTelemetry CUA instrumentation"""
 
-import logging
-from typing import Any, AsyncGenerator, Collection
-
-from lmnr import Laminar
-from lmnr.sdk.utils import json_dumps
-from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
-from opentelemetry.instrumentation.utils import unwrap
+from collections.abc import AsyncGenerator, Callable, Collection, Sequence
+from importlib.metadata import version
+from typing import Any
 
 from opentelemetry.trace import Span
 from opentelemetry.trace.status import Status, StatusCode
-from wrapt import wrap_function_wrapper
+from typing_extensions import override
 
-logger = logging.getLogger(__name__)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
+    BaseLaminarInstrumentor,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    LaminarInstrumentationScopeAttributes,
+    LaminarInstrumentorConfig,
+    WrappedFunctionSpec,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    stamp_instrumentation_scope,
+)
+from lmnr.sdk.laminar import Laminar
+from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.utils import json_dumps
+
+logger = get_default_logger(__name__)
 
 _instruments = ("cua-agent >= 0.4.0",)
 
 
 def _wrap_run(
-    wrapped,
-    instance,
-    args,
-    kwargs,
-):
-    parent_span = Laminar.start_span("ComputerAgent.run")
+    to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., AsyncGenerator[dict[str, Any], None]],
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> AsyncGenerator[dict[str, Any], None]:
+    parent_span = Laminar.start_span(to_wrap.get("span_name") or "ComputerAgent.run")
+    stamp_instrumentation_scope(parent_span, to_wrap)
     instance._lmnr_parent_span = parent_span
 
     try:
         result: AsyncGenerator[dict[str, Any], None] = wrapped(*args, **kwargs)
-        return _abuild_from_streaming_response(parent_span, result)
+        return _abuild_from_streaming_response(to_wrap, parent_span, result)
     except Exception as e:
         if parent_span.is_recording():
             parent_span.set_status(Status(StatusCode.ERROR))
@@ -38,13 +51,16 @@ def _wrap_run(
 
 
 async def _abuild_from_streaming_response(
-    parent_span: Span, response: AsyncGenerator[dict[str, Any], None]
+    to_wrap: WrappedFunctionSpec,
+    parent_span: Span,
+    response: AsyncGenerator[dict[str, Any], None],
 ) -> AsyncGenerator[dict[str, Any], None]:
     with Laminar.use_span(parent_span, end_on_exit=True):
         response_iter = aiter(response)
         while True:
             step = None
             step_span = Laminar.start_span("ComputerAgent.step")
+            stamp_instrumentation_scope(step_span, to_wrap)
             with Laminar.use_span(step_span):
                 try:
                     step = await anext(response_iter)
@@ -56,45 +72,54 @@ async def _abuild_from_streaming_response(
                         if len(step.get("output", [])) == 0:
                             continue
                     except Exception:
-                        pass
+                        logger.debug("Failed to process output tool calls", exc_info=True)
                     if step_span.is_recording():
                         step_span.end()
                 except StopAsyncIteration:
                     # don't end on purpose, there is no iteration step here.
                     break
 
-            if step is not None:
+            if step is not None:  # pyright: ignore[reportUnnecessaryComparison]
                 yield step
 
 
-class CuaAgentInstrumentor(BaseInstrumentor):
-    def __init__(self):
-        super().__init__()
+class CuaAgentInstrumentor(BaseLaminarInstrumentor):
+    _scope: LaminarInstrumentationScopeAttributes | None = None
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
-    def _instrument(self, **kwargs):
-        wrap_package = "agent.agent"
-        wrap_object = "ComputerAgent"
-        wrap_method = "run"
-        try:
-            wrap_function_wrapper(
-                wrap_package,
-                f"{wrap_object}.{wrap_method}",
-                _wrap_run,
+    @override
+    def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
+        if self._scope is None:
+            try:
+                cua_version = version("cua-agent")
+            except Exception:
+                logger.debug("Failed to get cua-agent version", exc_info=True)
+                cua_version = "unknown"
+            self._scope = LaminarInstrumentationScopeAttributes(
+                name="cua-agent",
+                version=cua_version,
             )
-        except ModuleNotFoundError:
-            pass  # that's ok, we don't want to fail if some methods do not exist
+        return self._scope
 
-    def _uninstrument(self, **kwargs):
-        wrap_package = "agent.agent"
-        wrap_object = "ComputerAgent"
-        wrap_method = "run"
-        try:
-            unwrap(
-                f"{wrap_package}.{wrap_object}",
-                wrap_method,
-            )
-        except ModuleNotFoundError:
-            pass  # that's ok, we don't want to fail if some methods do not exist
+    def __init__(self):
+        super().__init__()
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
+            wrapped_functions=[
+                WrappedFunctionSpec(
+                    package_name="agent.agent",
+                    object_name="ComputerAgent",
+                    method_name="run",
+                    # `run` returns an async generator rather than a coroutine,
+                    # so the wrapper is a plain function that returns it.
+                    is_async=False,
+                    is_streaming=True,
+                    span_name="ComputerAgent.run",
+                    span_type="DEFAULT",
+                    instrumentation_scope=self.instrumentation_scope(),
+                    wrapper_function=_wrap_run,
+                ),
+            ]
+        )

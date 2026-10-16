@@ -1,7 +1,7 @@
 from dataclasses import dataclass
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal, NotRequired
 
-from typing_extensions import NotRequired
+from typing_extensions import TypedDict
 
 
 class AnthropicUsage(TypedDict):
@@ -29,6 +29,32 @@ class AnthropicResponseMessage(TypedDict, total=False):
     usage: AnthropicUsage
     stop_reason: NotRequired[str | None]
     stop_sequence: NotRequired[str | None]
+
+
+class StreamEvent(TypedDict, total=False):
+    index: int
+    text: str
+    type: str
+    id: str
+    name: str
+    input: str
+    finish_reason: str | None
+
+
+class StreamUsage(TypedDict, total=False):
+    input_tokens: int
+    output_tokens: int
+    cache_read_input_tokens: int
+    cache_creation_input_tokens: int
+    service_tier: str | None
+
+
+class CompleteResponse(TypedDict):
+    events: list[StreamEvent]
+    model: str
+    usage: StreamUsage
+    id: str
+    service_tier: str | None
 
 
 class _FunctionToolCall(TypedDict):

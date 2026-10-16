@@ -1,10 +1,15 @@
 """OpenTelemetry OpenAI Agents SDK instrumentation for Laminar."""
 
-from .instrumentor import OpenAIAgentsInstrumentor, _instruments
-from .processor import LaminarAgentsTraceProcessor
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.instrumentor import (
+    OpenAIAgentsInstrumentor,
+    instruments,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.processor import (
+    LaminarAgentsTraceProcessor,
+)
 
 __all__ = [
-    "OpenAIAgentsInstrumentor",
     "LaminarAgentsTraceProcessor",
-    "_instruments",
+    "OpenAIAgentsInstrumentor",
+    "instruments",
 ]

@@ -1,10 +1,13 @@
 import logging
-
+from collections.abc import Mapping
 from enum import Enum
 from typing import TYPE_CHECKING
 
 from opentelemetry.trace import TracerProvider
-import lmnr.opentelemetry_lib.tracing._instrument_initializers as initializers
+
+from lmnr.opentelemetry_lib.tracing.instrumentor_initializer import (
+    InstrumentorInitializer,
+)
 from lmnr.opentelemetry_lib.utils.package_check import (
     get_package_version,
     is_package_installed,
@@ -64,7 +67,6 @@ class Instruments(Enum):
     MARQO = "marqo"
     MCP = "mcp"
     MICROSOFT_AGENT_FRAMEWORK = "microsoft_agent_framework"
-    MILVUS = "milvus"
     MISTRAL = "mistral"
     OLLAMA = "ollama"
     OPENAI = "openai"
@@ -76,7 +78,6 @@ class Instruments(Enum):
     OPENTELEMETRY = "opentelemetry"
     ###
     PATCHRIGHT = "patchright"
-    PINECONE = "pinecone"
     PLAYWRIGHT = "playwright"
     # Auto-enabled by default when `pydantic-ai-slim`/`pydantic-ai` is installed.
     # pydantic_ai emits its own OTel GenAI spans at the model abstraction layer,
@@ -99,62 +100,17 @@ class Instruments(Enum):
     WEAVIATE = "weaviate"
 
 
-INSTRUMENTATION_INITIALIZERS: dict[
-    Instruments, initializers.InstrumentorInitializer
-] = {
-    Instruments.ALEPHALPHA: initializers.AlephAlphaInstrumentorInitializer(),
-    Instruments.ANTHROPIC: initializers.AnthropicInstrumentorInitializer(),
-    Instruments.BEDROCK: initializers.BedrockInstrumentorInitializer(),
-    Instruments.BROWSER_USE: initializers.BrowserUseInstrumentorInitializer(),
-    Instruments.BROWSER_USE_SESSION: initializers.BrowserUseSessionInstrumentorInitializer(),
-    Instruments.BUBUS: initializers.BubusInstrumentorInitializer(),
-    Instruments.CHROMA: initializers.ChromaInstrumentorInitializer(),
-    Instruments.CLAUDE_AGENT: initializers.ClaudeAgentInstrumentorInitializer(),
-    Instruments.COHERE: initializers.CohereInstrumentorInitializer(),
-    Instruments.CREWAI: initializers.CrewAIInstrumentorInitializer(),
-    Instruments.CUA_AGENT: initializers.CuaAgentInstrumentorInitializer(),
-    Instruments.CUA_COMPUTER: initializers.CuaComputerInstrumentorInitializer(),
-    Instruments.DAYTONA_SDK: initializers.DaytonaSDKInstrumentorInitializer(),
-    Instruments.DEEPAGENTS: initializers.DeepagentsInstrumentorInitializer(),
-    Instruments.GOOGLE_ADK: initializers.GoogleADKInstrumentorInitializer(),
-    Instruments.GOOGLE_GENAI: initializers.GoogleGenAIInstrumentorInitializer(),
-    Instruments.GROQ: initializers.GroqInstrumentorInitializer(),
-    Instruments.HAYSTACK: initializers.HaystackInstrumentorInitializer(),
-    Instruments.KERNEL: initializers.KernelInstrumentorInitializer(),
-    Instruments.LANCEDB: initializers.LanceDBInstrumentorInitializer(),
-    Instruments.LANGCHAIN: initializers.LangchainInstrumentorInitializer(),
-    Instruments.LANGFUSE: initializers.LangfuseInstrumentorInitializer(),
-    Instruments.LANGGRAPH: initializers.LanggraphInstrumentorInitializer(),
-    Instruments.LITELLM: initializers.LitellmInstrumentorInitializer(),
-    Instruments.LLAMA_INDEX: initializers.LlamaIndexInstrumentorInitializer(),
-    Instruments.MARQO: initializers.MarqoInstrumentorInitializer(),
-    Instruments.MCP: initializers.MCPInstrumentorInitializer(),
-    Instruments.MICROSOFT_AGENT_FRAMEWORK: (
-        initializers.MicrosoftAgentFrameworkInstrumentorInitializer()
-    ),
-    Instruments.MILVUS: initializers.MilvusInstrumentorInitializer(),
-    Instruments.MISTRAL: initializers.MistralInstrumentorInitializer(),
-    Instruments.OLLAMA: initializers.OllamaInstrumentorInitializer(),
-    Instruments.OPENAI: initializers.OpenAIInstrumentorInitializer(),
-    Instruments.OPENAI_AGENTS: initializers.OpenAIAgentsInstrumentorInitializer(),
-    Instruments.OPENROUTER: initializers.OpenRouterInstrumentorInitializer(),
-    Instruments.OPENTELEMETRY: initializers.OpenTelemetryInstrumentorInitializer(),
-    Instruments.PATCHRIGHT: initializers.PatchrightInstrumentorInitializer(),
-    Instruments.PINECONE: initializers.PineconeInstrumentorInitializer(),
-    Instruments.PLAYWRIGHT: initializers.PlaywrightInstrumentorInitializer(),
-    Instruments.PYDANTIC_AI: initializers.PydanticAIInstrumentorInitializer(),
-    Instruments.QDRANT: initializers.QdrantInstrumentorInitializer(),
-    Instruments.REPLICATE: initializers.ReplicateInstrumentorInitializer(),
-    Instruments.SAGEMAKER: initializers.SageMakerInstrumentorInitializer(),
-    Instruments.SKYVERN: initializers.SkyvernInstrumentorInitializer(),
-    Instruments.TEMPORAL: initializers.TemporalInstrumentorInitializer(),
-    Instruments.TOGETHER: initializers.TogetherInstrumentorInitializer(),
-    Instruments.TRANSFORMERS: initializers.TransformersInstrumentorInitializer(),
-    Instruments.TYPESAFE: initializers.TypeSafeInstrumentorInitializer(),
-    Instruments.VERTEXAI: initializers.VertexAIInstrumentorInitializer(),
-    Instruments.WATSONX: initializers.WatsonxInstrumentorInitializer(),
-    Instruments.WEAVIATE: initializers.WeaviateInstrumentorInitializer(),
-}
+#: `Instruments` -> initializer. Populated by `register_initializers` (the
+#: built-ins via `default_initializers.register_default_initializers`, called
+#: from `lmnr/__init__.py`), so this module never imports the concrete
+#: initializers and stays out of the import cycle through the instrumentors.
+INSTRUMENTATION_INITIALIZERS: dict[Instruments, InstrumentorInitializer] = {}
+
+
+def register_initializers(
+    initializers: Mapping[Instruments, InstrumentorInitializer],
+) -> None:
+    INSTRUMENTATION_INITIALIZERS.update(initializers)
 
 
 #: Provider instrumentors that would produce spans overlapping with pydantic_ai's
@@ -200,9 +156,7 @@ _GOOGLE_ADK_GENAI_CONFLICTS: set[Instruments] = {
 
 
 def _pydantic_ai_installed() -> bool:
-    return is_package_installed("pydantic-ai-slim") or is_package_installed(
-        "pydantic-ai"
-    )
+    return is_package_installed("pydantic-ai-slim") or is_package_installed("pydantic-ai")
 
 
 def _deepagents_installed() -> bool:
@@ -213,7 +167,7 @@ def _google_adk_installed() -> bool:
     return is_package_installed("google-adk")
 
 
-def _langfuse_installed() -> bool:
+def langfuse_installed() -> bool:
     """The bridge targets langfuse >= 3.0 (OTel-native). For langfuse 2.x we
     report False so `connect_to_langfuse()` refuses to install a useless
     translator (the bridge initializer returns None for 2.x)."""
@@ -239,6 +193,15 @@ def init_instrumentations(
     async_client: AsyncLaminarClient | None = None,
     lmnr_span_processor: "SpanProcessor | None" = None,
 ):
+    if not INSTRUMENTATION_INITIALIZERS:
+        # Filled by `lmnr/__init__.py` (see `register_initializers`). Empty means
+        # this ran while the package was still importing, before that call.
+        module_logger.error(
+            "No instrumentation initializers are registered, so nothing will be "
+            + "auto-instrumented. Is Laminar being initialized while `lmnr` is "
+            + "still being imported?"
+        )
+        return
     block_instruments = block_instruments or set()
     if instruments is None:
         # The Langfuse bridge is opt-in: it is NEVER part of the default set,
@@ -249,18 +212,14 @@ def init_instrumentations(
         # calling `Laminar.connect_to_langfuse()` after initialization.
         instruments = set(Instruments) - {Instruments.LANGFUSE}
         deepagents_active = (
-            _deepagents_installed()
-            and Instruments.DEEPAGENTS not in block_instruments
+            _deepagents_installed() and Instruments.DEEPAGENTS not in block_instruments
         )
         # Only auto-enable PYDANTIC_AI if the package is actually installed,
         # and only auto-remove overlapping provider instrumentors in that case.
         # If pydantic_ai isn't installed, PYDANTIC_AI stays in the set but its
         # initializer will short-circuit to None (see
         # PydanticAIInstrumentorInitializer).
-        if (
-            _pydantic_ai_installed()
-            and Instruments.PYDANTIC_AI not in block_instruments
-        ):
+        if _pydantic_ai_installed() and Instruments.PYDANTIC_AI not in block_instruments:
             # Deepagents wins over pydantic_ai when both are installed: the
             # deepagents instrumentation relies on the raw-provider
             # instrumentors (Anthropic / OpenAI / …) to emit LLM spans
@@ -292,10 +251,7 @@ def init_instrumentations(
             instruments = instruments - {Instruments.DEEPAGENTS}
         # Only auto-remove GOOGLE_GENAI if google-adk is actually installed
         # (mirrors the pydantic_ai handling above).
-        if (
-            _google_adk_installed()
-            and Instruments.GOOGLE_ADK not in block_instruments
-        ):
+        if _google_adk_installed() and Instruments.GOOGLE_ADK not in block_instruments:
             module_logger.warning(
                 "Not enabling the default Google GenAI SDK instrumentation to "
                 + "avoid double instrumentation with Google ADK. To opt-in, pass "
@@ -304,8 +260,8 @@ def init_instrumentations(
                 + "Instruments.GOOGLE_GENAI."
             )
             instruments = instruments - _GOOGLE_ADK_GENAI_CONFLICTS
-    if not isinstance(instruments, set):
-        instruments = set(instruments)
+    if not isinstance(instruments, set):  # pyright: ignore[reportUnnecessaryIsInstance]
+        instruments = set(instruments)  # pyright: ignore[reportUnreachable]
 
     # Remove any instruments that were explicitly blocked
     instruments = instruments - block_instruments
@@ -320,9 +276,11 @@ def init_instrumentations(
             instrumentor = initializer.init_instrumentor(async_client)
             if instrumentor is None:
                 continue
-            # LangfuseInstrumentor doesn't extend BaseInstrumentor; it needs
-            # access to the Laminar SpanProcessor so it can dual-attach that
-            # same processor onto Langfuse-owned TracerProviders.
+            # LangfuseInstrumentor is a real BaseInstrumentor, but unlike every
+            # other one here it needs an EXTRA kwarg — the Laminar
+            # SpanProcessor — so it can dual-attach that same processor onto
+            # Langfuse-owned TracerProviders (not just a tracer_provider /
+            # logger_provider).
             if instrument == Instruments.LANGFUSE:
                 if lmnr_span_processor is None:
                     module_logger.debug(
@@ -343,9 +301,10 @@ def init_instrumentations(
                         lmnr_tracer_provider=tracer_provider,
                         lmnr_span_processor=lmnr_span_processor,
                     )
-                except Exception as exc:  # pylint: disable=broad-exception-caught
+                except Exception:
                     module_logger.warning(
-                        "Failed to install Laminar/Langfuse bridge: %s", exc
+                        "Failed to install Laminar/Langfuse bridge",
+                        exc_info=True,
                     )
                 continue
             if not instrumentor.is_instrumented_by_opentelemetry:
