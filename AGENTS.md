@@ -87,6 +87,7 @@ lmnr datasets pull <id>       # Pull dataset
 - The build checks out `github.repository` at `github.sha` with `persist-credentials: false` and fails unless the release tag points to that commit, the commit is on `main`, and the tag (minus a `.postN` / `-post.N` suffix) equals `pyproject.toml`'s version. So: bump the version on `main` first, then tag that commit.
 - Keep the verification steps inline in the workflow. A local composite action would be loaded from the checked-out tree, which is the code being verified.
 - Actions in this workflow are pinned to commit SHAs with a `# vX.Y.Z` comment. Bump them by resolving the new tag's SHA (`gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`), not by switching back to a floating tag.
+- Exception: an action that publishes GitHub immutable releases may be pinned to its exact version tag (`astral-sh/setup-uv@v10.3.0`), since that tag cannot be moved. Check with `gh api repos/<owner>/<repo>/releases/tags/<tag> --jq .immutable` before doing this; floating major tags like `@v10` are never immutable.
 
 ## Environment Variables
 
