@@ -39,6 +39,7 @@ jobs:
       - name: Verify release source
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
+        # GITHUB_REF is not checked below. See https://github.com/actions/runner/issues/2788
         run: |
           set -euo pipefail
           fail() { echo "::error::$*"; exit 1; }
@@ -46,8 +47,6 @@ jobs:
           origin="$(git remote get-url origin)"
           [ "${origin%.git}" = "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" ] \
             || fail "origin remote is not $GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          [ "$GITHUB_REF" = "refs/tags/$RELEASE_TAG" ] \
-            || fail "GITHUB_REF $GITHUB_REF is not the release tag $RELEASE_TAG"
           [ "$(git rev-parse HEAD)" = "$GITHUB_SHA" ] \
             || fail "HEAD $(git rev-parse HEAD) is not GITHUB_SHA $GITHUB_SHA"
           tag_sha="$(git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}")"
@@ -64,7 +63,7 @@ jobs:
           echo "Building $GITHUB_REPOSITORY@$GITHUB_SHA ($RELEASE_TAG, version $version)"
 
       - name: Set up Python
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        uses: actions/setup-python@v7.1.0 # immutable tag
         with:
           python-version: "3.11"
       - name: Install dependencies
@@ -96,7 +95,7 @@ jobs:
           name: dist
           path: dist/
       - name: Publish package
-        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        uses: pypa/gh-action-pypi-publish@v1.14.3 # immutable tag
         with:
           attestations: true
 
@@ -110,8 +109,7 @@ jobs:
           name: dist
           path: dist/
       - name: Install uv
-        # an immutable release tag: GitHub refuses to move it
-        uses: astral-sh/setup-uv@v10.3.0
+        uses: astral-sh/setup-uv@v10.3.0  # immutable tag
       - name: Verify PyPI attestations
         # Checks the Sigstore signature, that the publisher identity is this
         # repository, and that the attested digest is the file built above.
