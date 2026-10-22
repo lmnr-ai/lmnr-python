@@ -13,15 +13,12 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v7
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: ${{ matrix.python-version }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v 7.0.1
       - name: Install uv
-        uses: astral-sh/setup-uv@v10.3.0
+        uses: astral-sh/setup-uv@v10.3.0 # immutable tag
         with:
           activate-environment: true
+          python-version: ${{ matrix.python-version }}
       - name: Install the project
         run: uv sync --all-extras --dev
       - name: Run tests
@@ -38,7 +35,7 @@ jobs:
     if: always() && needs.test.result == 'failure'
     steps:
       - name: Notify Slack
-        uses: slackapi/slack-github-action@v4.0.0
+        uses: slackapi/slack-github-action@v4.0.0 # immutable tag
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: incoming-webhook
