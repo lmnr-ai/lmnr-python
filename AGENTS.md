@@ -81,6 +81,13 @@ lmnr datasets pull <id>       # Pull dataset
 
 - All entries in the `[dependency-groups].dev` section of `pyproject.toml` MUST be pinned to a specific version with `==X.Y.Z`. Do NOT use unbounded specifiers (`>=`, `^`, `~`, `<`, ranges, or bare package names). Pinning keeps the test matrix deterministic across developers and CI. When adding a new dev dep, look up the current release on https://pypi.org and pin to that exact version; bumps then go through a normal PR.
 
+## Releases
+
+- `python-publish.yml` runs on `release: published`. It builds in a job without `id-token`, then publishes from a separate `pypi`-environment job with Trusted Publishing and PEP 740 attestations, then re-verifies the attestations PyPI serves (`pypi-attestations verify pypi --repository ...`, retried because PyPI's integrity API lags).
+- The build checks out `github.repository` at `github.sha` with `persist-credentials: false` and fails unless the release tag points to that commit, the commit is on `main`, and the tag (minus a `.postN` / `-post.N` suffix) equals `pyproject.toml`'s version. So: bump the version on `main` first, then tag that commit.
+- Keep the verification steps inline in the workflow. A local composite action would be loaded from the checked-out tree, which is the code being verified.
+- Actions in this workflow are pinned to commit SHAs with a `# vX.Y.Z` comment. Bump them by resolving the new tag's SHA (`gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`), not by switching back to a floating tag.
+
 ## Environment Variables
 
 ```
