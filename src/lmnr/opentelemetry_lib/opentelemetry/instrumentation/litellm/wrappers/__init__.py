@@ -2,6 +2,7 @@ from collections.abc import AsyncGenerator, AsyncIterator, Callable, Generator, 
 from inspect import iscoroutine
 from typing import Any, cast
 
+from opentelemetry.context import get_value
 from opentelemetry.trace import Status, StatusCode
 from opentelemetry.util.types import AttributeValue
 from typing_extensions import TypedDict, TypeVar
@@ -27,6 +28,9 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.litellm.wrappers.respo
     process_responses_async_streaming_response,
     process_responses_streaming_response,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.context_keys import (
+    DISABLE_LITELLM_INSTRUMENTATION_CONTEXT_KEY,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
 )
@@ -34,6 +38,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers
     stamp_instrumentation_scope,
 )
 from lmnr.opentelemetry_lib.tracing.context import (
+    get_current_context,
     in_litellm_context,
     is_in_litellm_context,
     reset_in_litellm_context,
@@ -51,6 +56,47 @@ class PassedMetadata(TypedDict):
     user_id: str
     session_id: str
     tags: list[str]
+
+
+def _instrumentation_disabled() -> bool:
+    """Whether an enclosing instrumentation already owns this model call.
+
+    The openai-agents processor sets this around the `generation` span it opens
+    for a `LitellmModel` call. That span already records the request, the
+    response and the usage, so opening `litellm.completion` underneath it emits
+    a second LLM span for the same call - the tokens and the cost of every turn
+    end up counted twice in the trace.
+    """
+    return bool(get_value(DISABLE_LITELLM_INSTRUMENTATION_CONTEXT_KEY, get_current_context()))
+
+
+def _call_uninstrumented(
+    wrapped: Callable[..., T], args: Sequence[Any], kwargs: dict[str, Any]
+) -> Any:
+    """Run the wrapped call without opening a span for it.
+
+    Unlike the `is_in_litellm_context()` bridge guard, this one still has to
+    ENTER the litellm context: `openai/shared/chat_wrappers.py` keys off that
+    flag to skip its own span for the request litellm makes underneath, so
+    returning a bare `wrapped(...)` would only move the duplicate one level down
+    for openai-routed models. Async calls return a coroutine here, so the flag
+    is re-set for the duration of the await, the same two-step the instrumented
+    path does.
+    """
+    with in_litellm_context():
+        result = wrapped(*args, **kwargs)
+
+    if not iscoroutine(result):
+        return result
+
+    async def await_in_litellm_context() -> Any:
+        token = set_in_litellm_context(True)
+        try:
+            return await result
+        finally:
+            reset_in_litellm_context(token)
+
+    return await_in_litellm_context()
 
 
 def _get_rollout_wrapper() -> tuple[
@@ -95,6 +141,8 @@ def wrap_completion(
     # inner one passes the call straight through.
     if is_in_litellm_context():
         return wrapped(*args, **kwargs)
+    if _instrumentation_disabled():
+        return _call_uninstrumented(wrapped, args, kwargs)
     meta = cast(PassedMetadata, kwargs.get("metadata") or {})
     span = Laminar.start_span(
         name=to_wrap.get("span_name") or "litellm.completion",
@@ -268,6 +316,8 @@ def wrap_responses(
     # user called owns the span; the bridged inner call passes through.
     if is_in_litellm_context():
         return wrapped(*args, **kwargs)
+    if _instrumentation_disabled():
+        return _call_uninstrumented(wrapped, args, kwargs)
     meta = cast(PassedMetadata, kwargs.get("metadata") or {})
     span = Laminar.start_span(
         name=to_wrap.get("span_name") or "litellm.responses",
