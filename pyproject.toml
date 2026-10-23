@@ -6,7 +6,7 @@
 
 [project]
 name = "lmnr"
-version = "0.8.0"
+version = "0.8.1"
 description = "Python SDK for Laminar"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -23,7 +23,7 @@ dependencies = [
   "blake3 (>=1.0.0,<2.0.0)",
   "grpcio>=1",
   "httpx (>=0.24.0,<1.0.0)",
-  "lmnr-claude-code-proxy>=0.1.22",
+  "lmnr-claude-code-proxy>=0.2.0",
   "opentelemetry-api (>=1.39.0, <2.0.0)",
   "opentelemetry-sdk (>=1.39.0, <2.0.0)",
   "opentelemetry-exporter-otlp-proto-http (>=1.39.0, <2.0.0)",
@@ -122,7 +122,7 @@ dev = [
   "cdp-use==1.4.5",
   "claude-agent-sdk==0.2.168",
   "google-adk==2.11.0",
-  "daytona==0.198.0",  # higher versions pin pydantic to >= 2.13; which conflicts with openrouter's < 2.13
+  "daytona==0.225.0",
   "google-genai==2.19.0",
   "groq==1.1.2",
   "kernel==0.44.0",
@@ -134,7 +134,7 @@ dev = [
   "litellm==1.103.4",
   "openai==2.54.0",
   "openai-agents==0.20.0",
-  "openrouter==1.3.41",
+  "openrouter==1.3.73",
   "patchright==1.58.2",
   "playwright==1.58.0",
   "pydantic-ai-slim==2.55.0",
