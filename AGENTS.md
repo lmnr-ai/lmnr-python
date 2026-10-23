@@ -113,6 +113,7 @@ LMNR_BASE_URL         # API base URL (default: https://api.lmnr.ai)
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/litellm/AGENTS.md`
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/microsoft_agent_framework/AGENTS.md`
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/openai/AGENTS.md` - Responses-API streaming + replay, Decisions API
+- `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/openai_agents/AGENTS.md` - span-I/O invariant, `mcp_tools` span parenting
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/openrouter/AGENTS.md`
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/pydantic_ai/AGENTS.md`
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/temporal/AGENTS.md`
