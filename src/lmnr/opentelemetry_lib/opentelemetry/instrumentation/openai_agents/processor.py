@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
@@ -66,28 +67,41 @@ def _root_span_name(trace_or_span: Trace | AgentsSpan[Any]) -> str:
     return name or _ROOT_SPAN_FALLBACK_NAME
 
 
-def _rename_span(lmnr_span: LaminarSpan, name: str) -> None:
-    """Rename a span and repair the dotted path captured at start."""
-    old_name = lmnr_span.name
-    lmnr_span.update_name(name)
-    attributes = lmnr_span.attributes
-    span_path = list(cast(tuple[str, ...], attributes.get(SPAN_PATH, ())))
+def _path_of(lmnr_span: LaminarSpan, key: str) -> list[str]:
+    return list(cast(tuple[str, ...], lmnr_span.attributes.get(key, ())))
+
+
+def _rename_root_span(
+    root: LaminarSpan, name: str, descendants: Iterable[LaminarSpan] = ()
+) -> None:
+    """Rename the root span and repair the path captured at start, on the root
+    and on every still-open span that started under the old name."""
+    old_name = root.name
+    root.update_name(name)
+    root_path = _path_of(root, SPAN_PATH)
     # With LMNR_DISABLE_TRACING the path element is masked to "_"; leave it be.
-    if not span_path or span_path[-1] != old_name:
+    if not root_path or root_path[-1] != old_name:
         return
-    span_path[-1] = name
-    lmnr_span.set_attribute(SPAN_PATH, span_path)
+    index = len(root_path) - 1
+    root_ids_path = _path_of(root, SPAN_IDS_PATH)
     # Children resolve their parent path from the processor's cache, not from
     # the attribute, so both have to move.
     wrapper = get_tracer_wrapper()
     processor = wrapper.span_processor if wrapper else None
-    span_context = lmnr_span.context
-    if isinstance(processor, LaminarSpanProcessor) and span_context is not None:
-        processor.set_parent_path_info(
-            span_context.span_id,
-            span_path,
-            list(cast(tuple[str, ...], attributes.get(SPAN_IDS_PATH, ()))),
-        )
+    for span in (root, *descendants):
+        # Ended spans take no attributes and have left the processor's cache.
+        if not span.is_recording():
+            continue
+        span_path = _path_of(span, SPAN_PATH)
+        span_ids_path = _path_of(span, SPAN_IDS_PATH)
+        # Only spans under this root, matched by span ids, not by name.
+        if span_ids_path[: index + 1] != root_ids_path or len(span_path) <= index:
+            continue
+        span_path[index] = name
+        span.set_attribute(SPAN_PATH, span_path)
+        span_context = span.context
+        if isinstance(processor, LaminarSpanProcessor) and span_context is not None:
+            processor.set_parent_path_info(span_context.span_id, span_path, span_ids_path)
 
 
 @dataclass
@@ -138,8 +152,10 @@ class LaminarAgentsTraceProcessor(_Base):
             # then, the root span has the placeholder name. Rename it.
             trace_name = trace.name
             if trace_name and state.root_span is not None and state.root_span.name != trace_name:
+                with self._lock:
+                    open_spans = [entry.lmnr_span for entry in state.spans.values()]
                 try:
-                    _rename_span(state.root_span, trace_name)
+                    _rename_root_span(state.root_span, trace_name, open_spans)
                 except Exception:
                     logger.debug("Failed to update root span name on openai agents", exc_info=True)
             self._apply_trace_metadata(state.root_span, trace)

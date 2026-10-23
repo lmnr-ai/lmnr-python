@@ -76,7 +76,31 @@ def test_root_span_path_is_repaired_when_a_span_arrives_first(processor, span_ex
 
     spans = _spans_by_name(span_exporter)
     assert "agents.trace" not in spans
+    # The span that arrived first was started under the placeholder name.
+    assert list(spans["step"].attributes["lmnr.span.path"]) == ["Agent workflow", "step"]
     assert list(spans["Agent workflow"].attributes["lmnr.span.path"]) == ["Agent workflow"]
+
+
+def test_root_rename_repairs_spans_started_after_it(processor, span_exporter):
+    """Children started after the rename read the parent path from the
+    processor's cache, which has to follow the rename too."""
+    first = _span(agents_span_data.AgentSpanData(name="Agent A"))
+    processor.on_span_start(first)
+    trace = _trace()
+    processor.on_trace_start(trace)
+    nested = _span(agents_span_data.CustomSpanData(name="step", data={}), parent_id=first.span_id)
+    processor.on_span_start(nested)
+    processor.on_span_end(nested)
+    processor.on_span_end(first)
+    processor.on_trace_end(trace)
+
+    spans = _spans_by_name(span_exporter)
+    assert list(spans["Agent A"].attributes["lmnr.span.path"]) == ["Agent workflow", "Agent A"]
+    assert list(spans["step"].attributes["lmnr.span.path"]) == [
+        "Agent workflow",
+        "Agent A",
+        "step",
+    ]
 
 
 def test_handoff_destination_is_not_parented_onto_a_closed_span(processor, span_exporter):
