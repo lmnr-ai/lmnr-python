@@ -109,6 +109,7 @@ LMNR_BASE_URL         # API base URL (default: https://api.lmnr.ai)
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/deepagents/AGENTS.md`
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/google_adk/AGENTS.md`
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/google_genai/AGENTS.md` - native Gemini shape, bytes serialization
+- `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/langchain/AGENTS.md` - callback handler, LLM-run suppression flag, LangGraph topology, OpenAI traceparent
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/langfuse/AGENTS.md` - Langfuse bridge
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/litellm/AGENTS.md`
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/microsoft_agent_framework/AGENTS.md`

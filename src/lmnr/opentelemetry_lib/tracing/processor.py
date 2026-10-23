@@ -1,7 +1,7 @@
 import logging
 import threading
 import uuid
-from typing import Any, cast
+from typing import cast
 
 from opentelemetry.context import Context, get_value
 from opentelemetry.sdk.trace import ReadableSpan, Span, SpanProcessor
@@ -194,11 +194,6 @@ class LaminarSpanProcessor(SpanProcessor):
                             else json_dumps(value)
                         ),
                     )
-
-        if span.name == "LangGraph.workflow":
-            graph_context = cast(dict[Any, Any], get_value("lmnr.langgraph.graph")) or {}
-            for key, value in graph_context.items():
-                span.set_attribute(f"lmnr.association.properties.{key}", value)
 
         with self._instance_lock:
             self.instance.on_start(span, parent_context)

@@ -419,8 +419,9 @@ def test_alias_uninstrument_restores_aliases_under_a_foreign_layer(
 #: cannot identify the source library — `lmnr.span.instrumentation_scope.*` is
 #: the only thing that can, so a package that creates spans without stamping
 #: emits unattributable spans. `langgraph` and `opentelemetry` are deliberately
-#: absent: they create no spans (langgraph only attaches context values,
-#: opentelemetry patches a DataDog `SpanContext` bug).
+#: absent: they create no spans (langgraph only publishes graph topology for
+#: the langchain callback handler, opentelemetry patches a DataDog
+#: `SpanContext` bug).
 _SPAN_CREATING_INSTRUMENTATION_PACKAGES = [
     "anthropic",
     "claude_agent",
@@ -430,6 +431,7 @@ _SPAN_CREATING_INSTRUMENTATION_PACKAGES = [
     "google_genai",
     "groq",
     "kernel",
+    "langchain",
     "litellm",
     "openai",
     "skyvern",

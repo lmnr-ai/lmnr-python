@@ -71,7 +71,8 @@ cohere=["opentelemetry-instrumentation-cohere==0.62.4"]
 crewai=["opentelemetry-instrumentation-crewai==0.62.4"]
 haystack=["opentelemetry-instrumentation-haystack==0.62.4"]
 lancedb=["opentelemetry-instrumentation-lancedb==0.62.4"]
-langchain=["opentelemetry-instrumentation-langchain==0.62.4"]
+# LangChain is instrumented natively; kept so `lmnr[langchain]` still resolves
+langchain=[]
 llamaindex=["opentelemetry-instrumentation-llamaindex==0.62.4"]
 marqo=["opentelemetry-instrumentation-marqo==0.62.4"]
 mcp=["opentelemetry-instrumentation-mcp==0.62.4"]
@@ -97,7 +98,6 @@ all = [
   "opentelemetry-instrumentation-crewai==0.62.4",
   "opentelemetry-instrumentation-haystack==0.62.4",
   "opentelemetry-instrumentation-lancedb==0.62.4",
-  "opentelemetry-instrumentation-langchain==0.62.4",
   "opentelemetry-instrumentation-llamaindex==0.62.4",
   "opentelemetry-instrumentation-marqo==0.62.4",
   "opentelemetry-instrumentation-mcp==0.62.4",

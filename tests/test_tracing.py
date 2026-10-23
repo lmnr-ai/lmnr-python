@@ -312,7 +312,7 @@ def test_use_span_with_auto_instrumentation_langchain(
         Laminar.set_span_output(response.content[0])
 
     spans = span_exporter.get_finished_spans()
-    # assert len(spans) == 2
+    assert len(spans) == 2
     test_span = next(span for span in spans if span.name == "test")
     openai_span = next(span for span in spans if span.name == "ChatOpenAI.chat")
 
