@@ -266,6 +266,16 @@ def test_cached_events_terminal_status(status: str, terminal: str):
     assert events[-1].type == terminal
 
 
+def test_cached_events_cancelled_has_no_terminal_event():
+    # The API has no `response.cancelled` event; a cancelled stream just ends.
+    events = _events(_response([_MESSAGE], status="cancelled"))
+    assert events[-1].type == "response.output_item.done"
+    assert not any(
+        event.type in ("response.completed", "response.incomplete", "response.failed")
+        for event in events
+    )
+
+
 def test_cached_events_stream_sync():
     events = _events(_response([_MESSAGE]))
     with CachedResponsesEventStream(events) as stream:

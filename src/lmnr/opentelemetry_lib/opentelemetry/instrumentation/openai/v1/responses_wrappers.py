@@ -631,6 +631,9 @@ def _given_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
     `responses.stream()` forwards every param it doesn't set as `omit`, which
     `kwargs.get(key, default)` would return in place of the default. Tracing
     reads this copy; the wrapped call still gets the original kwargs.
+
+    Both sentinel classes are in `openai._types` since openai 1.0.0, older than the
+    `openai._legacy_response` this module already needs, so they add no version floor.
     """
     return {key: value for key, value in kwargs.items() if not isinstance(value, NotGiven | Omit)}
 

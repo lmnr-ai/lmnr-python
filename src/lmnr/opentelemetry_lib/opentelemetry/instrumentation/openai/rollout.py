@@ -243,7 +243,8 @@ class OpenAIRolloutWrapper:
         `output_item.added`, its content parts (`content_part.added`, one delta,
         `*.done`, `content_part.done`) or arguments (one delta, `done`), and
         `output_item.done`, then the terminal `response.completed` /
-        `response.incomplete` / `response.failed` carrying the full response.
+        `response.incomplete` / `response.failed` carrying the full response
+        (none for `cancelled`, which the API has no event for).
         That's the order the SDK's `ResponseStreamState` (behind
         `client.responses.stream()`) accumulates, so `get_final_response()` on a
         replayed stream returns `response`. Returns None if synthesis fails.
@@ -426,12 +427,14 @@ class OpenAIRolloutWrapper:
                         response=response, sequence_number=seq(), type="response.failed"
                     )
                 )
-            else:
+            elif response.status == "completed":
                 events.append(
                     ResponseCompletedEvent(
                         response=response, sequence_number=seq(), type="response.completed"
                     )
                 )
+            # Any other status (`cancelled`) has no terminal event: the live
+            # stream just ends, and `get_final_response()` raises.
             return events
         except Exception:
             logger.debug("Failed to synthesize Responses-API stream events", exc_info=True)
