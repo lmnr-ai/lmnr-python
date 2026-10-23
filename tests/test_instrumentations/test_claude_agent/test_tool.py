@@ -57,13 +57,13 @@ async def test_claude_agent_tool(span_exporter: InMemorySpanExporter):
     spans_tuple = span_exporter.get_finished_spans()
     spans = sorted(spans_tuple, key=lambda x: x.start_time or 0)
 
-    assert len(spans) == 9
-    assert spans[0].name == "create_sdk_mcp_server"
-    assert spans[1].name == "ClaudeSDKClient.connect"
-    assert spans[2].name == "ClaudeSDKClient.query"
-    assert spans[3].name == "ClaudeSDKClient.receive_response"
-    assert spans[4].name == "ClaudeSDKClient.receive_messages"
-    assert spans[5].name == "ClaudeSDKClient.query"
-    assert spans[6].name == "ClaudeSDKClient.receive_response"
-    assert spans[7].name == "ClaudeSDKClient.receive_messages"
-    assert spans[8].name == "ClaudeSDKClient.disconnect"
+    assert len(spans) == 8
+    # create_sdk_mcp_server is deliberately not spanned (it would be a stray root trace)
+    assert spans[0].name == "ClaudeSDKClient.connect"
+    assert spans[1].name == "ClaudeSDKClient.query"
+    assert spans[2].name == "ClaudeSDKClient.receive_response"
+    assert spans[3].name == "ClaudeSDKClient.receive_messages"
+    assert spans[4].name == "ClaudeSDKClient.query"
+    assert spans[5].name == "ClaudeSDKClient.receive_response"
+    assert spans[6].name == "ClaudeSDKClient.receive_messages"
+    assert spans[7].name == "ClaudeSDKClient.disconnect"

@@ -15,6 +15,10 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.proxy imp
     start_proxy,
     stop_proxy,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.sdk_mcp import (
+    restrict_server_spans_to_tool_calls,
+    with_traceparent,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.span_utils import (
     publish_span_context_for_transport,
     record_input,
@@ -58,31 +62,43 @@ DEFAULT_CLEANUP_TIMEOUT = 4.0
 T = TypeVar("T")
 
 
-def wrap_sync(
-    to_wrap: ClaudeAgentSpec,
+def wrap_create_sdk_mcp_server(
+    _to_wrap: ClaudeAgentSpec,
     wrapped: Callable[..., T],
     _instance: Any,
     args: Sequence[Any],
     kwargs: dict[str, Any],
 ) -> T:
-    """Wrapper for synchronous methods."""
+    """Wrapper for `create_sdk_mcp_server`.
 
-    with Laminar.start_as_current_span(
-        span_name(to_wrap),
-        span_type=cast(LaminarSpanType, to_wrap.get("span_type") or "DEFAULT"),
-    ) as span:
-        stamp_instrumentation_scope(span, to_wrap)
-        record_input(span, wrapped, args, kwargs)
+    Deliberately NOT a span: servers are built at setup time, outside any
+    trace, so a span here becomes its own one-span trace.
+    """
+    result = wrapped(*args, **kwargs)
+    try:
+        restrict_server_spans_to_tool_calls(result)
+    except Exception:
+        logger.debug("Failed to restrict SDK MCP server spans", exc_info=True)
+    return result
 
-        try:
-            result = wrapped(*args, **kwargs)
-        except Exception as e:
-            span.set_status(Status(StatusCode.ERROR))
-            span.record_exception(e)
-            raise
 
-        record_output(span, to_wrap, result)
-        return result
+async def wrap_sdk_mcp_request(
+    _to_wrap: ClaudeAgentSpec,
+    wrapped: Callable[..., Awaitable[T]],
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T:
+    """Wrapper for `Query._handle_sdk_mcp_request`: stamp trace context into the message."""
+    try:
+        transport = getattr(instance, "transport", None)
+        if len(args) >= 2:
+            args = (args[0], with_traceparent(transport, args[1]), *args[2:])
+        elif "message" in kwargs:
+            kwargs = {**kwargs, "message": with_traceparent(transport, kwargs["message"])}
+    except Exception:
+        logger.debug("Failed to propagate trace context to SDK MCP server", exc_info=True)
+    return await wrapped(*args, **kwargs)
 
 
 async def wrap_async(

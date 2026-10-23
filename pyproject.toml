@@ -120,7 +120,7 @@ dev = [
   "agent-framework-openai==1.15.0",
   "basedpyright==1.40.2",
   "cdp-use==1.4.5",
-  "claude-agent-sdk==0.2.128",
+  "claude-agent-sdk==0.2.168",
   "google-adk==2.11.0",
   "daytona==0.198.0",  # higher versions pin pydantic to >= 2.13; which conflicts with openrouter's < 2.13
   "google-genai==2.19.0",
