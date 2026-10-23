@@ -188,7 +188,9 @@ def set_request_attributes(
                 else:
                     schema = None
                     try:
-                        schema = json.dumps(pydantic.TypeAdapter(response_format).json_schema())
+                        schema = json.dumps(
+                            pydantic.TypeAdapter(cast("Any", response_format)).json_schema()
+                        )
                     except Exception:
                         try:
                             schema = json.dumps(response_format)
