@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
+from opentelemetry.semconv.attributes.exception_attributes import (
+    EXCEPTION_STACKTRACE,
+    EXCEPTION_TYPE,
+)
 from opentelemetry.trace import Status, StatusCode
 
 from lmnr.sdk.log import get_default_logger
@@ -29,6 +33,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.messages
     set_tool_definitions_from_response,
 )
 from lmnr.opentelemetry_lib.tracing.attributes import Attributes
+from lmnr.opentelemetry_lib.tracing.context import get_event_attributes_from_context
 from lmnr.sdk.utils import json_dumps
 
 logger = get_default_logger(__name__)
@@ -43,8 +48,41 @@ def apply_span_error(lmnr_span: LaminarSpan, span: AgentsSpan[Any]) -> None:
     if not error:
         return
     try:
-        message = getattr(error, "message", None) or str(error)
-        lmnr_span.set_status(Status(StatusCode.ERROR, message))
+        # `SpanError` is a TypedDict, so at runtime the fields are dict keys,
+        # not attributes. `message` is a short label ("Error running tool
+        # (non-fatal)"), `data` carries the specifics.
+        if isinstance(error, dict):
+            fields = cast("dict[str, Any]", error)
+            raw_label = fields.get("message")
+            data = fields.get("data")
+            fallback = str(fields)
+        else:
+            raw_label = getattr(error, "message", None)
+            data = getattr(error, "data", None)
+            fallback = str(error)
+        label = str(raw_label) if raw_label else fallback
+        details = json_dumps(data) if data else label
+
+        # app-server derives a span's error status from the presence of an
+        # `exception` event, never from the OTel status code, so the status
+        # below is invisible on its own. The Agents SDK reports failures as a
+        # `SpanError` payload rather than a raised exception, so wrap it like
+        # `openai/v1/responses_wrappers.py` does for cancelled responses, and
+        # override `exception.type` so the trace view's error card is headlined
+        # by the SDK's label instead of `Exception`.
+        lmnr_span.record_exception(
+            Exception(details),
+            attributes={
+                **get_event_attributes_from_context(),
+                EXCEPTION_TYPE: label,
+                # Nothing was raised here, so the stacktrace `record_exception`
+                # derives from our wrapper is just `Exception: <details>`, which
+                # the error card would show under "Stack trace" as a duplicate
+                # of the message. Blank it rather than mislead.
+                EXCEPTION_STACKTRACE: "",
+            },
+        )
+        lmnr_span.set_status(Status(StatusCode.ERROR, label))
     except Exception:
         logger.debug("Failed to apply span error", exc_info=True)
 
