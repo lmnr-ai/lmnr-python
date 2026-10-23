@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterable, Awaitable, Callable, Collection, Sequence
+from contextvars import Token
 from typing import Any, cast
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
@@ -11,7 +12,9 @@ from typing_extensions import TypeVar, override
 from wrapt import wrap_function_wrapper
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.helpers import (
+    reset_current_model_name,
     reset_current_system_instructions,
+    set_current_model_name,
     set_current_system_instructions,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.processor import (
@@ -37,37 +40,62 @@ def _extract_system_instructions(
     return None
 
 
+def _model_name(instance: Any) -> str | None:
+    # `OpenAIResponsesModel` / `OpenAIChatCompletionsModel` keep the model name
+    # on `.model`; other `Model` implementations may not.
+    model = getattr(instance, "model", None)
+    return model if isinstance(model, str) else None
+
+
+_ModelCallTokens = tuple[Token[str | None], Token[str | None]]
+
+
+def _enter_model_call(
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> _ModelCallTokens:
+    return (
+        set_current_system_instructions(_extract_system_instructions(args, kwargs)),
+        set_current_model_name(_model_name(instance)),
+    )
+
+
+def _exit_model_call(tokens: _ModelCallTokens) -> None:
+    system_instructions_token, model_name_token = tokens
+    reset_current_model_name(model_name_token)
+    reset_current_system_instructions(system_instructions_token)
+
+
 async def _wrap_get_response(
     wrapped: Callable[..., Awaitable[T]],
-    _instance: Any,
+    instance: Any,
     args: Sequence[Any],
     kwargs: dict[str, Any],
 ) -> T:
-    token = set_current_system_instructions(_extract_system_instructions(args, kwargs))
+    tokens = _enter_model_call(instance, args, kwargs)
     try:
         return await wrapped(*args, **kwargs)
     finally:
-        reset_current_system_instructions(token)
+        _exit_model_call(tokens)
 
 
 def _wrap_stream_response(
     wrapped: Callable[..., AsyncIterable[T]],
-    _instance: Any,
+    instance: Any,
     args: Sequence[Any],
     kwargs: dict[str, Any],
 ) -> AsyncIterable[T]:
     # wrapped(*args, **kwargs) returns an async generator; wrap iteration so the
-    # ContextVar stays set while generation_span / response_span exits (which is
-    # where on_span_end fires and we read the system instructions).
-    system_instructions = _extract_system_instructions(args, kwargs)
-
+    # ContextVars stay set while generation_span / response_span exits (which is
+    # where on_span_end fires and we read the system instructions and model).
     async def _gen():
-        token = set_current_system_instructions(system_instructions)
+        tokens = _enter_model_call(instance, args, kwargs)
         try:
             async for chunk in wrapped(*args, **kwargs):
                 yield chunk
         finally:
-            reset_current_system_instructions(token)
+            _exit_model_call(tokens)
 
     return _gen()
 
