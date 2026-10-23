@@ -13,7 +13,7 @@ from typing_extensions import TypeVar
 from lmnr import Laminar
 from lmnr.sdk.datasets import LaminarDataset
 from lmnr.sdk.evaluations import evaluate
-from lmnr.sdk.evaluations.models import EvaluationRunResult
+from lmnr.sdk.evaluations.models import EvaluationResultDatapoint, EvaluationRunResult
 from lmnr.sdk.types import Datapoint, Dataset
 
 T = TypeVar("T")
@@ -534,3 +534,68 @@ async def test_evaluate_datapoint_failure_does_not_abort_remaining(
     # With concurrency_limit=1 the failure on the first datapoint completes
     # before the second is scheduled — every datapoint must still run.
     assert executed == [f"test-{i}" for i in range(6)]
+
+
+@pytest.mark.asyncio
+@patch("lmnr.sdk.client.synchronous.resources.datasets.Datasets.pull")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init")
+async def test_evaluate_upload_failure_does_not_skip_remaining_saves(
+    mock_init: MagicMock,
+    mock_datapoints: MagicMock,
+    mock_dataset_pull: MagicMock,
+    mock_eval_response: MagicMock,
+    mock_datapoints_response: MagicMock,
+    mock_dataset_pull_response: MagicMock,
+):
+    """One failing background upload must not abandon the result saves of the
+    datapoints after it; the upload error still propagates once they finish."""
+    mock_init.return_value = mock_eval_response
+    mock_dataset_pull.return_value = mock_dataset_pull_response
+
+    started: list[int] = []
+    completed: list[int] = []
+
+    async def save_datapoints(
+        _eval_id: uuid.UUID,
+        datapoints: Sequence[Any],
+        _group_name: str | None = None,
+    ) -> MagicMock:
+        datapoint = datapoints[0]
+        if not isinstance(datapoint, EvaluationResultDatapoint):
+            # The partial save that makes the datapoint visible in the UI.
+            return mock_datapoints_response
+        started.append(datapoint.index)
+        if datapoint.index == 0:
+            raise ValueError("upload boom")
+        # Keep the save in flight past the end of the datapoint loop, so a
+        # result that is only persisted because the run waits for it is
+        # distinguishable from one that happened to land early.
+        await asyncio.sleep(0.1)
+        completed.append(datapoint.index)
+        return mock_datapoints_response
+
+    mock_datapoints.side_effect = save_datapoints
+
+    async def executor(data: T, _target: Any = None) -> T:
+        return data
+
+    with pytest.raises(ValueError, match="upload boom"):
+        _result = await cast(
+            Awaitable[EvaluationRunResult],
+            evaluate(
+                data=[{"data": f"test-{i}", "target": f"test-{i}"} for i in range(6)],
+                executor=executor,
+                evaluators={
+                    "exact": lambda output, target: 1 if output == target else 0,
+                },
+                concurrency_limit=1,
+                project_api_key="test",
+            ),
+        )
+    _flush_success = Laminar.flush()
+
+    assert sorted(started) == list(range(6))
+    # Every save after the failing one must have completed before `evaluate`
+    # gave up and closed the client.
+    assert sorted(completed) == list(range(1, 6))

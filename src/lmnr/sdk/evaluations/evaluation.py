@@ -198,6 +198,7 @@ class Evaluation:
         self.batch_size: int = concurrency_limit
         self._logger: Logger = get_default_logger(self.__class__.__name__)
         self.upload_tasks: list[Task[None]] = []
+        self._upload_error: BaseException | None = None
         self.base_http_url: str = f"{base_http_url or base_url}:{http_port or 443}"
 
         api_key = project_api_key or from_env("LMNR_PROJECT_API_KEY")
@@ -278,11 +279,19 @@ class Evaluation:
 
             self.reporter.start(len(self.data))
             average_scores = await self._evaluate_in_batches(evaluation["id"])
-            # Wait for all background upload tasks to complete
+            # Wait for all background upload tasks to complete. Failures are
+            # collected instead of raised eagerly: a plain `gather` returns as
+            # soon as one task fails, leaving the other saves unfinished when
+            # `_shutdown` closes the client below.
             if self.upload_tasks:
                 self._logger.debug(f"Waiting for {len(self.upload_tasks)} upload tasks to complete")
-                _gathered_results = await asyncio.gather(*self.upload_tasks)
+                gathered_results = await asyncio.gather(*self.upload_tasks, return_exceptions=True)
+                for gathered in gathered_results:
+                    if isinstance(gathered, BaseException) and self._upload_error is None:
+                        self._upload_error = gathered
                 self._logger.debug("All upload tasks completed")
+            if self._upload_error is not None:
+                raise self._upload_error
         except Exception as e:
             await self._shutdown()
             self.reporter.stop_with_error(e)
@@ -307,6 +316,21 @@ class Evaluation:
         source = self._source_dataset
         if source is not None and getattr(source, "client", None):
             source.client.close()
+
+    def _prune_upload_tasks(self) -> None:
+        # Drop references to finished background saves so their payloads are
+        # not retained for the whole run. This is a memory measure only: a
+        # failed save is latched on `self._upload_error` and re-raised by
+        # `_run` *after* it has drained the remaining upload tasks. Folding it
+        # into the datapoint loop's `first_error` instead would abort
+        # `_evaluate_in_batches` before that drain, so every still-pending save
+        # would be abandoned when `_shutdown` closes the client.
+        for task in self.upload_tasks:
+            if task.done() and not task.cancelled():
+                exc = task.exception()
+                if exc is not None and self._upload_error is None:
+                    self._upload_error = exc
+        self.upload_tasks = [task for task in self.upload_tasks if not task.done()]
 
     async def _evaluate_in_batches(self, eval_id: uuid.UUID) -> dict[str, Numeric]:
         semaphore = asyncio.Semaphore(self.concurrency_limit)
@@ -345,9 +369,9 @@ class Evaluation:
         first_error: BaseException | None = None
 
         def prune_finished(task_list: list[Task[None]]) -> list[Task[None]]:
-            # Drop references to completed tasks as we go. A failed task's
-            # exception is recorded, NOT raised here: every datapoint must
-            # still be scheduled and run (matching the previous behavior,
+            # Drop references to completed datapoint tasks as we go. A failed
+            # task's exception is recorded, NOT raised here: every datapoint
+            # must still be scheduled and run (matching the previous behavior,
             # where all tasks were created before `gather` surfaced errors).
             nonlocal first_error
             for task in task_list:
@@ -365,7 +389,7 @@ class Evaluation:
             task = asyncio.create_task(evaluate_task(datapoint, idx))
             tasks.append(task)
             tasks = prune_finished(tasks)
-            self.upload_tasks = prune_finished(self.upload_tasks)
+            self._prune_upload_tasks()
 
         # Wait for the remaining in-flight tasks to complete
         if tasks:
