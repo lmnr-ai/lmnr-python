@@ -4,6 +4,8 @@ VCR-recorded tests cover the live span; httpx `MockTransport` tests cover what a
 cassette can't express (API errors, debug-replay cache HITs / MISSes).
 """
 
+from __future__ import annotations
+
 import json
 from collections.abc import Iterator
 from typing import Any, cast
@@ -577,3 +579,64 @@ def test_replay_hit_with_raw_response_runs_live(
     assert len(requests) == 1
     assert events[-1].type == "response.completed"
     assert _attributes(_only_span(span_exporter))["lmnr.span.type"] == "LLM"
+
+
+def _raise(*_args: Any, **_kwargs: Any) -> Any:
+    raise RuntimeError("tracing bug")
+
+
+def test_tracing_failure_returns_untraced_stream(
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # A bug in a tracing helper must not reach the caller: the live stream is
+    # returned unwrapped and the span that was already opened is ended.
+    monkeypatch.setattr(responses_wrappers, "TracedResponseStream", _raise)
+    requests: list[httpx.Request] = []
+    stream = _client(requests).responses.create(
+        model="gpt-4.1-nano", input="What is the capital of France?", stream=True
+    )
+    received = list(stream)
+
+    assert len(requests) == 1
+    assert [event.type for event in received] == [event.type for event in _events(_response())]
+    assert len(span_exporter.get_finished_spans()) == 1
+
+
+def test_replay_probe_failure_runs_live(
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    replay_outcome: list[CacheOutcome],
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(replay, "cache_outcome_for", _raise)
+    requests: list[httpx.Request] = []
+    stream = _client(requests).responses.create(
+        model="gpt-4.1-nano", input="What is the capital of France?", stream=True
+    )
+    _ = list(stream)
+
+    assert len(requests) == 1
+    _assert_text_span(_only_span(span_exporter), "Paris")
+
+
+@pytest.mark.asyncio
+async def test_replay_cached_rebuild_failure_runs_live_async(
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    replay_outcome: list[CacheOutcome],
+    monkeypatch: pytest.MonkeyPatch,
+):
+    replay_outcome.append(_hit())
+    monkeypatch.setattr(OpenAIRolloutWrapper, "cached_response_to_responses", _raise)
+    requests: list[httpx.Request] = []
+    stream = await _async_client(requests).responses.create(
+        model="gpt-4.1-nano", input="What is the capital of France?", stream=True
+    )
+    _ = [event async for event in stream]
+
+    assert len(requests) == 1
+    span = _only_span(span_exporter)
+    assert _attributes(span)["lmnr.span.type"] == "LLM"
+    _assert_text_span(span, "Paris")

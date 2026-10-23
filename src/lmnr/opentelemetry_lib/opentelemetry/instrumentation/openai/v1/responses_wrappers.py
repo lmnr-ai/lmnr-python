@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import re
 import threading
@@ -108,6 +110,7 @@ _TERMINAL_STATUSES = frozenset({"completed", "incomplete", "failed", "cancelled"
 _RAW_RESPONSE_HEADER = "X-Stainless-Raw-Response"
 logger = get_default_logger(__name__)
 T = TypeVar("T")
+S = TypeVar("S")
 
 
 def _replay_enabled() -> bool:
@@ -551,9 +554,11 @@ def responses_get_or_create_wrapper(
     _instance: Any,
     args: Sequence[Any],
     kwargs: dict[str, Any],
-) -> "T | Response | CachedResponsesEventStream":
+) -> T | Response | CachedResponsesEventStream:
     # Not @dont_throw: that would swallow the provider's own exceptions (and
-    # return None to the caller). The tracing helpers below never raise.
+    # return None to the caller). Instead every tracing helper called here is
+    # @dont_throw, and a None from one falls back to the untraced result, so
+    # `wrapped()` runs exactly once and its result or exception reaches the caller.
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
     if context_api.get_value(
@@ -567,14 +572,18 @@ def responses_get_or_create_wrapper(
         return _replay_response_sync(to_wrap, start_time, wrapped, args, kwargs)
 
     traced_kwargs = _given_kwargs(kwargs)
+    if traced_kwargs is None:
+        return wrapped(*args, **kwargs)
     try:
         response = wrapped(*args, **kwargs)
     except Exception as e:
         _process_exception(to_wrap, start_time, traced_kwargs, e)
         raise
-    if isinstance(response, Stream):
-        return _trace_stream(to_wrap, start_time, response, traced_kwargs)
-    return _process_response(to_wrap, start_time, response, traced_kwargs)
+    if _is_stream(response):
+        traced = _trace_stream(to_wrap, start_time, response, traced_kwargs)
+        return response if traced is None else traced
+    _process_response(to_wrap, start_time, response, traced_kwargs)
+    return response
 
 
 async def async_responses_get_or_create_wrapper(
@@ -583,7 +592,7 @@ async def async_responses_get_or_create_wrapper(
     _instance: Any,
     args: Sequence[Any],
     kwargs: dict[str, Any],
-) -> "T | Response | AsyncCachedResponsesEventStream":
+) -> T | Response | AsyncCachedResponsesEventStream:
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
     if context_api.get_value(
@@ -596,16 +605,26 @@ async def async_responses_get_or_create_wrapper(
         return await _replay_response_async(to_wrap, start_time, wrapped, args, kwargs)
 
     traced_kwargs = _given_kwargs(kwargs)
+    if traced_kwargs is None:
+        return await wrapped(*args, **kwargs)
     try:
         response = await wrapped(*args, **kwargs)
     except Exception as e:
         _process_exception(to_wrap, start_time, traced_kwargs, e)
         raise
-    if isinstance(response, (Stream, AsyncStream)):
-        return _trace_stream(to_wrap, start_time, response, traced_kwargs)
-    return _process_response(to_wrap, start_time, response, traced_kwargs)
+    if _is_stream(response):
+        traced = _trace_stream(to_wrap, start_time, response, traced_kwargs)
+        return response if traced is None else traced
+    _process_response(to_wrap, start_time, response, traced_kwargs)
+    return response
 
 
+def _is_stream(response: object) -> bool:
+    # A bool rather than an inline isinstance, so `response` keeps its `T` type.
+    return isinstance(response, (Stream, AsyncStream))
+
+
+@dont_throw
 def _given_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
     """The request kwargs minus the SDK's `NOT_GIVEN` / `omit` placeholders.
 
@@ -616,6 +635,7 @@ def _given_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in kwargs.items() if not isinstance(value, NotGiven | Omit)}
 
 
+@dont_throw
 def _start_span(to_wrap: WrappedFunctionSpec, start_time: int) -> Span | None:
     span = safe_start_span(
         name=to_wrap.get("span_name") or SPAN_NAME,
@@ -629,21 +649,43 @@ def _start_span(to_wrap: WrappedFunctionSpec, start_time: int) -> Span | None:
     return span
 
 
+@dont_throw
+def _wrap_stream(
+    span: Span,
+    stream: T,
+    start_time: int,
+    kwargs: dict[str, Any],
+    record_raw_response: bool = False,
+) -> T:
+    """Wrap a live `Stream` / `AsyncStream` of Responses-API events in a
+    `TracedResponseStream` that ends `span`. The stream type is preserved for
+    the caller: the proxy forwards everything it doesn't intercept."""
+    return cast(
+        T,
+        TracedResponseStream(
+            span, stream, start_time, kwargs, record_raw_response=record_raw_response
+        ),
+    )
+
+
+@dont_throw
 def _trace_stream(
     to_wrap: WrappedFunctionSpec,
     start_time: int,
     stream: T,
     kwargs: dict[str, Any],
-) -> T:
-    """Wrap a live `Stream` / `AsyncStream` of Responses-API events in a
-    `TracedResponseStream`. The stream type is preserved for the caller: the
-    proxy forwards everything it doesn't intercept to the wrapped stream."""
+) -> T | None:
+    """Open the span for a live stream and wrap it. None if tracing failed."""
     span = _start_span(to_wrap, start_time)
     if span is None:
-        return stream
-    return cast(T, TracedResponseStream(span, stream, start_time, kwargs))
+        return None
+    traced = _wrap_stream(span, stream, start_time, kwargs)
+    if traced is None:
+        span.end()
+    return traced
 
 
+@dont_throw
 def _open_replay_span(
     to_wrap: WrappedFunctionSpec, start_time: int, kwargs: dict[str, Any]
 ) -> Span | None:
@@ -668,6 +710,20 @@ def _open_replay_span(
     return span
 
 
+@dont_throw
+def _cache_outcome(span: Span) -> CacheOutcome | None:
+    from lmnr.sdk.debug.replay import cache_outcome_for
+
+    return cache_outcome_for(cast(SDKSpan, span))
+
+
+@dont_throw
+async def _acache_outcome(span: Span) -> CacheOutcome | None:
+    from lmnr.sdk.debug.replay import acache_outcome_for
+
+    return await acache_outcome_for(cast(SDKSpan, span))
+
+
 def _record_raw_response(span: Span, response: Any):
     """Stamp `lmnr.sdk.raw.response` (the raw provider response) so the source
     trace is cacheable as a `type="raw"` envelope, mirroring the chat path."""
@@ -678,12 +734,13 @@ def _record_raw_response(span: Span, response: Any):
         logger.debug("Failed to record raw Responses response")
 
 
+@dont_throw
 def _finish_live_replay(
     start_time: int,
     span: Span,
-    response: T,
+    response: Any,
     kwargs: dict[str, Any],
-) -> T:
+):
     """Process a live response onto the pre-opened replay span and end it."""
     try:
         parsed_response = parse_response(cast(Response, response))
@@ -691,10 +748,8 @@ def _finish_live_replay(
         if traced_data is not None:
             set_data_attributes(traced_data, span)
             _record_raw_response(span, response)
-    except Exception:
-        logger.debug("Failed to process live Responses replay response", exc_info=True)
-    span.end()
-    return response
+    finally:
+        span.end()
 
 
 def _is_raw_response_request(kwargs: dict[str, Any]) -> bool:
@@ -706,56 +761,46 @@ def _is_raw_response_request(kwargs: dict[str, Any]) -> bool:
     return _RAW_RESPONSE_HEADER in cast(dict[str, Any], extra_headers)
 
 
+@dont_throw
 def _serve_cached_response(
     start_time: int,
     span: Span,
     outcome: CacheOutcome,
     kwargs: dict[str, Any],
-    is_async: bool,
-) -> "Response | CachedResponsesEventStream | AsyncCachedResponsesEventStream | None":
+    make_stream: Callable[[list[ResponseStreamEvent]], S],
+) -> Response | S | None:
     """On a cache HIT, reconstruct + serve an OpenAI `Response`, or for
-    `stream=True` an event stream replaying it. Returns None to fall through to
-    the live path (the span is then still open)."""
+    `stream=True` a `make_stream(events)` replaying it. Returns None to fall
+    through to the live path (the span is then still open)."""
     if _is_raw_response_request(kwargs):
         return None
 
-    from ..rollout import (
-        AsyncCachedResponsesEventStream,
-        CachedResponsesEventStream,
-        get_openai_rollout_wrapper,
-    )
+    from ..rollout import get_openai_rollout_wrapper
 
-    try:
-        rollout_wrapper = get_openai_rollout_wrapper()
-        if rollout_wrapper is None:
-            return None
-        cached = rollout_wrapper.cached_response_to_responses(outcome.cached or {})
-        if cached is None:
-            return None
-        served: Response | CachedResponsesEventStream | AsyncCachedResponsesEventStream = cached
-        if kwargs.get("stream"):
-            events = rollout_wrapper.cached_response_to_responses_events(cached)
-            if events is None:
-                return None
-            served = (
-                AsyncCachedResponsesEventStream(events)
-                if is_async
-                else CachedResponsesEventStream(events)
-            )
-
-        from lmnr.sdk.debug.replay import mark_span_cached
-
-        traced_data = _build_traced_data(start_time, cached, kwargs, stash=False)
-        if traced_data is not None:
-            set_data_attributes(traced_data, span)
-        mark_span_cached(cast(SDKSpan, span))
-    except Exception:
-        logger.debug("Failed to serve cached Responses response", exc_info=True)
+    rollout_wrapper = get_openai_rollout_wrapper()
+    if rollout_wrapper is None:
         return None
+    cached = rollout_wrapper.cached_response_to_responses(outcome.cached or {})
+    if cached is None:
+        return None
+    served: Response | S = cached
+    if kwargs.get("stream"):
+        events = rollout_wrapper.cached_response_to_responses_events(cached)
+        if events is None:
+            return None
+        served = make_stream(events)
+
+    from lmnr.sdk.debug.replay import mark_span_cached
+
+    traced_data = _build_traced_data(start_time, cached, kwargs, stash=False)
+    if traced_data is not None:
+        set_data_attributes(traced_data, span)
+    mark_span_cached(cast(SDKSpan, span))
     span.end()
     return served
 
 
+@dont_throw
 def _end_span_with_exception(span: Span, e: BaseException):
     span.set_attribute(ERROR_TYPE, e.__class__.__name__)
     span.record_exception(e, attributes=get_event_attributes_from_context())
@@ -769,32 +814,36 @@ def _replay_response_sync(
     wrapped: Callable[..., T],
     args: Sequence[Any],
     kwargs: dict[str, Any],
-) -> "T | Response | CachedResponsesEventStream":
-    from lmnr.sdk.debug.replay import cache_outcome_for
+) -> T | Response | CachedResponsesEventStream:
+    from ..rollout import CachedResponsesEventStream
 
     traced_kwargs = _given_kwargs(kwargs)
+    if traced_kwargs is None:
+        return wrapped(*args, **kwargs)
     span = _open_replay_span(to_wrap, start_time, traced_kwargs)
     if span is None:
         return wrapped(*args, **kwargs)
-    outcome = cache_outcome_for(cast(SDKSpan, span))
+    outcome = _cache_outcome(span)
     if outcome is not None and outcome.kind == "hit":
-        served = _serve_cached_response(start_time, span, outcome, traced_kwargs, is_async=False)
+        served = _serve_cached_response(
+            start_time, span, outcome, traced_kwargs, CachedResponsesEventStream
+        )
         if served is not None:
-            return cast("Response | CachedResponsesEventStream", served)
+            return served
 
     try:
         response = wrapped(*args, **kwargs)
     except Exception as e:
         _end_span_with_exception(span, e)
         raise
-    if isinstance(response, Stream):
-        return cast(
-            T,
-            TracedResponseStream(
-                span, response, start_time, traced_kwargs, record_raw_response=True
-            ),
-        )
-    return _finish_live_replay(start_time, span, response, traced_kwargs)
+    if _is_stream(response):
+        traced = _wrap_stream(span, response, start_time, traced_kwargs, record_raw_response=True)
+        if traced is not None:
+            return traced
+        span.end()
+        return response
+    _finish_live_replay(start_time, span, response, traced_kwargs)
+    return response
 
 
 async def _replay_response_async(
@@ -803,32 +852,36 @@ async def _replay_response_async(
     wrapped: Callable[..., Awaitable[T]],
     args: Sequence[Any],
     kwargs: dict[str, Any],
-) -> "T | Response | AsyncCachedResponsesEventStream":
-    from lmnr.sdk.debug.replay import acache_outcome_for
+) -> T | Response | AsyncCachedResponsesEventStream:
+    from ..rollout import AsyncCachedResponsesEventStream
 
     traced_kwargs = _given_kwargs(kwargs)
+    if traced_kwargs is None:
+        return await wrapped(*args, **kwargs)
     span = _open_replay_span(to_wrap, start_time, traced_kwargs)
     if span is None:
         return await wrapped(*args, **kwargs)
-    outcome = await acache_outcome_for(cast(SDKSpan, span))
+    outcome = await _acache_outcome(span)
     if outcome is not None and outcome.kind == "hit":
-        served = _serve_cached_response(start_time, span, outcome, traced_kwargs, is_async=True)
+        served = _serve_cached_response(
+            start_time, span, outcome, traced_kwargs, AsyncCachedResponsesEventStream
+        )
         if served is not None:
-            return cast("Response | AsyncCachedResponsesEventStream", served)
+            return served
 
     try:
         response = await wrapped(*args, **kwargs)
     except Exception as e:
         _end_span_with_exception(span, e)
         raise
-    if isinstance(response, (Stream, AsyncStream)):
-        return cast(
-            T,
-            TracedResponseStream(
-                span, response, start_time, traced_kwargs, record_raw_response=True
-            ),
-        )
-    return _finish_live_replay(start_time, span, response, traced_kwargs)
+    if _is_stream(response):
+        traced = _wrap_stream(span, response, start_time, traced_kwargs, record_raw_response=True)
+        if traced is not None:
+            return traced
+        span.end()
+        return response
+    _finish_live_replay(start_time, span, response, traced_kwargs)
+    return response
 
 
 def _get_request_reasoning(kwargs: dict[str, Any]) -> tuple[str | None, str | None]:
@@ -957,24 +1010,22 @@ def _build_traced_data(
 @dont_throw
 def _process_response(
     to_wrap: WrappedFunctionSpec, start_time: int, response: Any, kwargs: dict[str, Any]
-) -> Any:
+):
     parsed_response = parse_response(response)
 
     response_id = getattr(parsed_response, "id", None)
     if not response_id:
-        return response
+        return
 
     traced_data = _build_traced_data(start_time, parsed_response, kwargs)
     if traced_data is None:
-        return response
+        return
 
     if parsed_response.status == "completed":
         span = _start_span(to_wrap, int(traced_data.start_time))
         if span is not None:
             set_data_attributes(traced_data, span)
             span.end()
-
-    return response
 
 
 if TYPE_CHECKING:

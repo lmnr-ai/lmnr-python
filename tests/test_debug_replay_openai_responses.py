@@ -11,6 +11,8 @@
   the replay pre-stamp, so the hashes match by construction.
 """
 
+from __future__ import annotations
+
 import json
 from typing import Any, cast
 
