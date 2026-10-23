@@ -379,6 +379,47 @@ def test_responses_streaming_mock_iteration_error(
     assert _attributes(span)["gen_ai.response.id"] == "resp_mock"
 
 
+def test_responses_stream_helper_early_exit_ends_span(
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+):
+    requests: list[httpx.Request] = []
+    with _client(requests).responses.stream(
+        model="gpt-4.1-nano", input="What is the capital of France?"
+    ) as stream:
+        for event in stream:
+            if event.type == "response.output_text.delta":
+                break
+        assert span_exporter.get_finished_spans() == ()
+
+    # `ResponseStream.__exit__` closes the httpx response, not our proxy; the
+    # span still ends here, while `stream` is alive, not at garbage collection.
+    span = _only_span(span_exporter)
+    assert span.status.status_code == StatusCode.OK
+    assert _attributes(span)["gen_ai.response.id"] == "resp_mock"
+    assert stream is not None
+
+
+@pytest.mark.asyncio
+async def test_responses_stream_helper_early_exit_ends_span_async(
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+):
+    requests: list[httpx.Request] = []
+    async with _async_client(requests).responses.stream(
+        model="gpt-4.1-nano", input="What is the capital of France?"
+    ) as stream:
+        async for event in stream:
+            if event.type == "response.output_text.delta":
+                break
+        assert span_exporter.get_finished_spans() == ()
+
+    span = _only_span(span_exporter)
+    assert span.status.status_code == StatusCode.OK
+    assert _attributes(span)["gen_ai.response.id"] == "resp_mock"
+    assert stream is not None
+
+
 # --- debug replay -------------------------------------------------------------
 
 

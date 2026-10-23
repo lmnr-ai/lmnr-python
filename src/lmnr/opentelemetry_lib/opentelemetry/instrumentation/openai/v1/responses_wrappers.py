@@ -984,6 +984,29 @@ else:
     _ResponseStreamBase = ObjectProxy
 
 
+class _SpanEndingHttpResponse(_ResponseStreamBase):
+    """Proxy over an `httpx.Response` that runs `on_close` before closing it."""
+
+    _on_close: Callable[[], None] | None = None
+
+    @override
+    def __init__(self, response: Any, on_close: Callable[[], None]):
+        super().__init__(response)
+        self._on_close = on_close
+
+    def _notify(self):
+        if self._on_close is not None:
+            self._on_close()
+
+    def close(self) -> None:
+        self._notify()
+        cast(Any, self.__wrapped__).close()
+
+    async def aclose(self) -> None:
+        self._notify()
+        await cast(Any, self.__wrapped__).aclose()
+
+
 class TracedResponseStream(_ResponseStreamBase):
     """Proxy over a Responses-API `Stream` / `AsyncStream` of `ResponseStreamEvent`s.
 
@@ -1080,6 +1103,16 @@ class TracedResponseStream(_ResponseStreamBase):
         for the caller to await, exactly like the unwrapped call."""
         self._finish()
         return self._stream.close()
+
+    @property
+    def response(self) -> Any:
+        """The stream's `httpx.Response`, wrapped to end the span when closed.
+
+        `responses.stream()`'s `ResponseStream` never calls `close()` or exits
+        this proxy: its `close()` / `__exit__` close `raw_stream.response`
+        directly. Without this, breaking out of the helper early would leave
+        the span open until garbage collection."""
+        return _SpanEndingHttpResponse(self._stream.response, self._finish)
 
     def __iter__(self) -> Self:
         return self
