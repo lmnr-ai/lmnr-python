@@ -1,6 +1,9 @@
 """Attribute mapping for the Agents SDK's MCP list-tools spans."""
 
+from __future__ import annotations
+
 import json
+from typing import Any, cast
 
 from agents.tracing.span_data import MCPListToolsSpanData
 
@@ -12,10 +15,10 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.span_dat
 class _RecordingSpan:
     """Minimal stand-in for LaminarSpan that just collects attributes."""
 
-    def __init__(self):
-        self.attributes = {}
+    def __init__(self) -> None:
+        self.attributes: dict[str, Any] = {}
 
-    def set_attribute(self, key, value):
+    def set_attribute(self, key: str, value: Any) -> None:
         self.attributes[key] = value
 
 
@@ -23,7 +26,7 @@ def test_mcp_list_tools_span_gets_io():
     span = _RecordingSpan()
     tools = ["chart.search_patients", "cases.get_case"]
 
-    apply_span_data(span, MCPListToolsSpanData(server="chi_bench", result=tools))
+    apply_span_data(cast(Any, span), MCPListToolsSpanData(server="chi_bench", result=tools))
 
     # The custom attributes are what the SDK hands us...
     assert span.attributes["openai.agents.mcp.server"] == "chi_bench"
@@ -36,7 +39,7 @@ def test_mcp_list_tools_span_gets_io():
 def test_mcp_list_tools_span_without_result_sets_no_output():
     span = _RecordingSpan()
 
-    apply_span_data(span, MCPListToolsSpanData(server="chi_bench"))
+    apply_span_data(cast(Any, span), MCPListToolsSpanData(server="chi_bench"))
 
     assert json.loads(span.attributes["lmnr.span.input"]) == {"server": "chi_bench"}
     assert "lmnr.span.output" not in span.attributes
