@@ -10,8 +10,9 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.wrappers 
     wrap_async,
     wrap_async_gen,
     wrap_client_init,
+    wrap_create_sdk_mcp_server,
     wrap_query,
-    wrap_sync,
+    wrap_sdk_mcp_request,
     wrap_transport_close,
     wrap_transport_connect,
 )
@@ -120,14 +121,25 @@ WRAPPED_FUNCTIONS: list[ClaudeAgentSpec] = [
         should_publish_span_context=True,
         wrapper_function=wrap_query,
     ),
-    # Module-level create_sdk_mcp_server function (sync)
+    # Module-level create_sdk_mcp_server function (sync). Not spanned: see
+    # wrap_create_sdk_mcp_server.
     ClaudeAgentSpec(
         package_name="claude_agent_sdk",
         object_name=None,
         method_name="create_sdk_mcp_server",
         is_async=False,
         replace_aliases=True,
-        wrapper_function=wrap_sync,
+        wrapper_function=wrap_create_sdk_mcp_server,
+    ),
+    # CLI -> in-process MCP server messages: stamp the active span's traceparent
+    # so `mcp`'s server spans nest instead of becoming roots.
+    ClaudeAgentSpec(
+        package_name="claude_agent_sdk._internal.query",
+        object_name="Query",
+        method_name="_handle_sdk_mcp_request",
+        is_async=True,
+        class_name="Query",
+        wrapper_function=wrap_sdk_mcp_request,
     ),
 ]
 

@@ -9,6 +9,9 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import Span as SDKSpan
 from opentelemetry.trace.span import Span
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.sdk_mcp import (
+    build_traceparent,
+)
 from lmnr.opentelemetry_lib.tracing.attributes import SPAN_IDS_PATH, SPAN_PATH
 from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from lmnr.sdk.laminar import Laminar
@@ -114,6 +117,8 @@ def publish_span_context_for_transport(transport: Any) -> None:
     payload = get_span_context_payload()
     if not payload:
         return
+
+    context["traceparent"] = build_traceparent(payload["trace_id"], payload["span_id"])
 
     try:
         from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.proxy import (

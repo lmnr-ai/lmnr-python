@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, NotRequired
 
 from typing_extensions import TypedDict
 
@@ -42,3 +42,6 @@ class CASLaminarContext(TypedDict):
     options_env_snapshot: dict[str, str | None]
     original_settings: dict[str, Any]
     settings_overridden: bool
+    # W3C traceparent of the span last published to the proxy; stamped into
+    # SDK MCP messages (see sdk_mcp.py).
+    traceparent: NotRequired[str]
