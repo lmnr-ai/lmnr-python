@@ -1,8 +1,12 @@
+from __future__ import annotations
+
 import json
 import re
+import threading
 import time
 from collections.abc import Awaitable, Callable, Sequence
-from typing import TYPE_CHECKING, Any, NotRequired, cast
+from types import TracebackType
+from typing import TYPE_CHECKING, Any, NotRequired, Self, cast
 
 import pydantic
 from opentelemetry import context as context_api
@@ -17,7 +21,8 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
 )
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.trace import Span, SpanKind, StatusCode
-from typing_extensions import TypeVar
+from typing_extensions import TypeVar, override
+from wrapt import ObjectProxy
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.context_keys import (
     DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY,
@@ -44,6 +49,10 @@ from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.utils import json_dumps
 from openai import AsyncStream, Stream
 from openai._legacy_response import LegacyAPIResponse
+from openai._types import NotGiven, Omit
+
+if TYPE_CHECKING:
+    from ..rollout import AsyncCachedResponsesEventStream, CachedResponsesEventStream
 
 # real types (first branch); the runtime fallback below keeps old SDKs working.
 if TYPE_CHECKING:
@@ -53,6 +62,7 @@ if TYPE_CHECKING:
         ResponseInputItemParam,
         ResponseInputParam,
         ResponseOutputItem,
+        ResponseStreamEvent,
         ResponseUsage,
         ToolParam,
     )
@@ -69,6 +79,7 @@ else:
             ResponseInputItemParam,
             ResponseInputParam,
             ResponseOutputItem,
+            ResponseStreamEvent,
             ResponseUsage,
             ToolParam,
         )
@@ -84,6 +95,7 @@ else:
         ResponseInputItemParam = dict[str, Any]
         ResponseInputParam = str | list[dict[str, Any]]
         ResponseOutputItem = dict[str, Any]
+        ResponseStreamEvent = Any
         ResponseUsage = dict[str, Any]
         ToolParam = dict[str, Any]
         ResponseOutputMessageParam = dict[str, Any]
@@ -91,8 +103,14 @@ else:
 
 
 SPAN_NAME = "openai.response"
+# Statuses after which a response can no longer change (or be streamed again).
+_TERMINAL_STATUSES = frozenset({"completed", "incomplete", "failed", "cancelled"})
+# Header the SDK's `with_raw_response` / `with_streaming_response` set on the
+# request; the call then returns an `APIResponse` wrapper, not the parsed body.
+_RAW_RESPONSE_HEADER = "X-Stainless-Raw-Response"
 logger = get_default_logger(__name__)
 T = TypeVar("T")
+S = TypeVar("S")
 
 
 def _replay_enabled() -> bool:
@@ -530,14 +548,17 @@ def set_data_attributes(traced_response: TracedData, span: Span):
             # TODO: handle other block types, in particular other calls
 
 
-@dont_throw
 def responses_get_or_create_wrapper(
     to_wrap: WrappedFunctionSpec,
     wrapped: Callable[..., T],
     _instance: Any,
     args: Sequence[Any],
     kwargs: dict[str, Any],
-) -> T | Response | Stream[Any]:
+) -> T | Response | CachedResponsesEventStream:
+    # Not @dont_throw: that would swallow the provider's own exceptions (and
+    # return None to the caller). Instead every tracing helper called here is
+    # @dont_throw, and a None from one falls back to the untraced result, so
+    # `wrapped()` runs exactly once and its result or exception reaches the caller.
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
     if context_api.get_value(
@@ -546,31 +567,32 @@ def responses_get_or_create_wrapper(
         return wrapped(*args, **kwargs)
     start_time = time.time_ns()
 
-    # Debugger replay (non-streaming only): probe the server-side cache before
-    # the live call. Streaming responses fall through to the live path below.
-    if _replay_enabled() and not kwargs.get("stream", False):
-        return _replay_response_sync(
-            to_wrap, start_time, cast(Callable[..., Any], wrapped), args, kwargs
-        )
+    # Debugger replay: probe the server-side cache before the live call.
+    if _replay_enabled():
+        return _replay_response_sync(to_wrap, start_time, wrapped, args, kwargs)
 
+    traced_kwargs = _given_kwargs(kwargs)
+    if traced_kwargs is None:
+        return wrapped(*args, **kwargs)
     try:
         response = wrapped(*args, **kwargs)
-        if isinstance(response, Stream):
-            return response
     except Exception as e:
-        _process_exception(to_wrap, start_time, kwargs, e)
+        _process_exception(to_wrap, start_time, traced_kwargs, e)
         raise
-    return _process_response(to_wrap, start_time, response, kwargs)
+    if _is_stream(response):
+        traced = _trace_stream(to_wrap, start_time, response, traced_kwargs)
+        return response if traced is None else traced
+    _process_response(to_wrap, start_time, response, traced_kwargs)
+    return response
 
 
-@dont_throw
 async def async_responses_get_or_create_wrapper(
     to_wrap: WrappedFunctionSpec,
     wrapped: Callable[..., Awaitable[T]],
     _instance: Any,
     args: Sequence[Any],
     kwargs: dict[str, Any],
-) -> T | Response | AsyncStream[Any] | Stream[Any]:
+) -> T | Response | AsyncCachedResponsesEventStream:
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
     if context_api.get_value(
@@ -579,19 +601,94 @@ async def async_responses_get_or_create_wrapper(
         return await wrapped(*args, **kwargs)
     start_time = time.time_ns()
 
-    if _replay_enabled() and not kwargs.get("stream", False):
+    if _replay_enabled():
         return await _replay_response_async(to_wrap, start_time, wrapped, args, kwargs)
 
+    traced_kwargs = _given_kwargs(kwargs)
+    if traced_kwargs is None:
+        return await wrapped(*args, **kwargs)
     try:
         response = await wrapped(*args, **kwargs)
-        if isinstance(response, (Stream, AsyncStream)):
-            return response
     except Exception as e:
-        _process_exception(to_wrap, start_time, kwargs, e)
+        _process_exception(to_wrap, start_time, traced_kwargs, e)
         raise
-    return _process_response(to_wrap, start_time, response, kwargs)
+    if _is_stream(response):
+        traced = _trace_stream(to_wrap, start_time, response, traced_kwargs)
+        return response if traced is None else traced
+    _process_response(to_wrap, start_time, response, traced_kwargs)
+    return response
 
 
+def _is_stream(response: object) -> bool:
+    # A bool rather than an inline isinstance, so `response` keeps its `T` type.
+    return isinstance(response, (Stream, AsyncStream))
+
+
+@dont_throw
+def _given_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
+    """The request kwargs minus the SDK's `NOT_GIVEN` / `omit` placeholders.
+
+    `responses.stream()` forwards every param it doesn't set as `omit`, which
+    `kwargs.get(key, default)` would return in place of the default. Tracing
+    reads this copy; the wrapped call still gets the original kwargs.
+
+    Both sentinel classes are in `openai._types` since openai 1.0.0, older than the
+    `openai._legacy_response` this module already needs, so they add no version floor.
+    """
+    return {key: value for key, value in kwargs.items() if not isinstance(value, NotGiven | Omit)}
+
+
+@dont_throw
+def _start_span(to_wrap: WrappedFunctionSpec, start_time: int) -> Span | None:
+    span = safe_start_span(
+        name=to_wrap.get("span_name") or SPAN_NAME,
+        kind=SpanKind.CLIENT,
+        start_time=start_time,
+        context=get_current_context(),
+        span_type="LLM",
+    )
+    if span is not None:
+        stamp_instrumentation_scope(span, to_wrap)
+    return span
+
+
+@dont_throw
+def _wrap_stream(
+    span: Span,
+    stream: T,
+    start_time: int,
+    kwargs: dict[str, Any],
+    record_raw_response: bool = False,
+) -> T:
+    """Wrap a live `Stream` / `AsyncStream` of Responses-API events in a
+    `TracedResponseStream` that ends `span`. The stream type is preserved for
+    the caller: the proxy forwards everything it doesn't intercept."""
+    return cast(
+        T,
+        TracedResponseStream(
+            span, stream, start_time, kwargs, record_raw_response=record_raw_response
+        ),
+    )
+
+
+@dont_throw
+def _trace_stream(
+    to_wrap: WrappedFunctionSpec,
+    start_time: int,
+    stream: T,
+    kwargs: dict[str, Any],
+) -> T | None:
+    """Open the span for a live stream and wrap it. None if tracing failed."""
+    span = _start_span(to_wrap, start_time)
+    if span is None:
+        return None
+    traced = _wrap_stream(span, stream, start_time, kwargs)
+    if traced is None:
+        span.end()
+    return traced
+
+
+@dont_throw
 def _open_replay_span(
     to_wrap: WrappedFunctionSpec, start_time: int, kwargs: dict[str, Any]
 ) -> Span | None:
@@ -602,22 +699,32 @@ def _open_replay_span(
     or the source-trace hash and the replay-run hash diverge. Both go through
     `build_genai_input_messages(process_input(kwargs["input"]))`.
     """
-    span = safe_start_span(
-        name=to_wrap.get("span_name") or SPAN_NAME,
-        kind=SpanKind.CLIENT,
-        start_time=start_time,
-        context=get_current_context(),
-        span_type="LLM",
-    )
+    span = _start_span(to_wrap, start_time)
     if span is None:
         return None
-    stamp_instrumentation_scope(span, to_wrap)
     if should_send_prompts():
-        processed_input = process_input(cast(ResponseInputParam, kwargs.get("input")))
-        input_messages = build_genai_input_messages(processed_input)
-        if input_messages is not None:
-            set_span_attribute(span, "gen_ai.input.messages", json_dumps(input_messages))
+        try:
+            processed_input = process_input(cast(ResponseInputParam, kwargs.get("input")))
+            input_messages = build_genai_input_messages(processed_input)
+            if input_messages is not None:
+                set_span_attribute(span, "gen_ai.input.messages", json_dumps(input_messages))
+        except Exception:
+            logger.debug("Failed to stamp Responses replay input", exc_info=True)
     return span
+
+
+@dont_throw
+def _cache_outcome(span: Span) -> CacheOutcome | None:
+    from lmnr.sdk.debug.replay import cache_outcome_for
+
+    return cache_outcome_for(cast(SDKSpan, span))
+
+
+@dont_throw
+async def _acache_outcome(span: Span) -> CacheOutcome | None:
+    from lmnr.sdk.debug.replay import acache_outcome_for
+
+    return await acache_outcome_for(cast(SDKSpan, span))
 
 
 def _record_raw_response(span: Span, response: Any):
@@ -630,27 +737,47 @@ def _record_raw_response(span: Span, response: Any):
         logger.debug("Failed to record raw Responses response")
 
 
+@dont_throw
 def _finish_live_replay(
     start_time: int,
     span: Span,
-    response: T,
+    response: Any,
     kwargs: dict[str, Any],
-) -> T:
+):
     """Process a live response onto the pre-opened replay span and end it."""
-    parsed_response = parse_response(cast(Response, response))
-    traced_data = _build_traced_data(start_time, parsed_response, kwargs)
-    if traced_data is not None:
-        set_data_attributes(traced_data, span)
-        _record_raw_response(span, response)
-    span.end()
-    return response
+    try:
+        parsed_response = parse_response(cast(Response, response))
+        traced_data = _build_traced_data(start_time, parsed_response, kwargs)
+        if traced_data is not None:
+            set_data_attributes(traced_data, span)
+            _record_raw_response(span, response)
+    finally:
+        span.end()
 
 
+def _is_raw_response_request(kwargs: dict[str, Any]) -> bool:
+    """True for `with_raw_response` / `with_streaming_response` calls, where the
+    caller expects an `APIResponse` wrapper we can't fabricate from the cache."""
+    extra_headers = kwargs.get("extra_headers")
+    if not isinstance(extra_headers, dict):
+        return False
+    return _RAW_RESPONSE_HEADER in cast(dict[str, Any], extra_headers)
+
+
+@dont_throw
 def _serve_cached_response(
-    start_time: int, span: Span, outcome: CacheOutcome, kwargs: dict[str, Any]
-) -> Response | None:
-    """On a cache HIT, reconstruct + serve an OpenAI `Response`. Returns the
-    served response, or None to fall through to the live path."""
+    start_time: int,
+    span: Span,
+    outcome: CacheOutcome,
+    kwargs: dict[str, Any],
+    make_stream: Callable[[list[ResponseStreamEvent]], S],
+) -> Response | S | None:
+    """On a cache HIT, reconstruct + serve an OpenAI `Response`, or for
+    `stream=True` a `make_stream(events)` replaying it. Returns None to fall
+    through to the live path (the span is then still open)."""
+    if _is_raw_response_request(kwargs):
+        return None
+
     from ..rollout import get_openai_rollout_wrapper
 
     rollout_wrapper = get_openai_rollout_wrapper()
@@ -659,47 +786,67 @@ def _serve_cached_response(
     cached = rollout_wrapper.cached_response_to_responses(outcome.cached or {})
     if cached is None:
         return None
+    served: Response | S = cached
+    if kwargs.get("stream"):
+        events = rollout_wrapper.cached_response_to_responses_events(cached)
+        if events is None:
+            return None
+        served = make_stream(events)
 
     from lmnr.sdk.debug.replay import mark_span_cached
 
-    traced_data = _build_traced_data(start_time, cached, kwargs)
+    traced_data = _build_traced_data(start_time, cached, kwargs, stash=False)
     if traced_data is not None:
         set_data_attributes(traced_data, span)
     mark_span_cached(cast(SDKSpan, span))
     span.end()
-    return cached
+    return served
+
+
+@dont_throw
+def _end_span_with_exception(span: Span, e: BaseException):
+    span.set_attribute(ERROR_TYPE, e.__class__.__name__)
+    span.record_exception(e, attributes=get_event_attributes_from_context())
+    span.set_status(StatusCode.ERROR, str(e))
+    span.end()
 
 
 def _replay_response_sync(
     to_wrap: WrappedFunctionSpec,
     start_time: int,
-    wrapped: Callable[..., Response],
+    wrapped: Callable[..., T],
     args: Sequence[Any],
     kwargs: dict[str, Any],
-) -> Response | Stream[Any]:
-    from lmnr.sdk.debug.replay import cache_outcome_for
+) -> T | Response | CachedResponsesEventStream:
+    from ..rollout import CachedResponsesEventStream
 
-    span = _open_replay_span(to_wrap, start_time, kwargs)
+    traced_kwargs = _given_kwargs(kwargs)
+    if traced_kwargs is None:
+        return wrapped(*args, **kwargs)
+    span = _open_replay_span(to_wrap, start_time, traced_kwargs)
     if span is None:
         return wrapped(*args, **kwargs)
-    outcome = cache_outcome_for(cast(SDKSpan, span))
+    outcome = _cache_outcome(span)
     if outcome is not None and outcome.kind == "hit":
-        served = _serve_cached_response(start_time, span, outcome, kwargs)
+        served = _serve_cached_response(
+            start_time, span, outcome, traced_kwargs, CachedResponsesEventStream
+        )
         if served is not None:
             return served
 
     try:
         response = wrapped(*args, **kwargs)
-        if isinstance(response, Stream):
-            span.end()
-            return response
     except Exception as e:
-        span.set_attribute(ERROR_TYPE, e.__class__.__name__)
-        span.record_exception(e, attributes=get_event_attributes_from_context())
-        span.set_status(StatusCode.ERROR, str(e))
-        span.end()
+        _end_span_with_exception(span, e)
         raise
-    return _finish_live_replay(start_time, span, response, kwargs)
+    if _is_stream(response):
+        traced = _wrap_stream(span, response, start_time, traced_kwargs, record_raw_response=True)
+        if traced is not None:
+            return traced
+        span.end()
+        return response
+    _finish_live_replay(start_time, span, response, traced_kwargs)
+    return response
 
 
 async def _replay_response_async(
@@ -708,53 +855,66 @@ async def _replay_response_async(
     wrapped: Callable[..., Awaitable[T]],
     args: Sequence[Any],
     kwargs: dict[str, Any],
-) -> T | Response | Stream[Any] | AsyncStream[Any]:
-    from lmnr.sdk.debug.replay import acache_outcome_for
+) -> T | Response | AsyncCachedResponsesEventStream:
+    from ..rollout import AsyncCachedResponsesEventStream
 
-    span = _open_replay_span(to_wrap, start_time, kwargs)
+    traced_kwargs = _given_kwargs(kwargs)
+    if traced_kwargs is None:
+        return await wrapped(*args, **kwargs)
+    span = _open_replay_span(to_wrap, start_time, traced_kwargs)
     if span is None:
         return await wrapped(*args, **kwargs)
-    outcome = await acache_outcome_for(cast(SDKSpan, span))
+    outcome = await _acache_outcome(span)
     if outcome is not None and outcome.kind == "hit":
-        served = _serve_cached_response(start_time, span, outcome, kwargs)
+        served = _serve_cached_response(
+            start_time, span, outcome, traced_kwargs, AsyncCachedResponsesEventStream
+        )
         if served is not None:
             return served
 
     try:
         response = await wrapped(*args, **kwargs)
-        if isinstance(response, (Stream, AsyncStream)):
-            span.end()
-            return response
     except Exception as e:
-        span.set_attribute(ERROR_TYPE, e.__class__.__name__)
-        span.record_exception(e, attributes=get_event_attributes_from_context())
-        span.set_status(StatusCode.ERROR, str(e))
-        span.end()
+        _end_span_with_exception(span, e)
         raise
-    return _finish_live_replay(start_time, span, response, kwargs)
+    if _is_stream(response):
+        traced = _wrap_stream(span, response, start_time, traced_kwargs, record_raw_response=True)
+        if traced is not None:
+            return traced
+        span.end()
+        return response
+    _finish_live_replay(start_time, span, response, traced_kwargs)
+    return response
 
 
-@dont_throw
-def _process_exception(
-    to_wrap: WrappedFunctionSpec, start_time: int, kwargs: dict[str, Any], e: Exception
-):
+def _get_request_reasoning(kwargs: dict[str, Any]) -> tuple[str | None, str | None]:
+    """`(summary, effort)` from the request's `reasoning` param; tolerates pydantic
+    models."""
+    reasoning: Any = kwargs.get("reasoning")
+    if isinstance(reasoning, pydantic.BaseModel):
+        reasoning = reasoning.model_dump()
+    if not isinstance(reasoning, dict):
+        return None, None
+    reasoning = cast(dict[str, Any], reasoning)
+    summary = reasoning.get("summary")
+    effort = reasoning.get("effort")
+    return (
+        summary if isinstance(summary, str) else None,
+        effort if isinstance(effort, str) else None,
+    )
+
+
+def _traced_data_from_request(start_time: int, kwargs: dict[str, Any]) -> TracedData | None:
+    """Build a `TracedData` from the request alone (merged with anything
+    stashed under `kwargs["response_id"]`), for calls that produced no response
+    to read from. Returns None if construction fails."""
     response_id = kwargs.get("response_id")
-    existing_data = {}
+    existing_data: dict[str, Any] = {}
     if response_id and response_id in responses:
         existing_data = responses[response_id].model_dump()
     try:
-        request_reasoning_summary = None
-        request_reasoning_effort = None
-        request_reasoning = kwargs.get("reasoning", {})
-        try:
-            request_reasoning_summary = request_reasoning.get("summary")
-        except Exception:
-            logger.debug("failed to get request reasoning summary", exc_info=True)
-        try:
-            request_reasoning_effort = request_reasoning.get("effort")
-        except Exception:
-            logger.debug("failed to get request reasoning effort", exc_info=True)
-        traced_data = TracedData(
+        request_reasoning_summary, request_reasoning_effort = _get_request_reasoning(kwargs)
+        return TracedData(
             start_time=existing_data.get("start_time", start_time),
             response_id=response_id or "",
             input=process_input(kwargs.get("input", existing_data.get("input", []))),
@@ -772,34 +932,36 @@ def _process_exception(
             request_service_tier=kwargs.get(
                 "service_tier", existing_data.get("request_service_tier")
             ),
-            # response_service_tier=existing_data.get("response_service_tier"),
         )
     except Exception:
-        traced_data = None
+        logger.debug("Failed to build Responses traced data from request", exc_info=True)
+        return None
 
-    span = safe_start_span(
-        name=to_wrap.get("span_name") or SPAN_NAME,
-        kind=SpanKind.CLIENT,
-        start_time=(start_time if traced_data is None else int(traced_data.start_time)),
-        context=get_current_context(),
-        span_type="LLM",
-    )
+
+@dont_throw
+def _process_exception(
+    to_wrap: WrappedFunctionSpec, start_time: int, kwargs: dict[str, Any], e: Exception
+):
+    traced_data = _traced_data_from_request(start_time, kwargs)
+    span = _start_span(to_wrap, start_time if traced_data is None else int(traced_data.start_time))
     if span is None:
         return
-    stamp_instrumentation_scope(span, to_wrap)
-    span.set_attribute(ERROR_TYPE, e.__class__.__name__)
-    span.record_exception(e, attributes=get_event_attributes_from_context())
-    span.set_status(StatusCode.ERROR, str(e))
     if traced_data:
         set_data_attributes(traced_data, span)
-    span.end()
+    _end_span_with_exception(span, e)
 
 
 def _build_traced_data(
-    start_time: int, parsed_response: Any, kwargs: dict[str, Any]
+    start_time: int,
+    parsed_response: Any,
+    kwargs: dict[str, Any],
+    stash: bool = True,
 ) -> TracedData | None:
     """Accumulate a `TracedData` for a parsed response, merging any prior data
-    stashed under its id. Returns None if construction fails."""
+    stashed under its id (request fields from the stash win, response fields
+    from `parsed_response` win). With `stash`, the result is stored back under
+    the id so a later `retrieve` / `cancel` can merge the original request.
+    Returns None if construction fails."""
     response_id = getattr(parsed_response, "id", None)
     if not response_id:
         return None
@@ -809,22 +971,11 @@ def _build_traced_data(
     else:
         existing_data = existing_data.model_dump()
 
-    request_tools = get_tools_from_kwargs(kwargs)
-    merged_tools = existing_data.get("tools", []) + request_tools
-
     try:
-        request_reasoning_summary = None
-        request_reasoning_effort = None
-        request_reasoning = kwargs.get("reasoning", {})
+        request_tools = get_tools_from_kwargs(kwargs)
+        merged_tools = (existing_data.get("tools") or []) + request_tools
+        request_reasoning_summary, request_reasoning_effort = _get_request_reasoning(kwargs)
         response_service_tier = None
-        try:
-            request_reasoning_summary = request_reasoning.get("summary")
-        except Exception:
-            logger.debug("failed to get response reasoning summary", exc_info=True)
-        try:
-            request_reasoning_effort = request_reasoning.get("effort")
-        except Exception:
-            logger.debug("failed to get response reasoning effort", exc_info=True)
         try:
             response_service_tier = parsed_response.service_tier
         except Exception:
@@ -835,12 +986,12 @@ def _build_traced_data(
             input=process_input(cast(Any, existing_data.get("input", kwargs.get("input")))),
             instructions=existing_data.get("instructions", kwargs.get("instructions")),
             tools=merged_tools if merged_tools else None,
-            output_blocks={block.id: block for block in parsed_response.output}
-            | existing_data.get("output_blocks", {}),
-            usage=existing_data.get("usage", parsed_response.usage),
-            output_text=existing_data.get("output_text", _get_output_text(parsed_response)),
+            output_blocks=(existing_data.get("output_blocks") or {})
+            | {block.id: block for block in parsed_response.output},
+            usage=parsed_response.usage or existing_data.get("usage"),
+            output_text=_get_output_text(parsed_response) or existing_data.get("output_text"),
             request_model=existing_data.get("request_model", kwargs.get("model")),
-            response_model=existing_data.get("response_model", parsed_response.model),
+            response_model=parsed_response.model or existing_data.get("response_model"),
             request_reasoning_summary=existing_data.get("request_reasoning_summary")
             or request_reasoning_summary,
             request_reasoning_effort=existing_data.get("request_reasoning_effort")
@@ -848,55 +999,287 @@ def _build_traced_data(
             request_service_tier=existing_data.get(
                 "request_service_tier", kwargs.get("service_tier")
             ),
-            response_service_tier=existing_data.get(
-                "response_service_tier",
-                response_service_tier,
-            ),
+            response_service_tier=response_service_tier
+            or existing_data.get("response_service_tier"),
         )
-        responses[response_id] = traced_data
+        if stash:
+            responses[response_id] = traced_data
         return traced_data
     except Exception:
+        logger.debug("Failed to build Responses traced data", exc_info=True)
         return None
 
 
 @dont_throw
 def _process_response(
     to_wrap: WrappedFunctionSpec, start_time: int, response: Any, kwargs: dict[str, Any]
-) -> Any:
+):
     parsed_response = parse_response(response)
 
     response_id = getattr(parsed_response, "id", None)
     if not response_id:
-        return response
+        return
 
     traced_data = _build_traced_data(start_time, parsed_response, kwargs)
     if traced_data is None:
-        return response
+        return
 
     if parsed_response.status == "completed":
-        span = safe_start_span(
-            name=to_wrap.get("span_name") or SPAN_NAME,
-            kind=SpanKind.CLIENT,
-            start_time=int(traced_data.start_time),
-            context=get_current_context(),
-            span_type="LLM",
-        )
+        span = _start_span(to_wrap, int(traced_data.start_time))
         if span is not None:
-            stamp_instrumentation_scope(span, to_wrap)
             set_data_attributes(traced_data, span)
             span.end()
 
-    return response
+
+if TYPE_CHECKING:
+    _ResponseStreamBase = ObjectProxy[Any]
+else:
+    # wrapt 1.x proxies are not subscriptable at runtime
+    _ResponseStreamBase = ObjectProxy
 
 
-@dont_throw
+class _SpanEndingHttpResponse(_ResponseStreamBase):
+    """Proxy over an `httpx.Response` that runs `on_close` before closing it."""
+
+    _on_close: Callable[[], None] | None = None
+
+    @override
+    def __init__(self, response: Any, on_close: Callable[[], None]):
+        super().__init__(response)
+        self._on_close = on_close
+
+    def _notify(self):
+        if self._on_close is not None:
+            self._on_close()
+
+    def close(self) -> None:
+        self._notify()
+        cast(Any, self.__wrapped__).close()
+
+    async def aclose(self) -> None:
+        self._notify()
+        await cast(Any, self.__wrapped__).aclose()
+
+
+class TracedResponseStream(_ResponseStreamBase):
+    """Proxy over a Responses-API `Stream` / `AsyncStream` of `ResponseStreamEvent`s.
+
+    The span is opened before the call, so it covers the whole stream and, on a
+    debug run, already carries the hashed input. It is ended exactly once: when
+    the stream is exhausted, raises, is closed or leaves its context manager, or
+    is garbage collected half-consumed. Attributes come from the latest
+    `response` snapshot an event carried (`response.completed` on the happy
+    path), merged with the output items and text accumulated from the events,
+    so an early exit still records what was streamed so far.
+
+    Both `client.responses.create(stream=True)` and `client.responses.stream()`
+    go through here: the latter wraps the stream `create` / `retrieve` return.
+    """
+
+    # Class-level defaults keep these attributes on the proxy: wrapt forwards
+    # assignments to names the proxy class doesn't define to the wrapped stream.
+    # Mutable ones are replaced per instance in __init__.
+    _span: Span | None = None
+    _start_time: int = 0
+    _kwargs: dict[str, Any] = {}  # noqa: RUF012
+    _record_raw_response: bool = False
+    _output_text: str = ""
+    _output_blocks: dict[str, ResponseOutputItem] = {}  # noqa: RUF012
+    _response: Response | None = None
+    _error_message: str | None = None
+    _cleanup_completed: bool = False
+    _cleanup_lock: threading.Lock = threading.Lock()
+
+    @override
+    def __init__(
+        self,
+        span: Span,
+        stream: Any,
+        start_time: int,
+        kwargs: dict[str, Any],
+        record_raw_response: bool = False,
+    ):
+        super().__init__(stream)
+        self._span = span
+        self._start_time = start_time
+        self._kwargs = kwargs
+        self._record_raw_response = record_raw_response
+        self._output_text = ""
+        self._output_blocks = {}
+        self._response = None
+        self._error_message = None
+        self._cleanup_completed = False
+        self._cleanup_lock = threading.Lock()
+
+    @property
+    def _stream(self) -> Any:
+        return cast(Any, self.__wrapped__)
+
+    def __del__(self):
+        if not self._cleanup_completed:
+            self._finish()
+
+    def __enter__(self) -> Self:  # pyright: ignore[reportMissingSuperCall]
+        if hasattr(self._stream, "__enter__"):
+            self._stream.__enter__()
+        return self
+
+    def __exit__(  # pyright: ignore[reportMissingSuperCall]
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> bool | None:
+        self._finish(exc_val)
+        if hasattr(self._stream, "__exit__"):
+            return self._stream.__exit__(exc_type, exc_val, exc_tb)
+        return None
+
+    async def __aenter__(self) -> Self:
+        if hasattr(self._stream, "__aenter__"):
+            await self._stream.__aenter__()
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> bool | None:
+        self._finish(exc_val)
+        if hasattr(self._stream, "__aexit__"):
+            return await self._stream.__aexit__(exc_type, exc_val, exc_tb)
+        return None
+
+    def close(self) -> Any:
+        """Ends the span, then closes the wrapped stream. `AsyncStream.close` is
+        a coroutine function, so for async streams this returns the coroutine
+        for the caller to await, exactly like the unwrapped call."""
+        self._finish()
+        return self._stream.close()
+
+    @property
+    def response(self) -> Any:
+        """The stream's `httpx.Response`, wrapped to end the span when closed.
+
+        `responses.stream()`'s `ResponseStream` never calls `close()` or exits
+        this proxy: its `close()` / `__exit__` close `raw_stream.response`
+        directly. Without this, breaking out of the helper early would leave
+        the span open until garbage collection."""
+        return _SpanEndingHttpResponse(self._stream.response, self._finish)
+
+    def __iter__(self) -> Self:
+        return self
+
+    def __aiter__(self) -> Self:
+        return self
+
+    def __next__(self) -> ResponseStreamEvent:
+        try:
+            event = self._stream.__next__()
+        except StopIteration:
+            self._finish()
+            raise
+        except Exception as e:
+            self._finish(e)
+            raise
+        self._process_event(event)
+        return event
+
+    async def __anext__(self) -> ResponseStreamEvent:
+        try:
+            event = await self._stream.__anext__()
+        except StopAsyncIteration:
+            self._finish()
+            raise
+        except Exception as e:
+            self._finish(e)
+            raise
+        self._process_event(event)
+        return event
+
+    @dont_throw
+    def _process_event(self, event: ResponseStreamEvent):
+        if event.type == "response.output_text.delta":
+            self._output_text += event.delta
+        elif event.type == "response.output_item.done":
+            item_id = getattr(event.item, "id", None) or f"output_{event.output_index}"
+            self._output_blocks[item_id] = event.item
+        elif event.type == "error":
+            self._error_message = event.message
+
+        # created / queued / in_progress / completed / incomplete / failed
+        # events carry a snapshot of the whole response; keep the latest.
+        snapshot = getattr(event, "response", None)
+        if isinstance(snapshot, Response):
+            self._response = snapshot
+
+    def _build_traced_data(self) -> TracedData | None:
+        response = self._response
+        if response is None:
+            traced_data = _traced_data_from_request(self._start_time, self._kwargs)
+        else:
+            # Only an unfinished background response can be picked up later
+            # (by `retrieve`), so only it keeps its stashed request data.
+            finished = response.status in _TERMINAL_STATUSES or not self._kwargs.get("background")
+            traced_data = _build_traced_data(
+                self._start_time, response, self._kwargs, stash=not finished
+            )
+            if finished:
+                _ = responses.pop(response.id, None)
+        if traced_data is None:
+            return None
+        # The final snapshot is authoritative; the accumulated items and text
+        # fill in what an early exit never received a snapshot for.
+        traced_data.output_blocks = self._output_blocks | (traced_data.output_blocks or {})
+        if not traced_data.output_text:
+            traced_data.output_text = self._output_text or None
+        return traced_data
+
+    @dont_throw
+    def _finish(self, exception: BaseException | None = None):
+        with self._cleanup_lock:
+            if self._cleanup_completed:
+                return
+            self._cleanup_completed = True
+            span = self._span
+            if span is None or not span.is_recording():
+                return
+            try:
+                traced_data = self._build_traced_data()
+                if traced_data is not None:
+                    set_data_attributes(traced_data, span)
+                response = self._response
+                if (
+                    self._record_raw_response
+                    and response is not None
+                    and response.status in _TERMINAL_STATUSES
+                ):
+                    _record_raw_response(span, response)
+            except Exception:
+                logger.debug("Failed to record Responses stream data", exc_info=True)
+
+            if exception is not None:
+                _end_span_with_exception(span, exception)
+                return
+            error_message = self._error_message
+            response = self._response
+            if error_message is None and response is not None and response.status == "failed":
+                error_message = response.error.message if response.error else "Response failed"
+            if error_message is not None:
+                span.set_status(StatusCode.ERROR, error_message)
+            else:
+                span.set_status(StatusCode.OK)
+            span.end()
+
+
 def responses_cancel_wrapper(
     to_wrap: WrappedFunctionSpec,
     wrapped: Callable[..., T],
     _instance: Any,
     args: Sequence[Any],
     kwargs: dict[str, Any],
-) -> T | Stream[Any]:
+) -> T:
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
@@ -906,40 +1289,17 @@ def responses_cancel_wrapper(
         return wrapped(*args, **kwargs)
 
     response = wrapped(*args, **kwargs)
-    if isinstance(response, Stream):
-        return response
-    parsed_response = parse_response(cast(Response, response))
-    response_id = getattr(parsed_response, "id", None)
-    if not response_id:
-        return response
-    existing_data = responses.pop(response_id, None)
-    if existing_data is not None:
-        span = safe_start_span(
-            name=to_wrap.get("span_name") or SPAN_NAME,
-            kind=SpanKind.CLIENT,
-            start_time=int(existing_data.start_time),
-            context=get_current_context(),
-            span_type="LLM",
-        )
-        if span is not None:
-            stamp_instrumentation_scope(span, to_wrap)
-            span.record_exception(
-                Exception("Response cancelled"),
-                attributes=get_event_attributes_from_context(),
-            )
-            set_data_attributes(existing_data, span)
-            span.end()
+    _process_cancel(to_wrap, response)
     return response
 
 
-@dont_throw
 async def async_responses_cancel_wrapper(
     to_wrap: WrappedFunctionSpec,
     wrapped: Callable[..., Awaitable[T]],
     _instance: Any,
     args: Sequence[Any],
     kwargs: dict[str, Any],
-) -> T | Stream[Any] | AsyncStream[Any]:
+) -> T:
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
 
@@ -949,30 +1309,31 @@ async def async_responses_cancel_wrapper(
         return await wrapped(*args, **kwargs)
 
     response = await wrapped(*args, **kwargs)
+    _process_cancel(to_wrap, response)
+    return response
+
+
+@dont_throw
+def _process_cancel(to_wrap: WrappedFunctionSpec, response: Any):
+    """Emit the span for a stashed (background) response that got cancelled."""
     if isinstance(response, (Stream, AsyncStream)):
-        return response
+        return
     parsed_response = parse_response(cast(Response, response))
     response_id = getattr(parsed_response, "id", None)
     if not response_id:
-        return response
+        return
     existing_data = responses.pop(response_id, None)
-    if existing_data is not None:
-        span = safe_start_span(
-            name=to_wrap.get("span_name") or SPAN_NAME,
-            kind=SpanKind.CLIENT,
-            start_time=int(existing_data.start_time),
-            context=get_current_context(),
-            span_type="LLM",
-        )
-        if span is not None:
-            stamp_instrumentation_scope(span, to_wrap)
-            span.record_exception(
-                Exception("Response cancelled"),
-                attributes=get_event_attributes_from_context(),
-            )
-            set_data_attributes(existing_data, span)
-            span.end()
-    return response
+    if existing_data is None:
+        return
+    span = _start_span(to_wrap, int(existing_data.start_time))
+    if span is None:
+        return
+    span.record_exception(
+        Exception("Response cancelled"),
+        attributes=get_event_attributes_from_context(),
+    )
+    set_data_attributes(existing_data, span)
+    span.end()
 
 
 def _get_output_text(parsed_response: Response) -> str | None:
@@ -987,6 +1348,3 @@ def _get_output_text(parsed_response: Response) -> str | None:
         except Exception:
             logger.debug("failed to get output text from Response", exc_info=True)
     return output_text
-
-
-# TODO: build streaming responses

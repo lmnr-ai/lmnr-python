@@ -1,18 +1,29 @@
 """Unit coverage for the OpenAI Responses-API debugger replay surface.
 
-Two pieces, both non-streaming (streaming is out of scope for the v2 cache):
-
 - `OpenAIRolloutWrapper.cached_response_to_responses` — reconstructs an
   `openai.types.responses.Response` from a cached `{type: raw|genAi}` envelope.
+- `OpenAIRolloutWrapper.cached_response_to_responses_events` and the
+  `(Async)CachedResponsesEventStream` — replay that response for `stream=True`.
+  The synthesized events are checked against the openai SDK's own
+  `ResponseStreamState`, which is what `responses.stream()` accumulates with.
 - `responses_wrappers` input/output message builders — the `gen_ai.input.messages`
   the replay cache hashes is built by the SAME code path on the recording run and
   the replay pre-stamp, so the hashes match by construction.
 """
 
+from __future__ import annotations
+
 import json
 from typing import Any, cast
 
+import pytest
+from openai import omit
+from openai.lib.streaming.responses import ResponseStreamState
+from openai.types.responses import Response, ResponseStreamEvent
+
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.rollout import (
+    AsyncCachedResponsesEventStream,
+    CachedResponsesEventStream,
     OpenAIRolloutWrapper,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.v1 import (
@@ -144,3 +155,146 @@ def test_recording_and_replay_input_hash_match():
     prestamp = rw.build_genai_input_messages(rw.process_input(cast(Any, kwargs_input)))
     assert recorded == prestamp
     assert debug_input_hash(recorded) == debug_input_hash(prestamp)
+
+
+# --- stream=True replay ---------------------------------------------------------
+
+
+def _response(output: list[dict[str, Any]], status: str = "completed") -> Response:
+    return Response.model_validate(
+        {
+            "id": "resp_1",
+            "created_at": 0,
+            "model": "gpt-4o",
+            "object": "response",
+            "output": output,
+            "parallel_tool_calls": True,
+            "tool_choice": "auto",
+            "tools": [],
+            "status": status,
+        }
+    )
+
+
+def _events(response: Response) -> list[ResponseStreamEvent]:
+    events = OpenAIRolloutWrapper().cached_response_to_responses_events(response)
+    assert events is not None
+    return events
+
+
+def _accumulate(events: list[ResponseStreamEvent]) -> Response:
+    """Feed events through the openai SDK's `responses.stream()` accumulator,
+    which raises on any event it doesn't expect at that point."""
+    state = ResponseStreamState(input_tools=omit, text_format=omit)
+    for event in events:
+        _ = state.handle_event(event)
+    final = state._completed_response  # pyright: ignore[reportPrivateUsage]
+    assert final is not None
+    return final
+
+
+_MESSAGE: dict[str, Any] = {
+    "id": "msg_1",
+    "type": "message",
+    "role": "assistant",
+    "status": "completed",
+    "content": [{"type": "output_text", "text": "Paris", "annotations": []}],
+}
+_FUNCTION_CALL: dict[str, Any] = {
+    "id": "fc_1",
+    "type": "function_call",
+    "call_id": "call_1",
+    "name": "get_weather",
+    "arguments": '{"location":"London"}',
+    "status": "completed",
+}
+_REFUSAL: dict[str, Any] = {
+    "id": "msg_2",
+    "type": "message",
+    "role": "assistant",
+    "status": "completed",
+    "content": [{"type": "refusal", "refusal": "I can't help with that."}],
+}
+
+
+def test_cached_events_text_message():
+    events = _events(_response([_MESSAGE]))
+    assert [event.type for event in events] == [
+        "response.created",
+        "response.in_progress",
+        "response.output_item.added",
+        "response.content_part.added",
+        "response.output_text.delta",
+        "response.output_text.done",
+        "response.content_part.done",
+        "response.output_item.done",
+        "response.completed",
+    ]
+    assert [event.sequence_number for event in events] == list(range(len(events)))
+    final = _accumulate(events)
+    assert final.output_text == "Paris"
+    assert final.id == "resp_1"
+
+
+def test_cached_events_function_call_and_refusal():
+    response = _response([_FUNCTION_CALL, _REFUSAL])
+    events = _events(response)
+    types = [event.type for event in events]
+    assert "response.function_call_arguments.delta" in types
+    assert "response.function_call_arguments.done" in types
+    assert "response.refusal.delta" in types
+    assert "response.refusal.done" in types
+    final = _accumulate(events)
+    function_call, refusal = final.output
+    assert function_call.type == "function_call"
+    assert function_call.model_dump(include={"id", "call_id", "name", "arguments"}) == {
+        key: _FUNCTION_CALL[key] for key in ("id", "call_id", "name", "arguments")
+    }
+    assert refusal.type == "message"
+    assert refusal.content[0].model_dump() == _REFUSAL["content"][0]
+
+
+@pytest.mark.parametrize(
+    ("status", "terminal"),
+    [
+        ("incomplete", "response.incomplete"),
+        ("failed", "response.failed"),
+    ],
+)
+def test_cached_events_terminal_status(status: str, terminal: str):
+    events = _events(_response([_MESSAGE], status=status))
+    assert events[-1].type == terminal
+
+
+def test_cached_events_cancelled_has_no_terminal_event():
+    # The API has no `response.cancelled` event; a cancelled stream just ends.
+    events = _events(_response([_MESSAGE], status="cancelled"))
+    assert events[-1].type == "response.output_item.done"
+    assert not any(
+        event.type in ("response.completed", "response.incomplete", "response.failed")
+        for event in events
+    )
+
+
+def test_cached_events_stream_sync():
+    events = _events(_response([_MESSAGE]))
+    with CachedResponsesEventStream(events) as stream:
+        assert stream.response.status_code == 200
+        assert list(stream) == events
+
+    stream = CachedResponsesEventStream(events)
+    assert next(stream) == events[0]
+    stream.close()
+    assert list(stream) == []
+
+
+@pytest.mark.asyncio
+async def test_cached_events_stream_async():
+    events = _events(_response([_MESSAGE]))
+    async with AsyncCachedResponsesEventStream(events) as stream:
+        assert [event async for event in stream] == events
+
+    stream = AsyncCachedResponsesEventStream(events)
+    assert await stream.__anext__() == events[0]
+    await stream.close()
+    assert [event async for event in stream] == []

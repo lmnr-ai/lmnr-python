@@ -1,0 +1,160 @@
+interactions:
+- request:
+    body: '{"input":[{"type":"message","role":"user","content":"What''s the weather
+      in London?"}],"model":"gpt-4.1-nano","stream":true,"tool_choice":"required","tools":[{"type":"function","name":"get_weather","description":"Get
+      the current weather for a location","parameters":{"type":"object","properties":{"location":{"type":"string","description":"The
+      city and state, e.g. San Francisco, CA"}},"required":["location"]},"strict":null}]}'
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '426'
+      content-type:
+      - application/json
+      host:
+      - api.openai.com
+      user-agent:
+      - OpenAI/Python 2.54.0
+      x-stainless-arch:
+      - x64
+      x-stainless-async:
+      - 'false'
+      x-stainless-lang:
+      - python
+      x-stainless-os:
+      - Linux
+      x-stainless-package-version:
+      - 2.54.0
+      x-stainless-read-timeout:
+      - '600'
+      x-stainless-retry-count:
+      - '0'
+      x-stainless-runtime:
+      - CPython
+      x-stainless-runtime-version:
+      - 3.12.10
+    method: POST
+    uri: https://api.openai.com/v1/responses
+  response:
+    body:
+      string: 'event: response.created
+
+        data: {"type":"response.created","response":{"id":"resp_0f984c957529c270006adb62521f4c87d2b9e1a52a027918f5","object":"response","created_at":1792762450,"status":"in_progress","access_programs":null,"background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4.1-nano-2025-04-14","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"required","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"type":"function","description":"Get
+        the current weather for a location","name":"get_weather","output_schema":null,"parameters":{"type":"object","properties":{"location":{"type":"string","description":"The
+        city and state, e.g. San Francisco, CA"}},"required":["location"]},"strict":false}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":0}
+
+
+        event: response.in_progress
+
+        data: {"type":"response.in_progress","response":{"id":"resp_0f984c957529c270006adb62521f4c87d2b9e1a52a027918f5","object":"response","created_at":1792762450,"status":"in_progress","access_programs":null,"background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4.1-nano-2025-04-14","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"required","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"type":"function","description":"Get
+        the current weather for a location","name":"get_weather","output_schema":null,"parameters":{"type":"object","properties":{"location":{"type":"string","description":"The
+        city and state, e.g. San Francisco, CA"}},"required":["location"]},"strict":false}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":1}
+
+
+        event: response.output_item.added
+
+        data: {"type":"response.output_item.added","item":{"id":"fc_0f984c957529c270006adb6252c1e487d298ac8c820508dfc0","type":"function_call","status":"in_progress","arguments":"","call_id":"call_ivNFRhSJq75UIw9qMdF4CrfE","name":"get_weather"},"output_index":0,"sequence_number":2}
+
+
+        event: response.function_call_arguments.delta
+
+        data: {"type":"response.function_call_arguments.delta","delta":"{\"","item_id":"fc_0f984c957529c270006adb6252c1e487d298ac8c820508dfc0","obfuscation":"4jDykL4bj39Rwk","output_index":0,"sequence_number":3}
+
+
+        event: response.function_call_arguments.delta
+
+        data: {"type":"response.function_call_arguments.delta","delta":"location","item_id":"fc_0f984c957529c270006adb6252c1e487d298ac8c820508dfc0","obfuscation":"26Y79zA4","output_index":0,"sequence_number":4}
+
+
+        event: response.function_call_arguments.delta
+
+        data: {"type":"response.function_call_arguments.delta","delta":"\":\"","item_id":"fc_0f984c957529c270006adb6252c1e487d298ac8c820508dfc0","obfuscation":"iXA9XaLXi4WQn","output_index":0,"sequence_number":5}
+
+
+        event: response.function_call_arguments.delta
+
+        data: {"type":"response.function_call_arguments.delta","delta":"London","item_id":"fc_0f984c957529c270006adb6252c1e487d298ac8c820508dfc0","obfuscation":"65FtUCTUmd","output_index":0,"sequence_number":6}
+
+
+        event: response.function_call_arguments.delta
+
+        data: {"type":"response.function_call_arguments.delta","delta":"\"}","item_id":"fc_0f984c957529c270006adb6252c1e487d298ac8c820508dfc0","obfuscation":"L9GyniONKzmsyT","output_index":0,"sequence_number":7}
+
+
+        event: response.function_call_arguments.done
+
+        data: {"type":"response.function_call_arguments.done","arguments":"{\"location\":\"London\"}","item_id":"fc_0f984c957529c270006adb6252c1e487d298ac8c820508dfc0","output_index":0,"sequence_number":8}
+
+
+        event: response.output_item.done
+
+        data: {"type":"response.output_item.done","item":{"id":"fc_0f984c957529c270006adb6252c1e487d298ac8c820508dfc0","type":"function_call","status":"completed","arguments":"{\"location\":\"London\"}","call_id":"call_ivNFRhSJq75UIw9qMdF4CrfE","name":"get_weather"},"output_index":0,"sequence_number":9}
+
+
+        event: response.completed
+
+        data: {"type":"response.completed","response":{"id":"resp_0f984c957529c270006adb62521f4c87d2b9e1a52a027918f5","object":"response","created_at":1792762450,"status":"completed","access_programs":null,"background":false,"completed_at":1792762450,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4.1-nano-2025-04-14","moderation":null,"output":[{"id":"fc_0f984c957529c270006adb6252c1e487d298ac8c820508dfc0","type":"function_call","status":"completed","arguments":"{\"location\":\"London\"}","call_id":"call_ivNFRhSJq75UIw9qMdF4CrfE","name":"get_weather"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":null,"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"required","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"type":"function","description":"Get
+        the current weather for a location","name":"get_weather","output_schema":null,"parameters":{"type":"object","properties":{"location":{"type":"string","description":"The
+        city and state, e.g. San Francisco, CA"}},"required":["location"]},"strict":false}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":68,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":6,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":74},"user":null,"metadata":{}},"sequence_number":10}
+
+
+        '
+    headers:
+      access-control-expose-headers:
+      - X-Request-ID, Server-Timing-Total
+      - CF-Ray
+      - CF-Ray
+      alt-svc:
+      - h3=":443"; ma=86400
+      cf-cache-status:
+      - DYNAMIC
+      cf-ray:
+      - a4f11e2009d0cd7c-EWR
+      connection:
+      - keep-alive
+      content-type:
+      - text/event-stream; charset=utf-8
+      date:
+      - Fri, 23 Oct 2026 13:34:10 GMT
+      openai-organization:
+      - user-xzaeeoqlanzncr8pomspsknu
+      openai-processing-ms:
+      - '657'
+      openai-project:
+      - proj_aT4OgTR5NJ9iNjg4xWc82hiE
+      openai-version:
+      - '2020-10-01'
+      server:
+      - cloudflare
+      set-cookie:
+      - __cf_bm=iWpYJUEdHYhWgaXcgyG6HIs6k3NZ1OW0ZdGRHnrxWzk-1792762449.9250648-1.0.1.1-OW5_3ZjDvg9w1QHfCInGlv3kA5CP458fzrIvyR9u8.AHM758gfO9HHyZOXoL3ndTTytivIcoSv4hiT8HVSY1mLlLCllpRoep1INrN4tmT3YRIAzq3OSTh.L6Jhtyo0Kf;
+        HttpOnly; SameSite=None; Secure; Path=/; Domain=api.openai.com; Expires=Fri,
+        23 Oct 2026 14:04:10 GMT
+      strict-transport-security:
+      - max-age=31536000; includeSubDomains; preload
+      transfer-encoding:
+      - chunked
+      x-content-type-options:
+      - nosniff
+      x-ratelimit-limit-requests:
+      - '30000'
+      x-ratelimit-limit-tokens:
+      - '150000000'
+      x-ratelimit-remaining-requests:
+      - '29999'
+      x-ratelimit-remaining-tokens:
+      - '149999715'
+      x-ratelimit-reset-requests:
+      - 2ms
+      x-ratelimit-reset-tokens:
+      - 0s
+      x-request-id:
+      - req_31c3006847644196b6cac51783aa6b4c
+    status:
+      code: 200
+      message: OK
+version: 1

@@ -12,7 +12,9 @@ The chat path probes the cache inside `wrap_chat_completion`; the Responses API
 path keeps its orchestration in `responses_wrappers.py` (its instrumentation
 opens the span and builds `TracedData` post-hoc) and only borrows
 `cached_response_to_responses` from here to turn a cached envelope into an
-`openai.types.responses.Response`.
+`openai.types.responses.Response`, plus, for `stream=True`,
+`cached_response_to_responses_events` and the `(Async)CachedResponsesEventStream`
+that replay that response as a stream of `ResponseStreamEvent`s.
 """
 
 from __future__ import annotations
@@ -20,7 +22,8 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable, Generator, Sequence
-from typing import TYPE_CHECKING, Any, cast
+from types import TracebackType
+from typing import TYPE_CHECKING, Any, Self, cast
 
 from opentelemetry.sdk.trace import Span as SDKSpan
 from opentelemetry.trace import Span
@@ -47,7 +50,7 @@ from openai.types.chat.chat_completion_message_function_tool_call import (
 )
 
 if TYPE_CHECKING:
-    from openai.types.responses import Response
+    from openai.types.responses import Response, ResponseStreamEvent
 
 from lmnr.sdk.debug.replay import (
     acache_outcome_for,
@@ -158,7 +161,8 @@ class OpenAIRolloutWrapper:
         provider response directly; `type="genAi"` rebuilds the response from the
         stored OTel output items (`gen_ai.output.messages`) — each item already
         has the `{type, ...}` shape `Response.output` expects (message /
-        function_call / reasoning / *_call blocks). Streaming is out of scope.
+        function_call / reasoning / *_call blocks). For `stream=True`, feed the
+        result to `cached_response_to_responses_events`.
         """
         try:
             from openai.types.responses import Response
@@ -226,6 +230,214 @@ class OpenAIRolloutWrapper:
                 "Failed to convert genAi response to OpenAI Responses format",
                 exc_info=True,
             )
+            return None
+
+    def cached_response_to_responses_events(
+        self, response: Response
+    ) -> list[ResponseStreamEvent] | None:
+        """Synthesize the Responses-API event sequence that streams `response`.
+
+        The sequence is what the API itself emits, collapsed to one delta per
+        text / refusal / arguments part: `response.created` and
+        `response.in_progress` (with an empty `output`), then per output item
+        `output_item.added`, its content parts (`content_part.added`, one delta,
+        `*.done`, `content_part.done`) or arguments (one delta, `done`), and
+        `output_item.done`, then the terminal `response.completed` /
+        `response.incomplete` / `response.failed` carrying the full response
+        (none for `cancelled`, which the API has no event for).
+        That's the order the SDK's `ResponseStreamState` (behind
+        `client.responses.stream()`) accumulates, so `get_final_response()` on a
+        replayed stream returns `response`. Returns None if synthesis fails.
+        """
+        try:
+            from openai.types.responses import (
+                ResponseCompletedEvent,
+                ResponseContentPartAddedEvent,
+                ResponseContentPartDoneEvent,
+                ResponseCreatedEvent,
+                ResponseFailedEvent,
+                ResponseFunctionCallArgumentsDeltaEvent,
+                ResponseFunctionCallArgumentsDoneEvent,
+                ResponseFunctionToolCall,
+                ResponseIncompleteEvent,
+                ResponseInProgressEvent,
+                ResponseOutputItemAddedEvent,
+                ResponseOutputItemDoneEvent,
+                ResponseOutputMessage,
+                ResponseOutputText,
+                ResponseRefusalDeltaEvent,
+                ResponseRefusalDoneEvent,
+                ResponseTextDeltaEvent,
+                ResponseTextDoneEvent,
+            )
+        except ImportError:
+            logger.debug("Responses-API stream event types unavailable", exc_info=True)
+            return None
+
+        try:
+            events: list[ResponseStreamEvent] = []
+
+            def seq() -> int:
+                return len(events)
+
+            pending = response.model_copy(update={"status": "in_progress", "output": []})
+            events.append(
+                ResponseCreatedEvent(
+                    response=pending, sequence_number=seq(), type="response.created"
+                )
+            )
+            events.append(
+                ResponseInProgressEvent(
+                    response=pending, sequence_number=seq(), type="response.in_progress"
+                )
+            )
+
+            for output_index, item in enumerate(response.output):
+                if isinstance(item, ResponseOutputMessage):
+                    added_item = item.model_copy(update={"content": [], "status": "in_progress"})
+                elif isinstance(item, ResponseFunctionToolCall):
+                    added_item = item.model_copy(update={"arguments": ""})
+                else:
+                    added_item = item
+                events.append(
+                    ResponseOutputItemAddedEvent(
+                        item=added_item,
+                        output_index=output_index,
+                        sequence_number=seq(),
+                        type="response.output_item.added",
+                    )
+                )
+
+                if isinstance(item, ResponseOutputMessage):
+                    for content_index, part in enumerate(item.content):
+                        if isinstance(part, ResponseOutputText):
+                            events.append(
+                                ResponseContentPartAddedEvent(
+                                    item_id=item.id,
+                                    output_index=output_index,
+                                    content_index=content_index,
+                                    part=part.model_copy(update={"text": "", "annotations": []}),
+                                    sequence_number=seq(),
+                                    type="response.content_part.added",
+                                )
+                            )
+                            events.append(
+                                ResponseTextDeltaEvent(
+                                    item_id=item.id,
+                                    output_index=output_index,
+                                    content_index=content_index,
+                                    delta=part.text,
+                                    logprobs=[],
+                                    sequence_number=seq(),
+                                    type="response.output_text.delta",
+                                )
+                            )
+                            events.append(
+                                ResponseTextDoneEvent(
+                                    item_id=item.id,
+                                    output_index=output_index,
+                                    content_index=content_index,
+                                    text=part.text,
+                                    logprobs=[],
+                                    sequence_number=seq(),
+                                    type="response.output_text.done",
+                                )
+                            )
+                        else:
+                            events.append(
+                                ResponseContentPartAddedEvent(
+                                    item_id=item.id,
+                                    output_index=output_index,
+                                    content_index=content_index,
+                                    part=part.model_copy(update={"refusal": ""}),
+                                    sequence_number=seq(),
+                                    type="response.content_part.added",
+                                )
+                            )
+                            events.append(
+                                ResponseRefusalDeltaEvent(
+                                    item_id=item.id,
+                                    output_index=output_index,
+                                    content_index=content_index,
+                                    delta=part.refusal,
+                                    sequence_number=seq(),
+                                    type="response.refusal.delta",
+                                )
+                            )
+                            events.append(
+                                ResponseRefusalDoneEvent(
+                                    item_id=item.id,
+                                    output_index=output_index,
+                                    content_index=content_index,
+                                    refusal=part.refusal,
+                                    sequence_number=seq(),
+                                    type="response.refusal.done",
+                                )
+                            )
+                        events.append(
+                            ResponseContentPartDoneEvent(
+                                item_id=item.id,
+                                output_index=output_index,
+                                content_index=content_index,
+                                part=part,
+                                sequence_number=seq(),
+                                type="response.content_part.done",
+                            )
+                        )
+                elif isinstance(item, ResponseFunctionToolCall):
+                    item_id = item.id or ""
+                    events.append(
+                        ResponseFunctionCallArgumentsDeltaEvent(
+                            item_id=item_id,
+                            output_index=output_index,
+                            delta=item.arguments,
+                            sequence_number=seq(),
+                            type="response.function_call_arguments.delta",
+                        )
+                    )
+                    events.append(
+                        ResponseFunctionCallArgumentsDoneEvent(
+                            item_id=item_id,
+                            output_index=output_index,
+                            arguments=item.arguments,
+                            name=item.name,
+                            sequence_number=seq(),
+                            type="response.function_call_arguments.done",
+                        )
+                    )
+
+                events.append(
+                    ResponseOutputItemDoneEvent(
+                        item=item,
+                        output_index=output_index,
+                        sequence_number=seq(),
+                        type="response.output_item.done",
+                    )
+                )
+
+            if response.status == "incomplete":
+                events.append(
+                    ResponseIncompleteEvent(
+                        response=response, sequence_number=seq(), type="response.incomplete"
+                    )
+                )
+            elif response.status == "failed":
+                events.append(
+                    ResponseFailedEvent(
+                        response=response, sequence_number=seq(), type="response.failed"
+                    )
+                )
+            elif response.status == "completed":
+                events.append(
+                    ResponseCompletedEvent(
+                        response=response, sequence_number=seq(), type="response.completed"
+                    )
+                )
+            # Any other status (`cancelled`) has no terminal event: the live
+            # stream just ends, and `get_final_response()` raises.
+            return events
+        except Exception:
+            logger.debug("Failed to synthesize Responses-API stream events", exc_info=True)
             return None
 
     def wrap_chat_completion(
@@ -325,6 +537,91 @@ class OpenAIRolloutWrapper:
         """Yield a cached response as a single async streaming chunk."""
         for chunk in self._create_cached_stream(response):
             yield chunk
+
+
+class _CachedHTTPResponse:
+    """Stand-in for the `httpx.Response` behind an SDK `Stream`. The SDK's
+    `ResponseStream` helpers read `.response` off the stream they wrap and close
+    it; nothing was fetched, so there is nothing to close."""
+
+    status_code: int = 200
+    headers: dict[str, str] = {}  # noqa: RUF012
+
+    def close(self) -> None:
+        return None
+
+    async def aclose(self) -> None:
+        return None
+
+
+class CachedResponsesEventStream:
+    """Sync replay of a cached Responses-API response, served in place of the
+    SDK's `Stream[ResponseStreamEvent]` on a debug-run cache HIT. Supports what
+    callers (and `client.responses.stream()`) use: iteration, the context
+    manager, `close()` and `.response`."""
+
+    def __init__(self, events: list[ResponseStreamEvent]):
+        self._events: list[ResponseStreamEvent] = events
+        self._index: int = 0
+        self.response: _CachedHTTPResponse = _CachedHTTPResponse()
+
+    def __iter__(self) -> Self:
+        return self
+
+    def __next__(self) -> ResponseStreamEvent:
+        if self._index >= len(self._events):
+            raise StopIteration
+        event = self._events[self._index]
+        self._index += 1
+        return event
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        self.close()
+
+    def close(self) -> None:
+        self._index = len(self._events)
+
+
+class AsyncCachedResponsesEventStream:
+    """Async counterpart of `CachedResponsesEventStream`, replacing the SDK's
+    `AsyncStream[ResponseStreamEvent]` (whose `close()` is a coroutine)."""
+
+    def __init__(self, events: list[ResponseStreamEvent]):
+        self._events: list[ResponseStreamEvent] = events
+        self._index: int = 0
+        self.response: _CachedHTTPResponse = _CachedHTTPResponse()
+
+    def __aiter__(self) -> Self:
+        return self
+
+    async def __anext__(self) -> ResponseStreamEvent:
+        if self._index >= len(self._events):
+            raise StopAsyncIteration
+        event = self._events[self._index]
+        self._index += 1
+        return event
+
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        await self.close()
+
+    async def close(self) -> None:
+        self._index = len(self._events)
 
 
 _openai_rollout_wrapper: OpenAIRolloutWrapper | None = None

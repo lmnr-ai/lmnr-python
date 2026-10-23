@@ -65,6 +65,7 @@ lmnr datasets pull <id>       # Pull dataset
 
 ## Coding practices
 
+- **Annotations:** start modules with `from __future__ import annotations` and write annotations unquoted, including names imported only under `TYPE_CHECKING`. Quote a type only where Python evaluates it at runtime: `cast("X", ...)`, `TypeVar` bounds, base classes, and `TypeAlias` values. Pydantic models resolve their annotations from module globals, so their field types must be importable at runtime.
 - **Zero import cycles.** `basedpyright src/lmnr` reports **zero** import cycles; keep it that way. Pyright counts function-local imports as edges, so "lazy" does not hide a cycle from it.
 - Inside `src/lmnr`, import `Laminar` from `lmnr.sdk.laminar`, never `from lmnr import Laminar` (the package `__init__` imports everything).
 - Initializer registry injection and the `tracing/wrapper.py` leaf: `src/lmnr/opentelemetry_lib/tracing/AGENTS.md`.
@@ -111,7 +112,7 @@ LMNR_BASE_URL         # API base URL (default: https://api.lmnr.ai)
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/langfuse/AGENTS.md` - Langfuse bridge
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/litellm/AGENTS.md`
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/microsoft_agent_framework/AGENTS.md`
-- `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/openai/AGENTS.md` - Responses-API replay, Decisions API
+- `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/openai/AGENTS.md` - Responses-API streaming + replay, Decisions API
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/openrouter/AGENTS.md`
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/pydantic_ai/AGENTS.md`
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/temporal/AGENTS.md`
