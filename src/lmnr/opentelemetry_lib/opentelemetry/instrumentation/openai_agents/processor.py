@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.helpers import (
     map_span_type,
+    span_kind,
     span_name,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.span_data import (
