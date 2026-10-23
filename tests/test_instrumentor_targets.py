@@ -65,8 +65,17 @@ INSTRUMENTOR_TARGETS: dict[str, tuple[str, str, set[tuple[str, str]]]] = {
                 )
                 for method in ("_generate", "_agenerate", "_stream", "_astream")
             ),
-            ("langchain_openai.chat_models.base", "BaseChatOpenAI._generate"),
-            ("langchain_openai.chat_models.base", "BaseChatOpenAI._agenerate"),
+            *(
+                ("langchain_openai.chat_models.base", f"BaseChatOpenAI.{method}")
+                for method in (
+                    "_generate",
+                    "_agenerate",
+                    "_stream",
+                    "_astream",
+                    "_stream_responses",
+                    "_astream_responses",
+                )
+            ),
         },
     ),
     "claude_agent": (

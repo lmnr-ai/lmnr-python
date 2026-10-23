@@ -65,12 +65,16 @@ class _SuppressWhileRunning:
     `True` would then stay attached in the caller's context and silently
     suppress every later provider call; this flag stops suppressing once the
     run ends, wherever the token ended up.
+
+    It also carries the LLM run's id, for code under the run that is not handed
+    a `run_manager` (`BaseChatModel.stream` calls `_stream` without one).
     """
 
-    __slots__: tuple[str, ...] = ("active",)
+    __slots__: tuple[str, ...] = ("active", "run_id")
 
-    def __init__(self) -> None:
+    def __init__(self, run_id: UUID) -> None:
         self.active: bool = True
+        self.run_id: UUID = run_id
 
     def __bool__(self) -> bool:
         return self.active
@@ -154,6 +158,14 @@ class LaminarCallbackHandler(BaseCallbackHandler):
         run = self._runs.get(run_id)
         return run.span if run is not None else None
 
+    @staticmethod
+    def current_llm_run_id() -> UUID | None:
+        """Id of the LLM run open in the current context, if any."""
+        flag = context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY)
+        if isinstance(flag, _SuppressWhileRunning) and flag.active:
+            return flag.run_id
+        return None
+
     def _start_run(
         self,
         run_id: UUID,
@@ -192,7 +204,7 @@ class LaminarCallbackHandler(BaseCallbackHandler):
                 # (OpenAI trace headers find it by run id), so unlike other
                 # runs it is not attached: start and end may run in different
                 # tasks, and a span left attached would parent later spans.
-                run.suppress_flag = _SuppressWhileRunning()
+                run.suppress_flag = _SuppressWhileRunning(run_id)
                 run.global_tokens.append(
                     context_api.attach(
                         context_api.set_value(_SUPPRESS_INSTRUMENTATION_KEY, run.suppress_flag)
@@ -314,10 +326,12 @@ class LaminarCallbackHandler(BaseCallbackHandler):
         run = self._runs.get(run_id)
         if run is None:
             return
-        run.span.set_attribute("error.type", type(error).__name__)
-        run.span.record_exception(error)
-        run.span.set_status(Status(StatusCode.ERROR, str(error)))
-        self._end_run(run_id)
+        try:
+            run.span.set_attribute("error.type", type(error).__name__)
+            run.span.record_exception(error)
+            run.span.set_status(Status(StatusCode.ERROR, str(error)))
+        finally:
+            self._end_run(run_id)
 
     @dont_throw
     def on_chain_start(
@@ -346,8 +360,10 @@ class LaminarCallbackHandler(BaseCallbackHandler):
         parent_run_id: UUID | None = None,
         **kwargs: Any,
     ) -> None:
-        self._set_output(run_id, outputs)
-        self._end_run(run_id)
+        try:
+            self._set_output(run_id, outputs)
+        finally:
+            self._end_run(run_id)
 
     @dont_throw
     def on_chain_error(
@@ -403,11 +419,14 @@ class LaminarCallbackHandler(BaseCallbackHandler):
         parent_run_id: UUID | None = None,
         **kwargs: Any,
     ) -> None:
-        run = self._runs.get(run_id)
-        if run is None:
-            return
-        set_response_attributes(run.span, response, run.request_model)
-        self._end_run(run_id)
+        # End the run even if recording the response fails: an LLM run left
+        # open keeps its suppression flag active
+        try:
+            run = self._runs.get(run_id)
+            if run is not None:
+                set_response_attributes(run.span, response, run.request_model)
+        finally:
+            self._end_run(run_id)
 
     @dont_throw
     def on_llm_error(
@@ -468,8 +487,10 @@ class LaminarCallbackHandler(BaseCallbackHandler):
         parent_run_id: UUID | None = None,
         **kwargs: Any,
     ) -> None:
-        self._set_output(run_id, output)
-        self._end_run(run_id)
+        try:
+            self._set_output(run_id, output)
+        finally:
+            self._end_run(run_id)
 
     @dont_throw
     def on_tool_error(
@@ -515,8 +536,10 @@ class LaminarCallbackHandler(BaseCallbackHandler):
         parent_run_id: UUID | None = None,
         **kwargs: Any,
     ) -> None:
-        self._set_output(run_id, retriever_output(documents))
-        self._end_run(run_id)
+        try:
+            self._set_output(run_id, retriever_output(documents))
+        finally:
+            self._end_run(run_id)
 
     @dont_throw
     def on_retriever_error(

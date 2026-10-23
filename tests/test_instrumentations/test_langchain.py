@@ -24,6 +24,7 @@ from opentelemetry.trace import StatusCode
 from pydantic import SecretStr
 
 from lmnr import Laminar, observe
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langchain import callback_handler
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.context_keys import (
     LANGGRAPH_TOPOLOGY,
 )
@@ -409,6 +410,34 @@ def test_chat_model_error(span_exporter: InMemorySpanExporter):
     assert context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY) is None
 
 
+@pytest.mark.parametrize(
+    "run",
+    [
+        lambda: _fake_chat_model(_chat_response()).invoke(CHAT_INPUT),
+        lambda: RunnableLambda(lambda x: x).invoke("hi"),
+        lambda: Tool(name="echo", func=lambda x: x, description="Echo.").invoke("hi"),
+        lambda: _StaticRetriever().invoke("cats"),
+    ],
+    ids=["llm", "chain", "tool", "retriever"],
+)
+def test_run_ends_when_recording_output_fails(
+    span_exporter: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch, run: Any
+):
+    def fail(*_args: Any, **_kwargs: Any) -> None:
+        raise RuntimeError("cannot record")
+
+    monkeypatch.setattr(callback_handler, "set_response_attributes", fail)
+    monkeypatch.setattr(callback_handler.LaminarCallbackHandler, "_set_output", fail)
+    _ = run()
+
+    # The run still ends, and an LLM run's suppression with it
+    assert len(span_exporter.get_finished_spans()) == 1
+    assert not context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY)
+    with Laminar.start_as_current_span("after"):
+        pass
+    assert len(span_exporter.get_finished_spans()) == 2
+
+
 def test_tool(span_exporter: InMemorySpanExporter):
     @tool
     def multiply(a: int, b: int) -> int:
@@ -495,9 +524,35 @@ def test_thread_id_is_conversation_id(span_exporter: InMemorySpanExporter):
     assert _attrs(workflow_span)["gen_ai.conversation.id"] == "thread-1"
 
 
+def _openai_sse(*chunks: dict[str, Any]) -> bytes:
+    events = [f"data: {json.dumps(chunk)}\n\n" for chunk in chunks]
+    return "".join([*events, "data: [DONE]\n\n"]).encode()
+
+
+def _openai_stream_chunk(delta: dict[str, Any], finish_reason: str | None = None):
+    return {
+        "id": "chatcmpl-1",
+        "object": "chat.completion.chunk",
+        "created": 0,
+        "model": "gpt-4o-mini-2024-07-18",
+        "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}],
+    }
+
+
 def _openai_transport(captured: list[httpx.Request]) -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
         captured.append(request)
+        if json.loads(request.content).get("stream"):
+            usage = {"prompt_tokens": 7, "completion_tokens": 1, "total_tokens": 8}
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/event-stream"},
+                content=_openai_sse(
+                    _openai_stream_chunk({"role": "assistant", "content": "Paris"}),
+                    _openai_stream_chunk({}, "stop"),
+                    {**_openai_stream_chunk({}), "choices": [], "usage": usage},
+                ),
+            )
         return httpx.Response(
             200,
             json={
@@ -519,7 +574,9 @@ def _openai_transport(captured: list[httpx.Request]) -> httpx.MockTransport:
     return httpx.MockTransport(handler)
 
 
-def _assert_openai_spans(span_exporter: InMemorySpanExporter, captured: list[httpx.Request]):
+def _assert_openai_spans(
+    span_exporter: InMemorySpanExporter, captured: list[httpx.Request], streamed: bool = False
+):
     spans = span_exporter.get_finished_spans()
     # The OpenAI SDK instrumentation underneath is suppressed
     assert [span.name for span in spans] == ["ChatOpenAI.chat"]
@@ -528,7 +585,9 @@ def _assert_openai_spans(span_exporter: InMemorySpanExporter, captured: list[htt
     assert attrs["gen_ai.system"] == "openai"
     assert attrs["gen_ai.request.model"] == "gpt-4o-mini"
     assert attrs["gen_ai.response.model"] == "gpt-4o-mini-2024-07-18"
-    assert attrs["gen_ai.response.id"] == "chatcmpl-1"
+    if not streamed:
+        # Merged stream chunks carry LangChain's own `lc_run--` message id
+        assert attrs["gen_ai.response.id"] == "chatcmpl-1"
     assert attrs["gen_ai.usage.input_tokens"] == 7
     assert attrs["gen_ai.usage.output_tokens"] == 1
     assert attrs["gen_ai.response.finish_reasons"] == ("stop",)
@@ -563,6 +622,34 @@ async def test_openai_traceparent_header_async(span_exporter: InMemorySpanExport
     )
     _ = await model.ainvoke("What is the capital of France?")
     _assert_openai_spans(span_exporter, captured)
+
+
+def test_openai_traceparent_header_stream(span_exporter: InMemorySpanExporter):
+    captured: list[httpx.Request] = []
+    model = ChatOpenAI(
+        model="gpt-4o-mini",
+        api_key=SecretStr("test-api-key"),
+        http_client=httpx.Client(transport=_openai_transport(captured)),
+        stream_usage=True,
+    )
+    # `stream` calls `_stream` without a `run_manager`
+    chunks = list(model.stream("What is the capital of France?"))
+    assert "".join(cast(str, chunk.content) for chunk in chunks) == "Paris"
+    _assert_openai_spans(span_exporter, captured, streamed=True)
+
+
+@pytest.mark.asyncio
+async def test_openai_traceparent_header_async_stream(span_exporter: InMemorySpanExporter):
+    captured: list[httpx.Request] = []
+    model = ChatOpenAI(
+        model="gpt-4o-mini",
+        api_key=SecretStr("test-api-key"),
+        http_async_client=httpx.AsyncClient(transport=_openai_transport(captured)),
+        stream_usage=True,
+    )
+    chunks = [chunk async for chunk in model.astream("What is the capital of France?")]
+    assert "".join(cast(str, chunk.content) for chunk in chunks) == "Paris"
+    _assert_openai_spans(span_exporter, captured, streamed=True)
 
 
 def test_agent_loop_with_tools(span_exporter: InMemorySpanExporter):

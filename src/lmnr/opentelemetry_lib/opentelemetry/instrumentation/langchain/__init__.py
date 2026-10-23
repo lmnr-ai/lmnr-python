@@ -70,11 +70,16 @@ def wrap_openai_call(
     The OpenAI SDK instrumentation is suppressed under a LangChain LLM run, so
     this is what lets a tracing-aware server (e.g. a proxy) link its spans to
     ours. Works for sync, async and streaming methods alike: only the kwargs
-    are touched, before the call.
+    are touched, before the call. `BaseChatModel.stream` / `astream` call
+    `_stream` / `_astream` without a `run_manager`, so the run is then found
+    through the context its LLM run attached.
     """
     try:
+        handler = to_wrap["handler"]
         run_id = getattr(kwargs.get("run_manager"), "run_id", None)
-        span = to_wrap["handler"].get_span(run_id) if run_id is not None else None
+        if run_id is None:
+            run_id = handler.current_llm_run_id()
+        span = handler.get_span(run_id) if run_id is not None else None
         if span is not None:
             extra_headers = dict(kwargs.get("extra_headers") or {})
             TraceContextTextMapPropagator().inject(extra_headers, context=set_span_in_context(span))
@@ -96,7 +101,20 @@ _OPENAI_CALL_TARGETS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         "BaseOpenAI",
         ("_generate", "_agenerate", "_stream", "_astream"),
     ),
-    ("langchain_openai.chat_models.base", "BaseChatOpenAI", ("_generate", "_agenerate")),
+    (
+        "langchain_openai.chat_models.base",
+        "BaseChatOpenAI",
+        # `ChatOpenAI._stream` / `_astream` delegate to these via `super()`;
+        # the `_responses` ones serve the Responses API
+        (
+            "_generate",
+            "_agenerate",
+            "_stream",
+            "_astream",
+            "_stream_responses",
+            "_astream_responses",
+        ),
+    ),
 )
 
 
@@ -154,7 +172,7 @@ class LangchainInstrumentor(BaseLaminarInstrumentor):
                         object_name=object_name,
                         method_name=method_name,
                         is_async=method_name.startswith("_a"),
-                        is_streaming=method_name.endswith("stream"),
+                        is_streaming="stream" in method_name,
                         span_name=None,
                         span_type=None,
                         instrumentation_scope=self.instrumentation_scope(),
