@@ -1,6 +1,6 @@
 import uuid
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from logging import Logger
 from pathlib import Path
 from typing import Any, cast
@@ -56,6 +56,18 @@ class EvaluationDataset(ABC):
 
     def slice(self, start: int, end: int):
         return [self[i] for i in range(max(start, 0), min(end, len(self)))]
+
+    def __iter__(self) -> Iterator[Datapoint]:
+        """Iterate the dataset one datapoint at a time.
+
+        Evals consume datasets through this, never by materializing them, so a
+        subclass that can stream (see ``LaminarDataset``) overrides it to keep
+        peak memory bounded. The default walks ``__getitem__`` so existing
+        custom datasets, which only implement the size + by-index contract,
+        keep working unchanged.
+        """
+        for i in range(len(self)):
+            yield self[i]
 
     # --- base hooks forwarded by wrappers -------------------------------------
 
@@ -173,7 +185,12 @@ class LaminarDataset(EvaluationDataset):
         self._fetch_size: int = fetch_size
         self._logger: Logger = get_default_logger(self.__class__.__name__)
 
-    def _fetch_page(self, page_index: int) -> list[Datapoint]:
+    def _pull_page(self, page_index: int) -> list[Datapoint]:
+        """Fetch one page from the API WITHOUT caching it.
+
+        ``_len`` is still learned from the response, since it costs nothing and
+        is what lets `__iter__` know when to stop.
+        """
         offset = page_index * self._fetch_size
         self._logger.debug(
             f"dataset name: {self.name}, id: {self.id}. Fetching page "
@@ -191,10 +208,14 @@ class LaminarDataset(EvaluationDataset):
                 offset=offset,
                 limit=self._fetch_size,
             )
-        self._pages[page_index] = resp["items"]
         if self._len is None:
             self._len = resp["total_count"]
         return resp["items"]
+
+    def _fetch_page(self, page_index: int) -> list[Datapoint]:
+        page = self._pull_page(page_index)
+        self._pages[page_index] = page
+        return page
 
     @override
     def __len__(self) -> int:
@@ -218,6 +239,31 @@ class LaminarDataset(EvaluationDataset):
         if offset_in_page >= len(page):
             raise IndexError(f"dataset index {idx} is out of range for dataset of size {size}")
         return page[offset_in_page]
+
+    @override
+    def __iter__(self) -> Iterator[Datapoint]:
+        """Stream the dataset page by page, retaining at most one page.
+
+        Pages already cached by `__len__` / `__getitem__` are served from
+        memory; every other page is pulled, yielded and then dropped, so a full
+        eval run over a huge dataset never holds more than `fetch_size`
+        datapoints at once. `__getitem__` / `__len__` keep their
+        accumulate-and-cache behavior for random access.
+        """
+        page_index = 0
+        yielded = 0
+        while self._len is None or yielded < self._len:
+            page = self._pages.get(page_index)
+            if page is None:
+                page = self._pull_page(page_index)
+            # A short page before `_len` datapoints have been seen means the
+            # dataset shrank (or the server disagrees with its own
+            # total_count); stop rather than spin on empty pages.
+            if not page:
+                return
+            yield from page
+            yielded += len(page)
+            page_index += 1
 
     def set_client(self, client: LaminarClient):
         self.client = client

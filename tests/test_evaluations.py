@@ -1,5 +1,6 @@
+import asyncio
 import uuid
-from collections.abc import Awaitable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
@@ -10,9 +11,10 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from typing_extensions import TypeVar
 
 from lmnr import Laminar
+from lmnr.sdk.datasets import LaminarDataset
 from lmnr.sdk.evaluations import evaluate
 from lmnr.sdk.evaluations.models import EvaluationRunResult
-from lmnr.sdk.types import Datapoint
+from lmnr.sdk.types import Datapoint, Dataset
 
 T = TypeVar("T")
 
@@ -53,6 +55,32 @@ def mock_dataset_pull_response() -> dict[str, list[Datapoint] | int]:
         ],
         "total_count": 1,
     }
+
+
+def paged_pull(total: int, fetch_size: int) -> Callable[..., dict[str, list[Datapoint] | int]]:
+    """Build a `Datasets.pull` side effect that serves one page per call."""
+    all_items = [
+        Datapoint(
+            id=uuid.uuid4(),
+            data=f"test-{i}",
+            target=f"test-{i}",
+            createdAt=datetime.now(tz=UTC),
+        )
+        for i in range(total)
+    ]
+
+    def pull(
+        name: str | None = None,
+        id: uuid.UUID | None = None,
+        offset: int = 0,
+        limit: int = fetch_size,
+    ) -> dict[str, list[Datapoint] | int]:
+        return {
+            "items": all_items[offset : offset + limit],
+            "total_count": total,
+        }
+
+    return pull
 
 
 # Helper functions for common test logic
@@ -356,3 +384,153 @@ async def test_evaluate_propagates_evaluation_id_to_all_spans(
         if context is not None:
             trace_ids.add(context.trace_id)
     assert len(trace_ids) == 2
+
+
+@pytest.mark.asyncio
+@patch("lmnr.sdk.client.asynchronous.resources.datasets.AsyncDatasets.get_dataset_by_name")
+@patch("lmnr.sdk.client.synchronous.resources.datasets.Datasets.pull")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init")
+async def test_evaluate_streams_laminar_dataset_in_pages(
+    mock_init: MagicMock,
+    mock_datapoints: MagicMock,
+    mock_dataset_pull: MagicMock,
+    mock_get_dataset_by_name: MagicMock,
+    mock_eval_response: MagicMock,
+    mock_datapoints_response: MagicMock,
+    span_exporter: InMemorySpanExporter,
+):
+    """A LaminarDataset is pulled one page at a time while datapoints run, and
+    streamed pages are not retained on the dataset."""
+    mock_init.return_value = mock_eval_response
+    mock_datapoints.return_value = mock_datapoints_response
+    mock_dataset_pull.side_effect = paged_pull(total=7, fetch_size=3)
+    mock_get_dataset_by_name.return_value = [
+        Dataset(id=uuid.uuid4(), name="test_dataset", created_at=datetime.now(tz=UTC))
+    ]
+
+    executed: list[Any] = []
+
+    def executor(data: T, _target: Any = None) -> T:
+        executed.append(data)
+        return data
+
+    dataset = LaminarDataset(name="test_dataset", fetch_size=3)
+
+    result = await cast(
+        Awaitable[EvaluationRunResult],
+        evaluate(
+            data=dataset,
+            executor=executor,
+            evaluators={
+                "exact": lambda output, target: 1 if output == target else 0,
+            },
+            project_api_key="test",
+        ),
+    )
+    _flush_success = Laminar.flush()
+
+    assert result["average_scores"]["exact"] == 1
+    assert [str(datapoint) for datapoint in executed] == [f"test-{i}" for i in range(7)]
+    # the reporter's len() caches page 0, then pages 1 and 2 are streamed
+    assert mock_dataset_pull.call_count == 3
+    # streaming must not accumulate pages beyond the one len() cached
+    assert list(dataset._pages) == [0]
+    # 7 datapoints * (evaluation + executor + evaluator) = 21 spans
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 21
+
+
+@pytest.mark.asyncio
+@patch("lmnr.sdk.client.synchronous.resources.datasets.Datasets.pull")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init")
+async def test_evaluate_runs_datapoints_concurrently(
+    mock_init: MagicMock,
+    mock_datapoints: MagicMock,
+    mock_dataset_pull: MagicMock,
+    mock_eval_response: MagicMock,
+    mock_datapoints_response: MagicMock,
+    mock_dataset_pull_response: MagicMock,
+    span_exporter: InMemorySpanExporter,
+):
+    """The semaphore sliding window keeps up to `concurrency_limit` datapoints
+    in flight at once."""
+    mock_init.return_value = mock_eval_response
+    mock_datapoints.return_value = mock_datapoints_response
+    mock_dataset_pull.return_value = mock_dataset_pull_response
+
+    in_flight = 0
+    max_in_flight = 0
+
+    async def executor(data: T, _target: Any = None) -> T:
+        nonlocal in_flight, max_in_flight
+        in_flight += 1
+        max_in_flight = max(max_in_flight, in_flight)
+        await asyncio.sleep(0.05)
+        in_flight -= 1
+        return data
+
+    result = await cast(
+        Awaitable[EvaluationRunResult],
+        evaluate(
+            data=[{"data": f"test-{i}", "target": f"test-{i}"} for i in range(6)],
+            executor=executor,
+            evaluators={
+                "exact": lambda output, target: 1 if output == target else 0,
+            },
+            concurrency_limit=3,
+            project_api_key="test",
+        ),
+    )
+    _flush_success = Laminar.flush()
+
+    assert result["average_scores"]["exact"] == 1
+    assert max_in_flight == 3
+
+
+@pytest.mark.asyncio
+@patch("lmnr.sdk.client.synchronous.resources.datasets.Datasets.pull")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init")
+async def test_evaluate_datapoint_failure_does_not_abort_remaining(
+    mock_init: MagicMock,
+    mock_datapoints: MagicMock,
+    mock_dataset_pull: MagicMock,
+    mock_eval_response: MagicMock,
+    mock_datapoints_response: MagicMock,
+    mock_dataset_pull_response: MagicMock,
+    span_exporter: InMemorySpanExporter,
+):
+    """A failing datapoint must not stop the remaining datapoints from being
+    scheduled and run; its error still propagates once all have finished."""
+    mock_init.return_value = mock_eval_response
+    mock_datapoints.return_value = mock_datapoints_response
+    mock_dataset_pull.return_value = mock_dataset_pull_response
+
+    executed: list[Any] = []
+
+    async def executor(data: T, _target: Any = None) -> T:
+        executed.append(data)
+        if data == "test-0":
+            raise RuntimeError("executor failed")
+        return data
+
+    with pytest.raises(RuntimeError, match="executor failed"):
+        _result = await cast(
+            Awaitable[EvaluationRunResult],
+            evaluate(
+                data=[{"data": f"test-{i}", "target": f"test-{i}"} for i in range(6)],
+                executor=executor,
+                evaluators={
+                    "exact": lambda output, target: 1 if output == target else 0,
+                },
+                concurrency_limit=1,
+                project_api_key="test",
+            ),
+        )
+    _flush_success = Laminar.flush()
+
+    # With concurrency_limit=1 the failure on the first datapoint completes
+    # before the second is scheduled — every datapoint must still run.
+    assert executed == [f"test-{i}" for i in range(6)]
