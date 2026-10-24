@@ -5,6 +5,8 @@ import pytest
 from anthropic import Anthropic, AsyncAnthropic
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
+from .utils import successful_spans
+
 
 @pytest.mark.vcr
 def test_anthropic_thinking_legacy(
@@ -41,7 +43,7 @@ def test_anthropic_thinking_legacy(
         ],
     )
 
-    spans = span_exporter.get_finished_spans()
+    spans = successful_spans(span_exporter)
     anthropic_span = spans[0]
     attributes = anthropic_span.attributes or {}
 
@@ -106,7 +108,7 @@ async def test_async_anthropic_thinking_legacy(
         ],
     )
 
-    spans = span_exporter.get_finished_spans()
+    spans = successful_spans(span_exporter)
     anthropic_span = spans[0]
     attributes = anthropic_span.attributes or {}
 
@@ -176,7 +178,7 @@ def test_anthropic_thinking_streaming_legacy(
         elif event.type == "content_block_delta" and event.delta.type == "thinking_delta":
             thinking += event.delta.thinking
 
-    spans = span_exporter.get_finished_spans()
+    spans = successful_spans(span_exporter)
     anthropic_span = spans[0]
     attributes = anthropic_span.attributes or {}
 
@@ -247,7 +249,7 @@ async def test_async_anthropic_thinking_streaming_legacy(
         elif event.type == "content_block_delta" and event.delta.type == "thinking_delta":
             thinking += event.delta.thinking
 
-    spans = span_exporter.get_finished_spans()
+    spans = successful_spans(span_exporter)
     anthropic_span = spans[0]
     attributes = anthropic_span.attributes or {}
 

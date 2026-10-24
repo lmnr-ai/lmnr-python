@@ -7,6 +7,8 @@ import pytest
 from anthropic import Anthropic, AsyncAnthropic
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
+from .utils import successful_spans
+
 
 @pytest.mark.vcr
 def test_anthropic_prompt_caching_legacy(
@@ -56,7 +58,7 @@ def test_anthropic_prompt_caching_legacy(
             ],
         )
 
-    spans = span_exporter.get_finished_spans()
+    spans = successful_spans(span_exporter)
     # verify overall shape
     assert all(span.name == "anthropic.chat" for span in spans)
     assert len(spans) == 2
@@ -161,7 +163,7 @@ async def test_anthropic_prompt_caching_async_legacy(
             ],
         )
 
-    spans = span_exporter.get_finished_spans()
+    spans = successful_spans(span_exporter)
     # verify overall shape
     assert all(span.name == "anthropic.chat" for span in spans)
     assert len(spans) == 2
@@ -267,7 +269,7 @@ def test_anthropic_prompt_caching_stream_legacy(
             if event.type == "content_block_delta" and event.delta.type == "text_delta":
                 response_content += event.delta.text
 
-    spans = span_exporter.get_finished_spans()
+    spans = successful_spans(span_exporter)
     # verify overall shape
     assert all(span.name == "anthropic.chat" for span in spans)
     assert len(spans) == 2
@@ -376,7 +378,7 @@ async def test_anthropic_prompt_caching_async_stream_legacy(
             if event.type == "content_block_delta" and event.delta.type == "text_delta":
                 response_content += event.delta.text
 
-    spans = span_exporter.get_finished_spans()
+    spans = successful_spans(span_exporter)
     # verify overall shape
     assert all(span.name == "anthropic.chat" for span in spans)
     assert len(spans) == 2

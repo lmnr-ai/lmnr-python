@@ -115,7 +115,7 @@ all = [
 
 [dependency-groups]
 dev = [
-  "anthropic[bedrock]==0.95.0",
+  "anthropic[bedrock]==2.3.0",
   "agent-framework-core==1.20.0",
   "agent-framework-openai==1.15.0",
   "basedpyright==1.40.2",
