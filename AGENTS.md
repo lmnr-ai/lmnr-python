@@ -104,16 +104,16 @@ LMNR_BASE_URL         # API base URL (default: https://api.lmnr.ai)
 - `src/lmnr/sdk/debug/AGENTS.md` - debug mode / replay, TS parity
 - `src/lmnr/opentelemetry_lib/tracing/AGENTS.md` - import-cycle wiring, tracing singleton + provider reuse, default instrument set, span batching / export, payload size limit
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/AGENTS.md` - instrumentor structure, error status (exception events), GenAI message attributes
-- `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/anthropic/AGENTS.md`
+- `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/anthropic/AGENTS.md` - structured output, `with_raw_response` (anthropic >= 1 differences)
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/claude_agent/AGENTS.md` - settings.json precedence, proxy
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/deepagents/AGENTS.md`
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/google_adk/AGENTS.md`
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/google_genai/AGENTS.md` - native Gemini shape, bytes serialization
-- `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/langchain/AGENTS.md` - callback handler, LLM-run suppression flag, LangGraph topology, OpenAI traceparent
+- `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/langchain/AGENTS.md` - callback handler, hand-off of LLM runs to provider instrumentors, LLM-run suppression flag, LangGraph topology, OpenAI traceparent
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/langfuse/AGENTS.md` - Langfuse bridge
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/litellm/AGENTS.md`
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/microsoft_agent_framework/AGENTS.md`
-- `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/openai/AGENTS.md` - Responses-API streaming + replay, Decisions API
+- `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/openai/AGENTS.md` - chat `with_raw_response` + cached streams, Responses-API streaming + replay, Decisions API
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/openai_agents/AGENTS.md` - span-I/O invariant, `mcp_tools` span parenting, `SpanError` handling, usage gaps on old SDKs, handoff parenting + root path repair, output-block roles, chat-span dedup
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/openrouter/AGENTS.md`
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/pydantic_ai/AGENTS.md`

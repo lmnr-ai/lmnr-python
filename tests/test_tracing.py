@@ -314,12 +314,12 @@ def test_use_span_with_auto_instrumentation_langchain(
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
     test_span = next(span for span in spans if span.name == "test")
-    openai_span = next(span for span in spans if span.name == "ChatOpenAI.chat")
+    openai_span = next(span for span in spans if span.name == "openai.chat")
 
     assert _ctx(test_span).trace_id == _ctx(openai_span).trace_id
     assert _parent(openai_span).span_id == _ctx(test_span).span_id
     assert (openai_span.attributes or {})["lmnr.span.instrumentation_source"] == "python"
-    assert (openai_span.attributes or {})["lmnr.span.path"] == ("test", "ChatOpenAI.chat")
+    assert (openai_span.attributes or {})["lmnr.span.path"] == ("test", "openai.chat")
 
 
 def test_session_id(span_exporter: InMemorySpanExporter):

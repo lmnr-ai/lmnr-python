@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import contextlib
+import sys
 from collections.abc import Mapping, Sequence
 from contextvars import Token
 from dataclasses import dataclass, field
+from functools import cache
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any, cast
 from uuid import UUID
 
@@ -54,6 +57,53 @@ from lmnr.sdk.types import LaminarSpanType
 from lmnr.sdk.utils import json_dumps
 
 logger = get_default_logger(__name__)
+
+_INSTRUMENTATION_PACKAGE = "lmnr.opentelemetry_lib.opentelemetry.instrumentation"
+_OPENAI_LLM_TYPES = frozenset({"openai-chat", "azure-openai-chat", "openai", "azure"})
+# LangChain `_llm_type` (the `_type` invocation param) → (module, class) of the
+# Laminar instrumentor that records the provider SDK call the model makes.
+# Subclasses that override `_llm_type` (ChatDeepSeek, ChatXAI, ...) are not
+# listed and keep the LangChain span.
+_PROVIDER_INSTRUMENTORS: dict[str, tuple[str, str]] = {
+    **{llm_type: ("openai", "OpenAIInstrumentor") for llm_type in _OPENAI_LLM_TYPES},
+    "anthropic-chat": ("anthropic", "AnthropicInstrumentor"),
+    "chat-google-generative-ai": ("google_genai", "GoogleGenAiSdkInstrumentor"),
+    "groq-chat": ("groq", "GroqInstrumentor"),
+}
+
+
+@cache
+def _google_genai_uses_sdk() -> bool:
+    """langchain-google-genai >= 4 calls `google.genai`; earlier versions use a
+    different client that the google_genai instrumentor does not wrap."""
+    try:
+        return int(version("langchain-google-genai").split(".")[0]) >= 4
+    except (PackageNotFoundError, ValueError):
+        return False
+
+
+def _provider_records_call(kwargs: Mapping[str, Any]) -> bool:
+    """True if a Laminar provider instrumentor will record this LLM run's SDK call."""
+    params = kwargs.get("invocation_params")
+    if not isinstance(params, Mapping):
+        return False
+    params = cast(Mapping[str, Any], params)
+    llm_type = params.get("_type")
+    target = _PROVIDER_INSTRUMENTORS.get(llm_type) if isinstance(llm_type, str) else None
+    if target is None:
+        return False
+    # Structured output on the Responses API goes through `responses.parse`,
+    # which the openai instrumentor does not wrap, and whether that API is
+    # used is decided later, inside the model
+    if llm_type in _OPENAI_LLM_TYPES and params.get("response_format") is not None:
+        return False
+    if llm_type == "chat-google-generative-ai" and not _google_genai_uses_sdk():
+        return False
+    # An instrumentor's module is always imported once it is instrumented;
+    # reading it from sys.modules avoids importing provider SDKs here
+    module = sys.modules.get(f"{_INSTRUMENTATION_PACKAGE}.{target[0]}")
+    instrumentor = getattr(getattr(module, target[1], None), "_instance", None)
+    return bool(instrumentor is not None and instrumentor.is_instrumented_by_opentelemetry)
 
 
 class _SuppressWhileRunning:
@@ -150,6 +200,9 @@ class LaminarCallbackHandler(BaseCallbackHandler):
         super().__init__()
         self._scope: LaminarInstrumentationScopeAttributes = scope
         self._runs: dict[UUID, _Run] = {}
+        # LLM runs left to the provider SDK instrumentation (no LangChain
+        # span), mapped to the context their children parent from
+        self._handed_off: dict[UUID, Context] = {}
         # Callbacks must run in the caller's task / thread, not an executor,
         # so the contexts they attach are visible to the code they wrap.
         self.run_inline: bool = True
@@ -185,7 +238,12 @@ class LaminarCallbackHandler(BaseCallbackHandler):
             return None
 
         parent = self._runs.get(parent_run_id) if parent_run_id is not None else None
-        parent_context = parent.context if parent is not None else get_current_context()
+        if parent is not None:
+            parent_context = parent.context
+        elif parent_run_id is not None and parent_run_id in self._handed_off:
+            parent_context = self._handed_off[parent_run_id]
+        else:
+            parent_context = get_current_context()
         span = safe_start_span(
             name, context=parent_context, attributes=attributes, span_type=span_type
         )
@@ -249,6 +307,7 @@ class LaminarCallbackHandler(BaseCallbackHandler):
             run.span.end()
 
     def _end_run(self, run_id: UUID) -> None:
+        _ = self._handed_off.pop(run_id, None)
         run = self._runs.pop(run_id, None)
         if run is None:
             return
@@ -267,7 +326,9 @@ class LaminarCallbackHandler(BaseCallbackHandler):
         metadata: Mapping[str, Any] | None,
         kwargs: Mapping[str, Any],
     ) -> Span | None:
-        is_root = parent_run_id is None or parent_run_id not in self._runs
+        is_root = parent_run_id is None or (
+            parent_run_id not in self._runs and parent_run_id not in self._handed_off
+        )
         attributes: dict[str, AttributeValue] = {}
         if is_root:
             span_name = f"{name}.workflow"
@@ -305,6 +366,18 @@ class LaminarCallbackHandler(BaseCallbackHandler):
         metadata: Mapping[str, Any] | None,
         kwargs: Mapping[str, Any],
     ) -> Span | None:
+        if self.current_llm_run_id() is None and _provider_records_call(kwargs):
+            # The provider SDK instrumentation records this call, with its
+            # provider-specific attributes and debug replay, as the LLM span.
+            # It parents from the current context, as runs started here do.
+            parent = self._runs.get(parent_run_id) if parent_run_id is not None else None
+            self._handed_off[run_id] = (
+                parent.context if parent is not None else get_current_context()
+            )
+            if parent is not None:
+                parent.children.append(run_id)
+            return None
+
         name = _run_name(serialized, kwargs)
         vendor = detect_vendor_from_class(_class_name(serialized))
         span = self._start_run(

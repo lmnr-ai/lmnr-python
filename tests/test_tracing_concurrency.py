@@ -417,35 +417,42 @@ def test_threadpool_parallel_spans_with_openai(span_exporter: InMemorySpanExport
 
 def test_threadpool_parallel_spans_with_langchain(span_exporter: InMemorySpanExporter):
     """Test multiple parallel ThreadPoolExecutor spans live in separate traces
-    including auto-instrumented LangChain spans."""
-    from unittest.mock import MagicMock, patch
-
+    including auto-instrumented LangChain spans. LangChain hands the call off to
+    the OpenAI instrumentation, so the LLM span is `openai.chat`."""
+    import httpx
     from langchain_openai import ChatOpenAI
 
-    # Create a mock response that can be safely shared across threads
-    mock_response = MagicMock()
-    mock_response.parse.return_value = {
-        "choices": [
-            {
-                "message": {
-                    "content": "The capital of France is Paris.",
-                    "role": "assistant",
-                }
-            }
-        ]
-    }
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "id": "chatcmpl_test",
+                "object": "chat.completion",
+                "created": 0,
+                "model": "gpt-4o-mini",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": "The capital of France is Paris.",
+                        },
+                        "finish_reason": "stop",
+                    }
+                ],
+            },
+        )
 
     def task_worker(task_id: str) -> str:
-        # the real API key was used in the vcr cassette
-        openai_client = ChatOpenAI(api_key=SecretStr("test-api-key"))
-        with (
-            patch.object(openai_client.client, "create", return_value=mock_response),
-            Laminar.start_as_current_span("task_worker"),
-        ):
+        openai_client = ChatOpenAI(
+            model="gpt-4o-mini",
+            api_key=SecretStr("test-api-key"),
+            http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+        )
+        with Laminar.start_as_current_span("task_worker"):
             time.sleep(0.01)
             _res = openai_client.invoke(
-                model="gpt-4o-mini",
-                input=[{"role": "user", "content": "what is the capital of France?"}],
+                [{"role": "user", "content": "what is the capital of France?"}]
             )
             result = f"task_{task_id}"
             Laminar.set_span_output(result)
@@ -468,7 +475,7 @@ def test_threadpool_parallel_spans_with_langchain(span_exporter: InMemorySpanExp
         if span.name == "task_worker":
             assert span.parent is None or span.parent.span_id == 0
         else:
-            assert span.name == "ChatOpenAI.chat"
+            assert span.name == "openai.chat"
             assert span.parent is not None
             assert isinstance((span.attributes or {})["lmnr.span.path"], tuple)
             assert len(cast(list[str], (span.attributes or {})["lmnr.span.path"])) == 2
