@@ -21,14 +21,17 @@ from __future__ import annotations
 
 import json
 import uuid
-from collections.abc import AsyncGenerator, Awaitable, Callable, Generator, Sequence
-from types import TracebackType
-from typing import TYPE_CHECKING, Any, Self, cast
+from collections.abc import Awaitable, Callable, Sequence
+from typing import TYPE_CHECKING, Any, cast
 
 from opentelemetry.sdk.trace import Span as SDKSpan
 from opentelemetry.trace import Span
 from typing_extensions import TypeVar
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.cached_stream import (
+    AsyncCachedEventStream,
+    CachedEventStream,
+)
 from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
 from openai.types.chat.chat_completion import Choice
@@ -451,8 +454,8 @@ class OpenAIRolloutWrapper:
         is_async: bool = False,
     ) -> (
         ChatCompletion
-        | Generator[ChatCompletionChunk]
-        | Awaitable[ChatCompletion | AsyncGenerator[ChatCompletionChunk]]
+        | CachedEventStream[ChatCompletionChunk]
+        | Awaitable[ChatCompletion | AsyncCachedEventStream[ChatCompletionChunk]]
     ):
         # Async path: hand back the coroutine so the call site (which checks
         # inspect.iscoroutine) awaits the cache lookup off the event loop.
@@ -486,7 +489,7 @@ class OpenAIRolloutWrapper:
         kwargs: dict[str, Any],
         span: Span,
         is_streaming: bool = False,
-    ) -> ChatCompletion | AsyncGenerator[ChatCompletionChunk]:
+    ) -> ChatCompletion | AsyncCachedEventStream[ChatCompletionChunk]:
         """Async cache lookup; on a HIT serve cached, else run the call live."""
         if not isinstance(span, LaminarSpan):
             span = LaminarSpan(cast(SDKSpan, span))
@@ -502,8 +505,19 @@ class OpenAIRolloutWrapper:
 
         return await wrapped(*args, **kwargs)
 
-    def _create_cached_stream(self, response: ChatCompletion) -> Generator[ChatCompletionChunk]:
-        """Yield a cached response as a single streaming chunk."""
+    def _create_cached_stream(
+        self, response: ChatCompletion
+    ) -> CachedEventStream[ChatCompletionChunk]:
+        """Replay a cached response as a single streaming chunk."""
+        return CachedEventStream([self._cached_chunk(response)])
+
+    def _create_async_cached_stream(
+        self, response: ChatCompletion
+    ) -> AsyncCachedEventStream[ChatCompletionChunk]:
+        """Replay a cached response as a single async streaming chunk."""
+        return AsyncCachedEventStream([self._cached_chunk(response)])
+
+    def _cached_chunk(self, response: ChatCompletion) -> ChatCompletionChunk:
         response_dict = response.model_dump()
 
         choices: list[ChunkChoice] = []
@@ -523,7 +537,7 @@ class OpenAIRolloutWrapper:
                 )
             )
 
-        yield ChatCompletionChunk(
+        return ChatCompletionChunk(
             id=response_dict.get("id", "cached"),
             model=response_dict.get("model", "unknown"),
             object="chat.completion.chunk",
@@ -531,97 +545,11 @@ class OpenAIRolloutWrapper:
             choices=choices,
         )
 
-    async def _create_async_cached_stream(
-        self, response: ChatCompletion
-    ) -> AsyncGenerator[ChatCompletionChunk]:
-        """Yield a cached response as a single async streaming chunk."""
-        for chunk in self._create_cached_stream(response):
-            yield chunk
 
-
-class _CachedHTTPResponse:
-    """Stand-in for the `httpx.Response` behind an SDK `Stream`. The SDK's
-    `ResponseStream` helpers read `.response` off the stream they wrap and close
-    it; nothing was fetched, so there is nothing to close."""
-
-    status_code: int = 200
-    headers: dict[str, str] = {}  # noqa: RUF012
-
-    def close(self) -> None:
-        return None
-
-    async def aclose(self) -> None:
-        return None
-
-
-class CachedResponsesEventStream:
-    """Sync replay of a cached Responses-API response, served in place of the
-    SDK's `Stream[ResponseStreamEvent]` on a debug-run cache HIT. Supports what
-    callers (and `client.responses.stream()`) use: iteration, the context
-    manager, `close()` and `.response`."""
-
-    def __init__(self, events: list[ResponseStreamEvent]):
-        self._events: list[ResponseStreamEvent] = events
-        self._index: int = 0
-        self.response: _CachedHTTPResponse = _CachedHTTPResponse()
-
-    def __iter__(self) -> Self:
-        return self
-
-    def __next__(self) -> ResponseStreamEvent:
-        if self._index >= len(self._events):
-            raise StopIteration
-        event = self._events[self._index]
-        self._index += 1
-        return event
-
-    def __enter__(self) -> Self:
-        return self
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: TracebackType | None,
-    ) -> None:
-        self.close()
-
-    def close(self) -> None:
-        self._index = len(self._events)
-
-
-class AsyncCachedResponsesEventStream:
-    """Async counterpart of `CachedResponsesEventStream`, replacing the SDK's
-    `AsyncStream[ResponseStreamEvent]` (whose `close()` is a coroutine)."""
-
-    def __init__(self, events: list[ResponseStreamEvent]):
-        self._events: list[ResponseStreamEvent] = events
-        self._index: int = 0
-        self.response: _CachedHTTPResponse = _CachedHTTPResponse()
-
-    def __aiter__(self) -> Self:
-        return self
-
-    async def __anext__(self) -> ResponseStreamEvent:
-        if self._index >= len(self._events):
-            raise StopAsyncIteration
-        event = self._events[self._index]
-        self._index += 1
-        return event
-
-    async def __aenter__(self) -> Self:
-        return self
-
-    async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: TracebackType | None,
-    ) -> None:
-        await self.close()
-
-    async def close(self) -> None:
-        self._index = len(self._events)
+# Kept under their original names: the Responses-API replay predates the
+# generic classes.
+CachedResponsesEventStream = CachedEventStream
+AsyncCachedResponsesEventStream = AsyncCachedEventStream
 
 
 _openai_rollout_wrapper: OpenAIRolloutWrapper | None = None
