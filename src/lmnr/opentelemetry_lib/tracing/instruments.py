@@ -45,6 +45,8 @@ class Instruments(Enum):
     # `generate_content` on top would both double-cover the call and produce
     # a span whose parent depends on ADK's fragile generator-scoped context.
     GOOGLE_ADK = "google_adk"
+    # Instruments the `vertexai` namespace of `google-cloud-aiplatform`.
+    GOOGLE_AIPLATFORM = "google_aiplatform"
     GOOGLE_GENAI = "google_genai"
     GROQ = "groq"
     HAYSTACK = "haystack"
@@ -95,7 +97,9 @@ class Instruments(Enum):
     TOGETHER = "together"
     TRANSFORMERS = "transformers"
     TYPESAFE = "typesafe"
-    VERTEXAI = "vertexai"
+    # Legacy name for GOOGLE_AIPLATFORM, kept so existing `instruments=` /
+    # `disabled_instruments=` sets keep working. Same value => enum alias.
+    VERTEXAI = "google_aiplatform"  # noqa: PIE796
     WATSONX = "watsonx"
     WEAVIATE = "weaviate"
 

@@ -82,7 +82,8 @@ replicate=["opentelemetry-instrumentation-replicate==0.62.4"]
 sagemaker=["opentelemetry-instrumentation-sagemaker==0.62.4"]
 together=["opentelemetry-instrumentation-together==0.62.4"]
 transformers=["opentelemetry-instrumentation-transformers==0.62.4"]
-vertexai=["opentelemetry-instrumentation-vertexai==0.62.4"]
+# no-op: vertexai is instrumented natively now; kept so `lmnr[vertexai]` still resolves
+vertexai=[]
 watsonx=["opentelemetry-instrumentation-watsonx==0.62.4"]
 weaviate=["opentelemetry-instrumentation-weaviate==0.62.4"]
 # `all` is the group added for convenience, if you want to install all
@@ -108,7 +109,6 @@ all = [
   "opentelemetry-instrumentation-sagemaker==0.62.4",
   "opentelemetry-instrumentation-together==0.62.4",
   "opentelemetry-instrumentation-transformers==0.62.4",
-  "opentelemetry-instrumentation-vertexai==0.62.4",
   "opentelemetry-instrumentation-watsonx==0.62.4",
   "opentelemetry-instrumentation-weaviate==0.62.4"
 ]
@@ -123,6 +123,7 @@ dev = [
   "claude-agent-sdk==0.2.168",
   "google-adk==2.11.0",
   "daytona==0.225.0",
+  "google-cloud-aiplatform==2.6.0",
   "google-genai==2.19.0",
   "groq==1.1.2",
   "kernel==0.44.0",

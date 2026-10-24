@@ -31,6 +31,7 @@ def register_default_initializers() -> None:
             Instruments.DAYTONA_SDK: initializers.DaytonaSDKInstrumentorInitializer(),
             Instruments.DEEPAGENTS: initializers.DeepagentsInstrumentorInitializer(),
             Instruments.GOOGLE_ADK: initializers.GoogleADKInstrumentorInitializer(),
+            Instruments.GOOGLE_AIPLATFORM: initializers.GoogleAIPlatformInstrumentorInitializer(),
             Instruments.GOOGLE_GENAI: initializers.GoogleGenAIInstrumentorInitializer(),
             Instruments.GROQ: initializers.GroqInstrumentorInitializer(),
             Instruments.HAYSTACK: initializers.HaystackInstrumentorInitializer(),
@@ -63,7 +64,6 @@ def register_default_initializers() -> None:
             Instruments.TOGETHER: initializers.TogetherInstrumentorInitializer(),
             Instruments.TRANSFORMERS: initializers.TransformersInstrumentorInitializer(),
             Instruments.TYPESAFE: initializers.TypeSafeInstrumentorInitializer(),
-            Instruments.VERTEXAI: initializers.VertexAIInstrumentorInitializer(),
             Instruments.WATSONX: initializers.WatsonxInstrumentorInitializer(),
             Instruments.WEAVIATE: initializers.WeaviateInstrumentorInitializer(),
         }

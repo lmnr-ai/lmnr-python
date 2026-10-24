@@ -118,6 +118,39 @@ INSTRUMENTOR_TARGETS: dict[str, tuple[str, str, set[tuple[str, str]]]] = {
             ("google.genai.models", "AsyncModels.generate_content_stream"),
         },
     ),
+    "google_aiplatform": (
+        "lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_aiplatform",
+        "GoogleAIPlatformInstrumentor",
+        {
+            ("vertexai.generative_models._generative_models", "_GenerativeModel.generate_content"),
+            (
+                "vertexai.generative_models._generative_models",
+                "_GenerativeModel.generate_content_async",
+            ),
+            ("vertexai.generative_models._generative_models", "ChatSession.send_message"),
+            ("vertexai.generative_models._generative_models", "ChatSession.send_message_async"),
+            ("vertexai.language_models._language_models", "_TextGenerationModel.predict"),
+            ("vertexai.language_models._language_models", "_TextGenerationModel.predict_async"),
+            (
+                "vertexai.language_models._language_models",
+                "_TextGenerationModel.predict_streaming",
+            ),
+            (
+                "vertexai.language_models._language_models",
+                "_TextGenerationModel.predict_streaming_async",
+            ),
+            ("vertexai.language_models._language_models", "_ChatSessionBase.send_message"),
+            ("vertexai.language_models._language_models", "_ChatSessionBase.send_message_async"),
+            (
+                "vertexai.language_models._language_models",
+                "_ChatSessionBase.send_message_streaming",
+            ),
+            (
+                "vertexai.language_models._language_models",
+                "_ChatSessionBase.send_message_streaming_async",
+            ),
+        },
+    ),
     # Driven through the version-gate dispatcher rather than `OpenAIV1Instrumentor`
     # directly, because that is what actually gets instrumented in production and
     # what the conftest session fixture flipped on.
