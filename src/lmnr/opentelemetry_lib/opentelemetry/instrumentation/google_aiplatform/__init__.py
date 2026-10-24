@@ -1,7 +1,4 @@
-"""OpenTelemetry instrumentation for the google-cloud-aiplatform (`vertexai`) SDK.
-
-Ported from OpenLLMetry's `opentelemetry-instrumentation-vertexai`.
-"""
+"""OpenTelemetry instrumentation for the google-cloud-aiplatform (`vertexai`) SDK."""
 
 from __future__ import annotations
 
