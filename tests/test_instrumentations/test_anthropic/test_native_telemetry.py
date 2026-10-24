@@ -139,9 +139,9 @@ def test_content_mode_uses_the_native_spans(
     assert span.instrumentation_scope is not None
     assert is_anthropic_native_scope(span.instrumentation_scope.name)
     attributes = span.attributes or {}
-    # app-server reads the provider from `gen_ai.system`; the SDK only sets
-    # `gen_ai.provider.name`.
-    assert attributes["gen_ai.system"] == "anthropic"
+    # Left as the SDK sent it; app-server falls back to `gen_ai.provider.name`.
+    assert attributes["gen_ai.provider.name"] == "anthropic"
+    assert "gen_ai.system" not in attributes
     assert attributes["lmnr.span.path"] == ("anthropic.messages.create",)
     output = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert output[0]["parts"][0]["content"] == "Paris"
