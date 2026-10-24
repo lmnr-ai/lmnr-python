@@ -67,7 +67,8 @@ laminar = "lmnr.integrations.harbor:LaminarPlugin"
 alephalpha=["opentelemetry-instrumentation-alephalpha==0.62.4"]
 bedrock=["opentelemetry-instrumentation-bedrock==0.62.4"]
 chromadb=["opentelemetry-instrumentation-chromadb==0.62.4"]
-cohere=["opentelemetry-instrumentation-cohere==0.62.4"]
+# no-op: cohere is instrumented natively now; kept so `lmnr[cohere]` still resolves
+cohere=[]
 crewai=["opentelemetry-instrumentation-crewai==0.62.4"]
 haystack=["opentelemetry-instrumentation-haystack==0.62.4"]
 lancedb=["opentelemetry-instrumentation-lancedb==0.62.4"]
@@ -95,7 +96,6 @@ all = [
   "opentelemetry-instrumentation-alephalpha==0.62.4",
   "opentelemetry-instrumentation-bedrock==0.62.4",
   "opentelemetry-instrumentation-chromadb==0.62.4",
-  "opentelemetry-instrumentation-cohere==0.62.4",
   "opentelemetry-instrumentation-crewai==0.62.4",
   "opentelemetry-instrumentation-haystack==0.62.4",
   "opentelemetry-instrumentation-lancedb==0.62.4",
@@ -121,6 +121,7 @@ dev = [
   "basedpyright==1.40.2",
   "cdp-use==1.4.5",
   "claude-agent-sdk==0.2.168",
+  "cohere==7.3.0",
   "google-adk==2.11.0",
   "daytona==0.225.0",
   "google-cloud-aiplatform==2.6.0",
