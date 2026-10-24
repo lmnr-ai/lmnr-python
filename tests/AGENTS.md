@@ -24,4 +24,5 @@
 
 ## Known flakes
 
+- **Every langchain-instrumentation test fails on a clean `main` checkout in the agent sandbox** — the four `test_instrumentations/test_langchain.py::test_langchain_langgraph*` cases plus `test_observe_concurrency.py`, `test_tracing.py` and `test_tracing_concurrency.py`'s `*_langchain` cases. They fail as `assert 0 == N`: the instrumentation emits no spans at all. Deterministic (not a flake), environment-only, and unrelated to whatever you are changing; confirm with `git stash` before chasing one.
 - **`test_litellm.py::test_litellm_completion_activates_span_for_otel_callbacks` is flaky at roughly 3-in-6, independent of any batching change** (verified by running the full suite six times on a clean tree and six times with the batch-processor work applied — identical rates). It fails with `KeyError: 'span_id'`, i.e. litellm's success callback never fired. Do not chase it as a regression from an export/batching change; a small sample will mislead you into thinking your branch caused it.

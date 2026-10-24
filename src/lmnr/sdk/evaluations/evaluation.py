@@ -28,7 +28,7 @@ from lmnr.sdk.evaluations.models import (
     PartialEvaluationDatapoint,
 )
 from lmnr.sdk.evaluations.reporter import EvaluationReporter
-from lmnr.sdk.evaluations.utils import get_average_scores, get_evaluation_url
+from lmnr.sdk.evaluations.utils import get_evaluation_url
 from lmnr.sdk.laminar import Laminar as L
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import (
@@ -198,6 +198,7 @@ class Evaluation:
         self.batch_size: int = concurrency_limit
         self._logger: Logger = get_default_logger(self.__class__.__name__)
         self.upload_tasks: list[Task[None]] = []
+        self._upload_error: BaseException | None = None
         self.base_http_url: str = f"{base_http_url or base_url}:{http_port or 443}"
 
         api_key = project_api_key or from_env("LMNR_PROJECT_API_KEY")
@@ -277,17 +278,24 @@ class Evaluation:
             print(f"Check the results at {url}")
 
             self.reporter.start(len(self.data))
-            result_datapoints = await self._evaluate_in_batches(evaluation["id"])
-            # Wait for all background upload tasks to complete
+            average_scores = await self._evaluate_in_batches(evaluation["id"])
+            # Wait for all background upload tasks to complete. Failures are
+            # collected instead of raised eagerly: a plain `gather` returns as
+            # soon as one task fails, leaving the other saves unfinished when
+            # `_shutdown` closes the client below.
             if self.upload_tasks:
                 self._logger.debug(f"Waiting for {len(self.upload_tasks)} upload tasks to complete")
-                _gathered_results = await asyncio.gather(*self.upload_tasks)
+                gathered_results = await asyncio.gather(*self.upload_tasks, return_exceptions=True)
+                for gathered in gathered_results:
+                    if isinstance(gathered, BaseException) and self._upload_error is None:
+                        self._upload_error = gathered
                 self._logger.debug("All upload tasks completed")
+            if self._upload_error is not None:
+                raise self._upload_error
         except Exception as e:
             await self._shutdown()
             self.reporter.stop_with_error(e)
 
-        average_scores = get_average_scores(result_datapoints)
         self.reporter.stop(average_scores, evaluation["projectId"], evaluation["id"])
         await self._shutdown()
         return {
@@ -309,34 +317,93 @@ class Evaluation:
         if source is not None and getattr(source, "client", None):
             source.client.close()
 
-    async def _evaluate_in_batches(self, eval_id: uuid.UUID) -> list[EvaluationResultDatapoint]:
+    def _prune_upload_tasks(self) -> None:
+        # Drop references to finished background saves so their payloads are
+        # not retained for the whole run. This is a memory measure only: a
+        # failed save is latched on `self._upload_error` and re-raised by
+        # `_run` *after* it has drained the remaining upload tasks. Folding it
+        # into the datapoint loop's `first_error` instead would abort
+        # `_evaluate_in_batches` before that drain, so every still-pending save
+        # would be abandoned when `_shutdown` closes the client.
+        for task in self.upload_tasks:
+            if task.done() and not task.cancelled():
+                exc = task.exception()
+                if exc is not None and self._upload_error is None:
+                    self._upload_error = exc
+        self.upload_tasks = [task for task in self.upload_tasks if not task.done()]
 
+    async def _evaluate_in_batches(self, eval_id: uuid.UUID) -> dict[str, Numeric]:
         semaphore = asyncio.Semaphore(self.concurrency_limit)
-        tasks: list[Task[tuple[int, EvaluationResultDatapoint]]] = []
-        data_iter = self.data if isinstance(self.data, list) else range(len(self.data))
+        tasks: list[Task[None]] = []
+        # Aggregate scores incrementally so result datapoints (with their full
+        # data/target/output payloads) are not retained for the whole run.
+        score_sums: dict[str, Numeric] = {}
+        score_counts: dict[str, int] = {}
 
-        async def evaluate_task(datapoint: Datapoint, index: int):
+        def accumulate_scores(result: EvaluationResultDatapoint) -> None:
+            for key, value in result.scores.items():
+                if value is None:
+                    continue
+                score_sums[key] = score_sums.get(key, 0) + value
+                score_counts[key] = score_counts.get(key, 0) + 1
+
+        async def evaluate_task(datapoint: Datapoint, index: int) -> None:
             try:
                 result = await self._evaluate_datapoint(eval_id, datapoint, index)
+                accumulate_scores(result)
                 self.reporter.update(1)
-                return index, result
             finally:
                 semaphore.release()
 
-        # Create tasks only after acquiring semaphore
-        for idx, item in enumerate(data_iter):
+        # `LaminarDataset.__iter__` streams from the API one page at a time and
+        # drops each page once consumed, so a huge dataset is never fully
+        # resident. Pulling the next page is a blocking call on the sync
+        # client, so the iterator is advanced in a thread pool to keep
+        # in-flight datapoint tasks running while we wait.
+        loop = asyncio.get_event_loop()
+        data_iter = enumerate(iter(self.data))
+
+        def next_datapoint() -> tuple[int, Datapoint] | None:
+            return next(data_iter, None)
+
+        first_error: BaseException | None = None
+
+        def prune_finished(task_list: list[Task[None]]) -> list[Task[None]]:
+            # Drop references to completed datapoint tasks as we go. A failed
+            # task's exception is recorded, NOT raised here: every datapoint
+            # must still be scheduled and run (matching the previous behavior,
+            # where all tasks were created before `gather` surfaced errors).
+            nonlocal first_error
+            for task in task_list:
+                if task.done() and not task.cancelled():
+                    exc = task.exception()
+                    if exc is not None and first_error is None:
+                        first_error = exc
+            return [task for task in task_list if not task.done()]
+
+        # Create tasks only after acquiring the semaphore, so at most
+        # `concurrency_limit` datapoints are in flight (and referenced) at once
+        while (item := await loop.run_in_executor(None, next_datapoint)) is not None:
+            idx, datapoint = item
             _success = await semaphore.acquire()
-            datapoint = cast(
-                Datapoint, item if isinstance(self.data, list) else self.data[cast(int, item)]
-            )
             task = asyncio.create_task(evaluate_task(datapoint, idx))
             tasks.append(task)
+            tasks = prune_finished(tasks)
+            self._prune_upload_tasks()
 
-        # Wait for all tasks to complete and preserve order
-        results = await asyncio.gather(*tasks)
-        ordered_results = [result for _, result in sorted(results, key=lambda x: x[0])]
+        # Wait for the remaining in-flight tasks to complete
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for result in results:
+                if isinstance(result, BaseException) and first_error is None:
+                    first_error = result
 
-        return ordered_results
+        if first_error is not None:
+            raise first_error
+
+        return {
+            key: score_sums[key] / score_counts[key] for key in score_sums if score_counts[key] > 0
+        }
 
     async def _evaluate_datapoint(
         self, eval_id: uuid.UUID, datapoint: Datapoint, index: int

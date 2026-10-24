@@ -277,6 +277,60 @@ def test_shuffle_over_paged_dataset():
     assert values(ds.shuffle(seed=1)) == [all_items[i].data for i in perm]
 
 
+# --- streaming iteration (LaminarDataset) -----------------------------------
+
+
+def test_iter_streams_without_retaining_pages():
+    ds, client, all_items = _paged_laminar_dataset(total=5, fetch_size=2)
+
+    # Iterate the generator directly: `list(ds)` would call `__len__` as a size
+    # hint, which caches page 0 — here we exercise pure streaming.
+    items = list(iter(ds))
+
+    assert [item.data for item in items] == [item.data for item in all_items]
+    assert client.datasets.pull.call_count == 3  # pages of 2, 2, 1
+    # Nothing streamed is retained
+    assert ds._pages == {}
+    # `__len__` was still learned from the first page, at no extra request
+    assert len(ds) == 5
+    assert client.datasets.pull.call_count == 3
+
+
+def test_iter_serves_cached_pages_from_memory():
+    ds, client, all_items = _paged_laminar_dataset(total=5, fetch_size=2)
+
+    assert len(ds) == 5  # caches page 0
+    assert client.datasets.pull.call_count == 1
+
+    items = list(ds)
+
+    assert [item.data for item in items] == [item.data for item in all_items]
+    # page 0 served from cache, pages 1 and 2 streamed
+    assert client.datasets.pull.call_count == 3
+    # ... and streaming did not grow the cache
+    assert list(ds._pages) == [0]
+
+
+def test_iter_over_empty_dataset():
+    ds, client, _ = _paged_laminar_dataset(total=0, fetch_size=2)
+    assert list(iter(ds)) == []
+    assert client.datasets.pull.call_count == 1
+
+
+def test_iter_falls_back_to_getitem_on_the_base_class():
+    # Custom datasets only implement the size + by-index contract; the ABC's
+    # default `__iter__` keeps them usable by `evaluate()`.
+    ds = InMemoryDataset([make_dp(i) for i in range(3)])
+    assert [dp.data for dp in ds] == [0, 1, 2]
+
+
+def test_iter_over_subsampled_dataset():
+    ds, _, all_items = _paged_laminar_dataset(total=5, fetch_size=2)
+    perm = seeded_perm(5, 1)[:2]
+    chained = ds.shuffle(seed=1).take(2)
+    assert [dp.data for dp in chained] == [all_items[i].data for i in perm]
+
+
 # --- parity fixture ---------------------------------------------------------
 
 
