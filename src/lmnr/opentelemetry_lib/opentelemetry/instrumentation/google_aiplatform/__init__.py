@@ -17,6 +17,7 @@ from collections.abc import (
     Iterator,
     Sequence,
 )
+from contextlib import AbstractContextManager
 from importlib.metadata import version
 from typing import Any, Protocol
 
@@ -131,9 +132,23 @@ def _finish_stream(span: Span, accumulator: _StreamAccumulator):
     span.end()
 
 
+def _use_llm_span(span: Span) -> AbstractContextManager[Any]:
+    # exceptions are recorded by `_record_error`, not by `use_span`
+    return Laminar.use_span(span, record_exception=False, set_status_on_exception=False)
+
+
+# The SDK's streams are lazy (the gRPC call runs on the first `next()`, after the
+# wrapped method has returned), so the span is made current around every pull.
+# Not across `yield`: the consumer's code between chunks is not part of the call.
 def _stream(span: Span, response: Iterable[Any], accumulator: _StreamAccumulator) -> Generator[Any]:
+    iterator = iter(response)
     try:
-        for chunk in response:
+        while True:
+            with _use_llm_span(span):
+                try:
+                    chunk = next(iterator)
+                except StopIteration:
+                    break
             accumulator.add(chunk)
             yield chunk
     except Exception as e:
@@ -146,8 +161,14 @@ def _stream(span: Span, response: Iterable[Any], accumulator: _StreamAccumulator
 async def _astream(
     span: Span, response: AsyncIterable[Any], accumulator: _StreamAccumulator
 ) -> AsyncGenerator[Any]:
+    iterator = aiter(response)
     try:
-        async for chunk in response:
+        while True:
+            with _use_llm_span(span):
+                try:
+                    chunk = await anext(iterator)
+                except StopAsyncIteration:
+                    break
             accumulator.add(chunk)
             yield chunk
     except Exception as e:
@@ -173,7 +194,7 @@ def _wrap(
         return wrapped(*args, **kwargs)
 
     try:
-        with Laminar.use_span(span, record_exception=False, set_status_on_exception=False):
+        with _use_llm_span(span):
             response = wrapped(*args, **kwargs)
     except Exception as e:
         _record_error(span, e)
@@ -203,7 +224,7 @@ async def _awrap(
         return await wrapped(*args, **kwargs)
 
     try:
-        with Laminar.use_span(span, record_exception=False, set_status_on_exception=False):
+        with _use_llm_span(span):
             response = await wrapped(*args, **kwargs)
     except Exception as e:
         _record_error(span, e)

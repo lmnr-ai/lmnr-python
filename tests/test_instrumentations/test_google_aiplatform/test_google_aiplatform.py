@@ -308,6 +308,61 @@ def test_llm_span_is_current_during_the_call(
     assert spans["transport"].parent.span_id == llm.context.span_id
 
 
+def _assert_parented(spans: dict[str, ReadableSpan], child: str, parent: str):
+    child_span, parent_span = spans[child], spans[parent]
+    assert child_span.parent is not None and parent_span.context is not None
+    assert child_span.parent.span_id == parent_span.context.span_id
+
+
+def test_llm_span_is_current_while_streaming(
+    span_exporter: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch
+):
+    # The SDK's streaming generator is lazy: its gRPC call runs on the first
+    # `next()`, after the wrapped method has already returned.
+    def generate_streaming(*_args: Any, **_kwargs: Any) -> Iterator[GenerationResponse]:
+        with Laminar.start_as_current_span("transport"):
+            pass
+        yield from _chunks()
+
+    monkeypatch.setattr(_GenerativeModel, "_generate_content_streaming", generate_streaming)
+    with Laminar.start_as_current_span("outer"):
+        for _ in GenerativeModel(MODEL).generate_content("hi", stream=True):
+            # the consumer's own work between chunks is not part of the LLM call
+            with Laminar.start_as_current_span("consumer"):
+                pass
+
+    spans = {s.name: s for s in span_exporter.get_finished_spans()}
+    _assert_parented(spans, "transport", "vertexai.generate_content")
+    _assert_parented(spans, "consumer", "outer")
+
+
+@pytest.mark.asyncio
+async def test_llm_span_is_current_while_async_streaming(
+    span_exporter: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch
+):
+    async def stream() -> AsyncIterator[GenerationResponse]:
+        with Laminar.start_as_current_span("transport"):
+            pass
+        for chunk in _chunks():
+            yield chunk
+
+    async def generate_streaming_async(*_args: Any, **_kwargs: Any):
+        return stream()
+
+    monkeypatch.setattr(
+        _GenerativeModel, "_generate_content_streaming_async", generate_streaming_async
+    )
+    with Laminar.start_as_current_span("outer"):
+        response = await GenerativeModel(MODEL).generate_content_async("hi", stream=True)
+        async for _ in response:
+            with Laminar.start_as_current_span("consumer"):
+                pass
+
+    spans = {s.name: s for s in span_exporter.get_finished_spans()}
+    _assert_parented(spans, "transport", "vertexai.generate_content_async")
+    _assert_parented(spans, "consumer", "outer")
+
+
 @pytest.mark.asyncio
 async def test_generate_content_async(
     span_exporter: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch
@@ -518,6 +573,30 @@ async def test_text_generation_predict_streaming_async(
     assert _attr_json(span, "gen_ai.output.messages") == [
         {"content": {"role": "model", "parts": [{"text": "Bonjour"}]}}
     ]
+
+
+@pytest.mark.asyncio
+async def test_llm_span_is_current_in_async_generator_methods(
+    span_exporter: InMemorySpanExporter, endpoint: MagicMock, monkeypatch: pytest.MonkeyPatch
+):
+    # `predict_streaming_async` is an async generator function, so calling it
+    # does no I/O at all; everything happens during iteration.
+    async def stream(**_kwargs: Any) -> AsyncIterator[dict[str, Any]]:
+        with Laminar.start_as_current_span("transport"):
+            pass
+        yield {"content": "Bonjour"}
+
+    monkeypatch.setattr(
+        language_models_module._streaming_prediction,  # pyright: ignore[reportPrivateImportUsage]
+        "predict_stream_of_dicts_from_single_dict_async",
+        stream,
+    )
+    with Laminar.start_as_current_span("outer"):
+        async for _ in _text_model(endpoint).predict_streaming_async("Translate hello"):
+            pass
+
+    spans = {s.name: s for s in span_exporter.get_finished_spans()}
+    _assert_parented(spans, "transport", "vertexai.predict_streaming_async")
 
 
 def test_language_chat_session(span_exporter: InMemorySpanExporter, endpoint: MagicMock):
