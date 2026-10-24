@@ -705,6 +705,32 @@ def test_openai_handed_off_span_nests_under_chain(span_exporter: InMemorySpanExp
     )
 
 
+def test_openai_handed_off_error_clears_run(span_exporter: InMemorySpanExporter):
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langchain import (
+        LangchainInstrumentor,
+    )
+
+    handler = LangchainInstrumentor()._handler
+    assert handler is not None
+    transport = httpx.MockTransport(
+        lambda _: httpx.Response(500, json={"error": {"message": "boom"}})
+    )
+    model = ChatOpenAI(
+        model="gpt-4o-mini",
+        api_key=SecretStr("test-api-key"),
+        http_client=httpx.Client(transport=transport),
+        max_retries=0,
+    )
+    with pytest.raises(Exception, match="boom"):
+        _ = model.invoke("What is the capital of France?")
+
+    # `on_llm_error` (no `on_llm_end`) and no parent run to clean up after it
+    assert handler._handed_off == {}
+    spans = span_exporter.get_finished_spans()
+    assert [span.name for span in spans] == ["openai.chat"]
+    assert spans[0].status.status_code == StatusCode.ERROR
+
+
 @pytest.fixture
 def openai_uninstrumented(monkeypatch: pytest.MonkeyPatch) -> None:
     from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai import OpenAIInstrumentor

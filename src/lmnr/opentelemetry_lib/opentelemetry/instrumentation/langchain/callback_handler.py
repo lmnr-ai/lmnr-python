@@ -408,6 +408,10 @@ class LaminarCallbackHandler(BaseCallbackHandler):
     def _handle_error(self, error: BaseException, run_id: UUID) -> None:
         run = self._runs.get(run_id)
         if run is None:
+            # A handed-off LLM run has no span (the provider span records the
+            # error), but its `_handed_off` entry must still go: a failed root
+            # call has no parent `_end_run` to clear it.
+            _ = self._handed_off.pop(run_id, None)
             return
         try:
             run.span.set_attribute("error.type", type(error).__name__)
