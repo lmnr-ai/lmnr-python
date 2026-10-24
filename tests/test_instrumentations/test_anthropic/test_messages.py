@@ -9,6 +9,8 @@ from anthropic import Anthropic, AsyncAnthropic
 from anthropic.types import ImageBlockParam, MessageParam, ToolParam
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
+from .utils import successful_spans
+
 with open(
     Path(__file__).parent.joinpath("data/logo.jpg"),
     "rb",
@@ -84,7 +86,7 @@ def test_anthropic_message_create_legacy(
     except Exception:
         print("expected exception")
 
-    spans = span_exporter.get_finished_spans()
+    spans = successful_spans(span_exporter)
     assert all(span.name == "anthropic.chat" for span in spans)
 
     anthropic_span = spans[0]
@@ -330,7 +332,7 @@ def test_anthropic_message_streaming_legacy(
         if event.type == "content_block_delta" and event.delta.type == "text_delta":
             response_content += event.delta.text
 
-    spans = span_exporter.get_finished_spans()
+    spans = successful_spans(span_exporter)
     assert [span.name for span in spans] == [
         "anthropic.chat",
     ]
@@ -383,7 +385,7 @@ async def test_async_anthropic_message_create_legacy(
     except Exception:
         print("expected exception")
 
-    spans = span_exporter.get_finished_spans()
+    spans = successful_spans(span_exporter)
     assert [span.name for span in spans] == [
         "anthropic.chat",
     ]
@@ -442,7 +444,7 @@ async def test_async_anthropic_message_streaming_legacy(
         if event.type == "content_block_delta" and event.delta.type == "text_delta":
             response_content += event.delta.text
 
-    spans = span_exporter.get_finished_spans()
+    spans = successful_spans(span_exporter)
     assert [span.name for span in spans] == [
         "anthropic.chat",
     ]
@@ -494,7 +496,7 @@ def test_anthropic_tools_legacy(
     except Exception:
         print("expected exception")
 
-    spans = span_exporter.get_finished_spans()
+    spans = successful_spans(span_exporter)
     assert all(span.name == "anthropic.chat" for span in spans)
     assert len(spans) == 1
 

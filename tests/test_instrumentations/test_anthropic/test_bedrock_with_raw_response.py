@@ -12,9 +12,11 @@ except ImportError:
 
 
 @pytest.fixture
-def async_anthropic_bedrock_client(instrumentor: Any):
+def async_anthropic_bedrock_client(instrumentor: Any, monkeypatch: pytest.MonkeyPatch):
     if AsyncAnthropicBedrock is None:
         pytest.skip("AsyncAnthropicBedrock not available")
+    # anthropic >= 1 reads this as `api_key` and refuses it alongside AWS keys.
+    monkeypatch.delenv("AWS_BEARER_TOKEN_BEDROCK", raising=False)
 
     # Try to get credentials from environment first
     aws_access_key = os.environ.get("AWS_ACCESS_KEY_ID", "test-key")
@@ -67,10 +69,8 @@ async def test_async_anthropic_bedrock_with_raw_response(
     )
     assert len(output_messages) == 1
     assert output_messages[0]["role"] == "assistant"
-    # For raw response, content is accessed differently
-    response_content = (
-        response.parse().content[0].text if hasattr(response, "parse") else response.content[0].text
-    )
+    # anthropic >= 1's `AsyncAPIResponse.parse()` is a coroutine.
+    response_content = (await response.parse()).content[0].text
     assert any(
         block["type"] == "text" and block["text"] == response_content
         for block in output_messages[0]["content"]
@@ -168,10 +168,8 @@ async def test_async_anthropic_bedrock_beta_with_raw_response(
     )
     assert len(output_messages) == 1
     assert output_messages[0]["role"] == "assistant"
-    # For raw response, content is accessed differently
-    response_content = (
-        response.parse().content[0].text if hasattr(response, "parse") else response.content[0].text
-    )
+    # anthropic >= 1's `AsyncAPIResponse.parse()` is a coroutine.
+    response_content = (await response.parse()).content[0].text
     assert any(
         block["type"] == "text" and block["text"] == response_content
         for block in output_messages[0]["content"]

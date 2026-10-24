@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, AsyncIterator, Generator, Iterator
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, cast
 
@@ -10,6 +10,7 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_USAGE_INPUT_TOKENS,
     GEN_AI_USAGE_OUTPUT_TOKENS,
 )
+from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.trace.span import Span
 from opentelemetry.trace.status import Status, StatusCode
 
@@ -25,6 +26,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     dont_throw,
     set_span_attribute,
 )
+from lmnr.opentelemetry_lib.tracing.context import get_event_attributes_from_context
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.utils import json_dumps
 
@@ -39,6 +41,16 @@ if TYPE_CHECKING:
     )
 
 logger = get_default_logger(__name__)
+
+
+def record_span_error(span: Span, e: BaseException) -> None:
+    """End the call's span as failed; the caller re-raises."""
+    if not span.is_recording():
+        return
+    set_span_attribute(span, ERROR_TYPE, e.__class__.__name__)
+    span.record_exception(e, attributes=get_event_attributes_from_context())
+    span.set_status(Status(StatusCode.ERROR, str(e)))
+    span.end()
 
 
 def _new_complete_response() -> CompleteResponse:
@@ -93,9 +105,12 @@ def _process_response_item(
             complete_response["usage"].update(cast(StreamUsage, cast(object, usage_update)))
     elif item.type in ["message_stop", "message_start"]:
         # raw stream returns the service_tier in the message_start event
-        # messages.stream returns the service_tier in the message_stop event
-        usage = dict(item.message.usage or {})
-        complete_response["service_tier"] = usage.get("service_tier")
+        # messages.stream returns the service_tier in the message_stop event.
+        # The raw stream's message_stop event has no `message`.
+        message = getattr(item, "message", None)
+        if message is not None:
+            usage = dict(message.usage or {})
+            complete_response["service_tier"] = usage.get("service_tier")
 
 
 def _set_token_usage(
@@ -152,16 +167,20 @@ def _handle_streaming_response(
 @dont_throw
 def build_from_streaming_response(
     span: Span,
-    response: MessageStream,
+    response: Iterator[ParsedMessageStreamEvent],
     _instance: Any,
     _kwargs: dict[str, Any],
     record_raw_response: bool = False,
 ) -> Generator[ParsedMessageStreamEvent]:
     complete_response = _new_complete_response()
 
-    for item in response:
-        yield item
-        _process_response_item(item, complete_response)
+    try:
+        for item in response:
+            yield item
+            _process_response_item(item, complete_response)
+    except Exception as e:
+        record_span_error(span, e)
+        raise
 
     set_span_attribute(span, GEN_AI_RESPONSE_ID, complete_response.get("id"))
     set_span_attribute(
@@ -194,15 +213,19 @@ def build_from_streaming_response(
 @dont_throw
 async def abuild_from_streaming_response(
     span: Span,
-    response: AsyncMessageStream,
+    response: AsyncIterator[ParsedMessageStreamEvent],
     _instance: Any,
     _kwargs: dict[str, Any],
     record_raw_response: bool = False,
 ) -> AsyncGenerator[ParsedMessageStreamEvent]:
     complete_response = _new_complete_response()
-    async for item in response:
-        yield item
-        _process_response_item(item, complete_response)
+    try:
+        async for item in response:
+            yield item
+            _process_response_item(item, complete_response)
+    except Exception as e:
+        record_span_error(span, e)
+        raise
 
     set_span_attribute(span, GEN_AI_RESPONSE_ID, complete_response.get("id"))
     set_span_attribute(
@@ -249,17 +272,25 @@ class WrappedMessageStreamManager:
         self._kwargs: dict[str, Any] = kwargs
         self._record_raw_response: bool = record_raw_response
 
-    def __enter__(self):
-        # Call the original stream manager's __enter__ to get the actual stream
-        stream = self._stream_manager.__enter__()
-        # Return the wrapped stream
-        return build_from_streaming_response(
-            self._span,
-            stream,
-            self._instance,
-            self._kwargs,
-            record_raw_response=self._record_raw_response,
-        )
+    def __enter__(self) -> MessageStream:
+        try:
+            stream = self._stream_manager.__enter__()
+        except Exception as e:
+            record_span_error(self._span, e)
+            raise
+        # Hand back the SDK's own `MessageStream`: `text_stream`,
+        # `get_final_message`, `until_done` and plain iteration all drain its
+        # `_iterator`, so recording from there sees every event once.
+        iterator = getattr(stream, "_iterator", None)
+        if iterator is not None:
+            stream._iterator = build_from_streaming_response(  # pyright: ignore[reportAttributeAccessIssue, reportPrivateUsage]
+                self._span,
+                iterator,
+                self._instance,
+                self._kwargs,
+                record_raw_response=self._record_raw_response,
+            )
+        return stream
 
     def __exit__(
         self,
@@ -267,6 +298,7 @@ class WrappedMessageStreamManager:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ):
+        _end_unfinished_stream_span(self._span, exc_val)
         return self._stream_manager.__exit__(exc_type, exc_val, exc_tb)
 
 
@@ -287,17 +319,23 @@ class WrappedAsyncMessageStreamManager:
         self._kwargs: dict[str, Any] = kwargs
         self._record_raw_response: bool = record_raw_response
 
-    async def __aenter__(self):
-        # Call the original stream manager's __aenter__ to get the actual stream
-        stream = await self._stream_manager.__aenter__()
-        # Return the wrapped stream
-        return abuild_from_streaming_response(
-            self._span,
-            stream,
-            self._instance,
-            self._kwargs,
-            record_raw_response=self._record_raw_response,
-        )
+    async def __aenter__(self) -> AsyncMessageStream:
+        try:
+            stream = await self._stream_manager.__aenter__()
+        except Exception as e:
+            record_span_error(self._span, e)
+            raise
+        # See `WrappedMessageStreamManager.__enter__`.
+        iterator = getattr(stream, "_iterator", None)
+        if iterator is not None:
+            stream._iterator = abuild_from_streaming_response(  # pyright: ignore[reportAttributeAccessIssue, reportPrivateUsage]
+                self._span,
+                iterator,
+                self._instance,
+                self._kwargs,
+                record_raw_response=self._record_raw_response,
+            )
+        return stream
 
     async def __aexit__(
         self,
@@ -305,4 +343,15 @@ class WrappedAsyncMessageStreamManager:
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
     ):
+        _end_unfinished_stream_span(self._span, exc_val)
         return await self._stream_manager.__aexit__(exc_type, exc_val, exc_tb)
+
+
+def _end_unfinished_stream_span(span: Span, exc_val: BaseException | None) -> None:
+    """End a `messages.stream()` span whose stream was left before its last event."""
+    if not span.is_recording():
+        return
+    if exc_val is not None:
+        record_span_error(span, exc_val)
+    else:
+        span.end()

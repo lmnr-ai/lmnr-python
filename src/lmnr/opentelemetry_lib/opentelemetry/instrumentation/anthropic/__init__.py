@@ -36,6 +36,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.anthropic.streaming im
     WrappedMessageStreamManager,
     abuild_from_streaming_response,
     build_from_streaming_response,
+    record_span_error,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.anthropic.utils import (
     run_async,
@@ -61,6 +62,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
     stamp_instrumentation_scope,
 )
+from lmnr.opentelemetry_lib.tracing.anthropic_native import use_native_spans
 from lmnr.sdk.log import get_default_logger
 
 # `anthropic` may be missing or older than the names below; keep these imports
@@ -323,18 +325,22 @@ def _wrap(
     rollout_wrapper = get_anthropic_rollout_wrapper()
     is_rollout = rollout_wrapper is not None
 
-    if rollout_wrapper:
-        response = rollout_wrapper.wrap_create(
-            wrapped,
-            instance,
-            args,
-            kwargs,
-            span=span,
-            is_streaming=kwargs.get("stream", False),
-            is_async=False,
-        )
-    else:
-        response = wrapped(*args, **kwargs)
+    try:
+        if rollout_wrapper:
+            response = rollout_wrapper.wrap_create(
+                wrapped,
+                instance,
+                args,
+                kwargs,
+                span=span,
+                is_streaming=kwargs.get("stream", False),
+                is_async=False,
+            )
+        else:
+            response = wrapped(*args, **kwargs)
+    except Exception as e:
+        record_span_error(span, e)
+        raise
 
     response, raw = parse_raw_stream(kwargs, response)
 
@@ -416,18 +422,22 @@ async def _awrap(
     rollout_wrapper = get_anthropic_rollout_wrapper()
     is_rollout = rollout_wrapper is not None
 
-    if rollout_wrapper:
-        response = await rollout_wrapper.wrap_create(
-            wrapped,
-            instance,
-            args,
-            kwargs,
-            span=span,
-            is_streaming=kwargs.get("stream", False),
-            is_async=True,
-        )
-    else:
-        response = await wrapped(*args, **kwargs)
+    try:
+        if rollout_wrapper:
+            response = await rollout_wrapper.wrap_create(
+                wrapped,
+                instance,
+                args,
+                kwargs,
+                span=span,
+                is_streaming=kwargs.get("stream", False),
+                is_async=True,
+            )
+        else:
+            response = await wrapped(*args, **kwargs)
+    except Exception as e:
+        record_span_error(span, e)
+        raise
 
     response, raw = await aparse_raw_response(kwargs, response)
 
@@ -646,6 +656,18 @@ class AnthropicInstrumentor(BaseLaminarInstrumentor):
     @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
+
+    @override
+    def _instrument(self, **kwargs: dict[str, Any]):
+        if use_native_spans():
+            # The SDK's own spans record the calls; ours would count them twice.
+            # See `tracing/anthropic_native.py`.
+            logger.debug(
+                "ANTHROPIC_OPEN_TELEMETRY_TRACES_CONTENT_MODE=content: using the anthropic "
+                + "SDK's native spans instead of Laminar's anthropic instrumentation"
+            )
+            return
+        super()._instrument(**kwargs)
 
     @override
     def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:

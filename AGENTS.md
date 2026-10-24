@@ -104,7 +104,7 @@ LMNR_BASE_URL         # API base URL (default: https://api.lmnr.ai)
 - `src/lmnr/sdk/debug/AGENTS.md` - debug mode / replay, TS parity
 - `src/lmnr/opentelemetry_lib/tracing/AGENTS.md` - import-cycle wiring, tracing singleton + provider reuse, default instrument set, span batching / export, payload size limit
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/AGENTS.md` - instrumentor structure, error status (exception events), GenAI message attributes
-- `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/anthropic/AGENTS.md` - structured output, `with_raw_response` (anthropic >= 1 differences)
+- `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/anthropic/AGENTS.md` - structured output, `with_raw_response`, native OTel spans (dropped unless content mode), stream manager + error spans, anthropic 2.x / `httpx2`
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/claude_agent/AGENTS.md` - settings.json precedence, proxy
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/cohere/AGENTS.md` - defining-class targets, `embed` on `Client` (batching), v1 NDJSON vs v2 SSE streams, `MockTransport` tests
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/deepagents/AGENTS.md`

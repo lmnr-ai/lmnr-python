@@ -4,6 +4,7 @@
 
 - **The `Instruments` -> initializer registry is injected, not imported.** `tracing/instruments.py` holds an empty `INSTRUMENTATION_INITIALIZERS` and `register_initializers()`; it must NOT import `_instrument_initializers` (which imports every instrumentor, which import `Laminar`, which imports `instruments`). The built-ins are registered by `tracing/default_initializers.py::register_default_initializers()`, called once from `lmnr/__init__.py`. Any import of `lmnr.*` runs the package `__init__` first, so the registry is always populated; code that imports `instruments` in isolation sees it only after `lmnr` has been imported. The `InstrumentorInitializer` ABC lives in the leaf `tracing/instrumentor_initializer.py` so `instruments.py` can type the registry.
 - **The tracing singleton lives in the leaf `tracing/wrapper.py`** (`TracerWrapper`, `get_tracer_wrapper`, ...); `tracing/__init__.py` only re-exports it and holds `init_tracing`. Library code should import from `tracing.wrapper`, not the package. Tests that monkeypatch `_tracer_wrapper` / `_session_recording_options` patch `tracing.wrapper`.
+- **`tracing/anthropic_native.py` is a leaf** (stdlib + `packaging` only), shared by `processor.py` and the anthropic instrumentor. `LaminarSpanProcessor.on_start` uses it to drop (`lmnr.internal.disabled`) or keep anthropic's own OTel spans: see `opentelemetry/instrumentation/anthropic/AGENTS.md`. `on_start` reads `instrumentation_scope` with `getattr`, because test doubles (`_FakeSpan`) are not SDK spans.
 
 ## Tracing singleton and provider lifecycle
 
