@@ -177,7 +177,11 @@ class LaminarCallbackHandler(BaseCallbackHandler):
         metadata: Mapping[str, Any] | None = None,
         suppress_downstream: bool = False,
     ) -> Span | None:
-        if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
+        suppress = context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY)
+        # An open LLM run's own flag is aimed at provider SDK instrumentations;
+        # LangChain runs started under it (a tool the model invokes, code
+        # iterating the model's stream) are still recorded
+        if suppress and not isinstance(suppress, _SuppressWhileRunning):
             return None
 
         parent = self._runs.get(parent_run_id) if parent_run_id is not None else None
@@ -212,8 +216,14 @@ class LaminarCallbackHandler(BaseCallbackHandler):
                 )
             else:
                 run.isolated_token = attach_context(run.context)
+                global_context = context_api.get_current()
+                if suppress:
+                    # Provider calls under this run are not the LLM run's own call
+                    global_context = context_api.set_value(
+                        _SUPPRESS_INSTRUMENTATION_KEY, None, global_context
+                    )
                 run.global_tokens.append(
-                    context_api.attach(set_span_in_context(span, context_api.get_current()))
+                    context_api.attach(set_span_in_context(span, global_context))
                 )
         except Exception:
             logger.debug("Failed to attach LangChain run context", exc_info=True)

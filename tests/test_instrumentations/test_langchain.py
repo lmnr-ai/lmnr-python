@@ -6,7 +6,10 @@ import httpx
 import pytest
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
-from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+from langchain_core.language_models.fake_chat_models import (
+    FakeMessagesListChatModel,
+    GenericFakeChatModel,
+)
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.runnables import RunnableLambda
@@ -393,6 +396,47 @@ def test_chat_model_suppresses_provider_instrumentation(span_exporter: InMemoryS
     assert not flag  # off once the run has ended, wherever it is still attached
     spans = span_exporter.get_finished_spans()
     assert [span.name for span in spans] == ["ProbeModel.chat"]
+
+
+def test_runs_inside_llm_run_are_recorded(span_exporter: InMemorySpanExporter):
+    suppressed_in_tool: list[bool] = []
+
+    @tool
+    def lookup(query: str) -> str:
+        """Look something up."""
+        suppressed_in_tool.append(bool(context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY)))
+        return query
+
+    class ToolUsingModel(FakeMessagesListChatModel):
+        def _generate(self, *args: Any, **kwargs: Any) -> Any:
+            _ = lookup.invoke({"query": "x"})
+            return super()._generate(*args, **kwargs)
+
+    _ = ToolUsingModel(responses=[AIMessage(content="ok")]).invoke("hi")
+
+    spans = span_exporter.get_finished_spans()
+    assert sorted(span.name for span in spans) == ["ToolUsingModel.chat", "execute_tool lookup"]
+    # The flag only silences the provider call of the LLM run itself, not
+    # provider calls made by a tool running under it
+    assert suppressed_in_tool == [False]
+
+
+def test_runs_while_streaming_are_recorded(span_exporter: InMemorySpanExporter):
+    echo = Tool(name="echo", func=lambda x: x, description="Echo.")
+    model = GenericFakeChatModel(messages=iter([AIMessage(content="one two")]))
+
+    for chunk in model.stream("hi"):
+        # The LLM run is still open here, its flag attached in this context
+        _ = echo.invoke(cast(str, chunk.content))
+
+    spans = span_exporter.get_finished_spans()
+    assert sorted(span.name for span in spans) == [
+        "GenericFakeChatModel.chat",
+        "execute_tool echo",
+        "execute_tool echo",
+        "execute_tool echo",
+    ]
+    assert not context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY)
 
 
 def test_chat_model_error(span_exporter: InMemorySpanExporter):
