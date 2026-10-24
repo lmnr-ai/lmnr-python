@@ -123,6 +123,7 @@ dev = [
   "claude-agent-sdk==0.2.168",
   "google-adk==2.11.0",
   "daytona==0.225.0",
+  "google-cloud-aiplatform==2.6.0",
   "google-genai==2.19.0",
   "groq==1.1.2",
   "kernel==0.44.0",
@@ -147,7 +148,6 @@ dev = [
   "temporalio==1.31.0",
   "typesafe-sdk==0.7.0",
   "vcrpy==8.3.0",
-  "google-cloud-aiplatform==2.6.0",
 ]
 
 [build-system]
