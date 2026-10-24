@@ -463,6 +463,7 @@ class ChatStream(_ChatStreamBase):
             self._process_item(chunk)
             return chunk
 
+    @dont_throw
     def _process_item(self, item: Any):
         self._span.add_event(name="llm.content.completion.chunk")
         self._complete_response["id"] = getattr(item, "id", "")
@@ -645,7 +646,18 @@ def _accumulate_stream_items(
                 complete_choice["message"]["tool_calls"] = []
 
             for tool_call in tool_calls:  # pyright: ignore[reportUnknownVariableType]
-                i = int(tool_call["index"])  # pyright: ignore[reportUnknownArgumentType]
+                tool_call_index = tool_call.get("index")  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+                if tool_call_index is not None:
+                    i = int(tool_call_index)  # pyright: ignore[reportUnknownArgumentType]
+                else:
+                    # Some OpenAI-compatible APIs (e.g. Gemini) omit `index`: a delta that
+                    # carries an id or a function name starts a new call, any other delta
+                    # continues the last one.
+                    function = tool_call.get("function")  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+                    name = function.get("name") if function else None  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+                    starts_call = bool(tool_call.get("id") or name)  # pyright: ignore[reportUnknownMemberType]
+                    existing = len(complete_choice["message"]["tool_calls"])  # pyright: ignore[reportUnknownArgumentType]
+                    i = existing if starts_call or existing == 0 else existing - 1
                 if len(complete_choice["message"]["tool_calls"]) <= i:  # pyright: ignore[reportUnknownArgumentType]
                     complete_choice["message"]["tool_calls"].append(  # pyright: ignore[reportUnknownMemberType]
                         {
