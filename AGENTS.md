@@ -114,6 +114,7 @@ LMNR_BASE_URL         # API base URL (default: https://api.lmnr.ai)
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/langchain/AGENTS.md` - callback handler, hand-off of LLM runs to provider instrumentors, LLM-run suppression flag, LangGraph topology, OpenAI traceparent
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/langfuse/AGENTS.md` - Langfuse bridge
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/litellm/AGENTS.md`
+- `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/mcp/AGENTS.md` - two targets (`send_request` / `_handle_request`), `_meta` trace propagation, mcp 2.x no-op, what was dropped from OpenLLMetry
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/microsoft_agent_framework/AGENTS.md`
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/openai/AGENTS.md` - chat `with_raw_response` + cached streams, Responses-API streaming + replay, Decisions API
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/openai_agents/AGENTS.md` - span-I/O invariant, `mcp_tools` span parenting, `SpanError` handling, usage gaps on old SDKs, handoff parenting + root path repair, output-block roles, chat-span dedup
