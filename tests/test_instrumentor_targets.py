@@ -144,6 +144,24 @@ INSTRUMENTOR_TARGETS: dict[str, tuple[str, str, set[tuple[str, str]]]] = {
             ("google.genai.models", "AsyncModels.generate_content_stream"),
         },
     ),
+    "cohere": (
+        "lmnr.opentelemetry_lib.opentelemetry.instrumentation.cohere",
+        "CohereInstrumentor",
+        {
+            *(
+                ("cohere.base_client", f"{cls}.{method}")
+                for cls in ("BaseCohere", "AsyncBaseCohere")
+                for method in ("chat", "chat_stream", "generate", "rerank")
+            ),
+            ("cohere.client", "Client.embed"),
+            ("cohere.client", "AsyncClient.embed"),
+            *(
+                ("cohere.v2.client", f"{cls}.{method}")
+                for cls in ("V2Client", "AsyncV2Client")
+                for method in ("chat", "chat_stream", "embed", "rerank")
+            ),
+        },
+    ),
     "google_aiplatform": (
         "lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_aiplatform",
         "GoogleAIPlatformInstrumentor",
