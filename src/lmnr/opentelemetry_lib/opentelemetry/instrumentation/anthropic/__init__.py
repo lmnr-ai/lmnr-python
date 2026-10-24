@@ -43,6 +43,11 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.anthropic.utils import
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
     BaseLaminarInstrumentor,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.raw_response import (
+    aparse_raw_response,
+    as_raw_response,
+    parse_raw_stream,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     LaminarInstrumentationScopeAttributes,
     LaminarInstrumentorConfig,
@@ -331,14 +336,17 @@ def _wrap(
     else:
         response = wrapped(*args, **kwargs)
 
+    response, raw = parse_raw_stream(kwargs, response)
+
     if kwargs.get("stream") or is_streaming_response(response):
-        return build_from_streaming_response(
+        stream = build_from_streaming_response(
             span,
             cast("MessageStream", response),
             instance._client,
             kwargs,
             record_raw_response=is_rollout,
         )
+        return as_raw_response(kwargs, stream, raw)
     elif is_stream_manager(response):
         if response.__class__.__name__ == "AsyncMessageStreamManager":
             return WrappedAsyncMessageStreamManager(
@@ -372,7 +380,7 @@ def _wrap(
         if span.is_recording():
             span.set_status(Status(StatusCode.OK))
     span.end()
-    return response
+    return as_raw_response(kwargs, response, raw)
 
 
 async def _awrap(
@@ -421,14 +429,17 @@ async def _awrap(
     else:
         response = await wrapped(*args, **kwargs)
 
+    response, raw = await aparse_raw_response(kwargs, response)
+
     if kwargs.get("stream") or is_streaming_response(response):
-        return abuild_from_streaming_response(
+        stream = abuild_from_streaming_response(
             span,
             cast("AsyncMessageStream", response),
             instance._client,
             kwargs,
             record_raw_response=is_rollout,
         )
+        return as_raw_response(kwargs, stream, raw, is_async=True)
     elif is_stream_manager(response):
         if response.__class__.__name__ == "AsyncMessageStreamManager":
             return WrappedAsyncMessageStreamManager(
@@ -458,7 +469,7 @@ async def _awrap(
             )
             span.set_status(Status(StatusCode.OK))
     span.end()
-    return response
+    return as_raw_response(kwargs, response, raw, is_async=True)
 
 
 WRAPPED_FUNCTIONS: list[WrappedFunctionSpec] = [

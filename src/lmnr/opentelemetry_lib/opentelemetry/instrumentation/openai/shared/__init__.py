@@ -25,6 +25,10 @@ from opentelemetry.trace.propagation import set_span_in_context
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 import openai
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.cached_stream import (
+    AsyncCachedEventStream,
+    CachedEventStream,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.utils import (
     is_openai_v1,
 )
@@ -354,6 +358,8 @@ def is_streaming_response(response: Any) -> bool:
             (
                 openai.Stream,
                 openai.AsyncStream,
+                CachedEventStream,
+                AsyncCachedEventStream,
                 types.GeneratorType,
                 types.AsyncGeneratorType,
             ),

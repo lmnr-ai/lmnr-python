@@ -52,6 +52,32 @@ INSTRUMENTOR_TARGETS: dict[str, tuple[str, str, set[tuple[str, str]]]] = {
             ("langgraph.pregel", "Pregel.astream"),
         },
     ),
+    "langchain": (
+        "lmnr.opentelemetry_lib.opentelemetry.instrumentation.langchain",
+        "LangchainInstrumentor",
+        {
+            ("langchain_core.callbacks", "BaseCallbackManager.__init__"),
+            *(
+                (module, f"{cls}.{method}")
+                for module, cls in (
+                    ("langchain_community.llms.openai", "BaseOpenAI"),
+                    ("langchain_openai.llms.base", "BaseOpenAI"),
+                )
+                for method in ("_generate", "_agenerate", "_stream", "_astream")
+            ),
+            *(
+                ("langchain_openai.chat_models.base", f"BaseChatOpenAI.{method}")
+                for method in (
+                    "_generate",
+                    "_agenerate",
+                    "_stream",
+                    "_astream",
+                    "_stream_responses",
+                    "_astream_responses",
+                )
+            ),
+        },
+    ),
     "claude_agent": (
         "lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent",
         "ClaudeAgentInstrumentor",
@@ -236,13 +262,13 @@ def _reachable(targets: set[tuple[str, str]]) -> set[tuple[str, str]]:
     return ok
 
 
-# Targets a third-party instrumentor wraps too
-# (opentelemetry-instrumentation-langchain>=0.62 wraps Pregel.stream / astream),
-# and whose layer its own uninstrument never removes. `_is_wrapped` cannot tell
-# whose layer it sees, so these targets are run bare (wrapt layers stripped) for
-# the cycle and the exact originals are put back after. Removing only our layer
-# from a stack is covered in tests/test_shared_instrumentor.py.
-SHARED_TARGET_INSTRUMENTORS = {"langgraph"}
+# Targets a third-party instrumentor wraps too, and whose layer its own
+# uninstrument never removes. `_is_wrapped` cannot tell whose layer it sees, so
+# these targets are run bare (wrapt layers stripped) for the cycle and the exact
+# originals are put back after. Removing only our layer from a stack is covered
+# in tests/test_shared_instrumentor.py. Empty since LangChain is instrumented
+# natively (OpenLLMetry's langchain instrumentor wrapped Pregel.stream / astream).
+SHARED_TARGET_INSTRUMENTORS: set[str] = set()
 
 
 def _strip_wrapt_layers(

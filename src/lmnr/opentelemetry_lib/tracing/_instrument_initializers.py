@@ -309,12 +309,10 @@ class LanceDBInstrumentorInitializer(InstrumentorInitializer):
 class LangchainInstrumentorInitializer(InstrumentorInitializer):
     @override
     def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
-        if not is_package_installed("langchain"):
-            return None
-        if not is_package_installed("opentelemetry-instrumentation-langchain"):
+        if not is_package_installed("langchain-core"):
             return None
 
-        from opentelemetry.instrumentation.langchain import LangchainInstrumentor
+        from ..opentelemetry.instrumentation.langchain import LangchainInstrumentor
 
         return LangchainInstrumentor()
 

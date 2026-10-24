@@ -27,6 +27,11 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.utils import (
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.context_keys import (
     DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.raw_response import (
+    aparse_raw_response,
+    as_raw_response,
+    parse_raw_stream,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
 )
@@ -144,13 +149,16 @@ def chat_wrapper(
 
         raise
 
+    response, raw = parse_raw_stream(kwargs, response)
+
     if is_streaming_response(response):
         if is_openai_v1():
-            return ChatStream(
+            stream = ChatStream(
                 span,
                 response,
                 record_raw_response=is_rollout,
             )
+            return as_raw_response(kwargs, stream, raw)
         else:
             return _build_from_streaming_response(
                 span,
@@ -165,7 +173,7 @@ def chat_wrapper(
 
     span.end()
 
-    return cast(T, response)
+    return cast(T, as_raw_response(kwargs, response, raw))
 
 
 async def achat_wrapper(
@@ -245,13 +253,16 @@ async def achat_wrapper(
 
         raise
 
+    response, raw = await aparse_raw_response(kwargs, response)
+
     if is_streaming_response(response):
         if is_openai_v1():
-            return ChatStream(
+            stream = ChatStream(
                 span,
                 response,
                 record_raw_response=is_rollout,
             )
+            return as_raw_response(kwargs, stream, raw, is_async=True)
         else:
             return _abuild_from_streaming_response(
                 span,
@@ -266,7 +277,7 @@ async def achat_wrapper(
 
     span.end()
 
-    return cast(T, response)
+    return cast(T, as_raw_response(kwargs, response, raw, is_async=True))
 
 
 @dont_throw
