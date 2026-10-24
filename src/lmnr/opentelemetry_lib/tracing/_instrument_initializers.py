@@ -232,6 +232,19 @@ class GoogleADKInstrumentorInitializer(InstrumentorInitializer):
         return GoogleAdkInstrumentor()
 
 
+class GoogleAIPlatformInstrumentorInitializer(InstrumentorInitializer):
+    @override
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
+        if not is_package_installed("google-cloud-aiplatform"):
+            return None
+
+        from ..opentelemetry.instrumentation.google_aiplatform import (
+            GoogleAIPlatformInstrumentor,
+        )
+
+        return GoogleAIPlatformInstrumentor()
+
+
 class GoogleGenAIInstrumentorInitializer(InstrumentorInitializer):
     @override
     def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
@@ -647,19 +660,6 @@ class TypeSafeInstrumentorInitializer(InstrumentorInitializer):
         )
 
         return TypeSafeInstrumentor()
-
-
-class VertexAIInstrumentorInitializer(InstrumentorInitializer):
-    @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
-        if not is_package_installed("vertexai"):
-            return None
-        if not is_package_installed("opentelemetry-instrumentation-vertexai"):
-            return None
-
-        from opentelemetry.instrumentation.vertexai import VertexAIInstrumentor
-
-        return VertexAIInstrumentor()
 
 
 class WatsonxInstrumentorInitializer(InstrumentorInitializer):
