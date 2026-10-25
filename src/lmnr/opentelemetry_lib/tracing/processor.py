@@ -26,6 +26,7 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
     SPAN_INSTRUMENTATION_SOURCE,
     SPAN_LANGUAGE_VERSION,
     SPAN_PATH,
+    SPAN_RELEASE,
     SPAN_SDK_VERSION,
     TRACE_TYPE,
     USER_ID,
@@ -42,6 +43,7 @@ from lmnr.opentelemetry_lib.tracing.context import (
     CONTEXT_USER_ID_KEY,
 )
 from lmnr.opentelemetry_lib.tracing.exporter import LaminarSpanExporter
+from lmnr.opentelemetry_lib.tracing.release import detect_release
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import MetadataType
 from lmnr.sdk.utils import from_env, is_otel_attribute_value_type, json_dumps
@@ -70,6 +72,7 @@ class LaminarSpanProcessor(SpanProcessor):
     max_export_batch_size: int
     max_export_batch_size_bytes: int
     flush_by_size: bool
+    release: str | None
     _instance_lock: threading.RLock
     _paths_lock: threading.RLock
 
@@ -86,6 +89,7 @@ class LaminarSpanProcessor(SpanProcessor):
         flush_by_size: bool = False,
         disable_batch: bool = False,
         exporter: SpanExporter | None = None,
+        release: str | None = None,
     ):
         self._instance_lock = threading.RLock()
         self._paths_lock = threading.RLock()
@@ -95,6 +99,7 @@ class LaminarSpanProcessor(SpanProcessor):
             max_export_batch_size_bytes or DEFAULT_MAX_EXPORT_BATCH_SIZE_BYTES
         )
         self.flush_by_size = flush_by_size
+        self.release = detect_release(release)
         port = http_port if force_http else grpc_port
         self.exporter: SpanExporter = exporter or LaminarSpanExporter(
             base_url=base_url,
@@ -179,6 +184,8 @@ class LaminarSpanProcessor(SpanProcessor):
         span.set_attribute(SPAN_INSTRUMENTATION_SOURCE, "python")
         span.set_attribute(SPAN_SDK_VERSION, __version__)
         span.set_attribute(SPAN_LANGUAGE_VERSION, f"python@{PYTHON_VERSION}")
+        if self.release:
+            span.set_attribute(SPAN_RELEASE, self.release)
 
         if parent_context:
             trace_type = cast(str, get_value(CONTEXT_TRACE_TYPE_KEY, parent_context))
