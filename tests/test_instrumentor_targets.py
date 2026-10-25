@@ -162,6 +162,14 @@ INSTRUMENTOR_TARGETS: dict[str, tuple[str, str, set[tuple[str, str]]]] = {
             ),
         },
     ),
+    "mcp": (
+        "lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp",
+        "McpInstrumentor",
+        {
+            ("mcp.shared.session", "BaseSession.send_request"),
+            ("mcp.server.lowlevel.server", "Server._handle_request"),
+        },
+    ),
     "google_aiplatform": (
         "lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_aiplatform",
         "GoogleAIPlatformInstrumentor",

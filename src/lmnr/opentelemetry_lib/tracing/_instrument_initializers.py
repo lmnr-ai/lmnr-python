@@ -416,10 +416,8 @@ class MCPInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("mcp"):
             return None
-        if not is_package_installed("opentelemetry-instrumentation-mcp"):
-            return None
 
-        from opentelemetry.instrumentation.mcp import McpInstrumentor
+        from ..opentelemetry.instrumentation.mcp import McpInstrumentor
 
         return McpInstrumentor()
 

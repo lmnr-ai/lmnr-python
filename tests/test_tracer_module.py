@@ -103,8 +103,8 @@ def _boot(exporter: InMemorySpanExporter):
 
 
 def test_instrument_time_bound_tracer_survives_a_reinit(isolated_tracing: Any):
-    """Instrumentors that bind a tracer at `_instrument()` time (MCP,
-    pydantic_ai, the traceloop-derived ones) are NOT re-instrumented on a later
+    """Instrumentors that bind a tracer at `_instrument()` time
+    (pydantic_ai, the traceloop-derived ones) are NOT re-instrumented on a later
     `init_tracing` — `BaseInstrumentor.instrument()` no-ops once instrumented —
     and OTel refuses to override an already-set global TracerProvider. So if
     `shutdown_tracing` shut the provider down and re-init built a new one, those
