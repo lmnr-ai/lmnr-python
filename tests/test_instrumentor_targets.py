@@ -15,6 +15,7 @@ import inspect
 import sys
 import types
 from collections.abc import Callable, Generator, Sequence
+from importlib.metadata import version
 from typing import Any, cast
 
 import pytest
@@ -31,6 +32,21 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 
 T = TypeVar("T")
+
+# The instrumentor installs one set per mcp major. The dev dependency pins 2.x;
+# CI checks the 1.x set under a `uv run --with mcp==1.x` overlay.
+_MCP_MAJOR = int(version("mcp").split(".")[0])
+_MCP_V1_TARGETS = {
+    ("mcp.shared.session", "BaseSession.send_request"),
+    ("mcp.server.lowlevel.server", "Server._handle_request"),
+}
+_MCP_V2_TARGETS = {
+    ("mcp.client.session", "ClientSession.send_request"),
+    ("mcp.client.session", "ClientSession.send_discover"),
+    ("mcp.server.session", "ServerSession.send_request"),
+    ("mcp.server._otel", "OpenTelemetryMiddleware.__call__"),
+    ("mcp.shared.jsonrpc_dispatcher", "otel_span"),
+}
 
 # (instrumentor import path, class name, {(module, "Object.method" | "func"), ...})
 #
@@ -165,10 +181,7 @@ INSTRUMENTOR_TARGETS: dict[str, tuple[str, str, set[tuple[str, str]]]] = {
     "mcp": (
         "lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp",
         "McpInstrumentor",
-        {
-            ("mcp.shared.session", "BaseSession.send_request"),
-            ("mcp.server.lowlevel.server", "Server._handle_request"),
-        },
+        _MCP_V1_TARGETS if _MCP_MAJOR < 2 else _MCP_V2_TARGETS,
     ),
     "google_aiplatform": (
         "lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_aiplatform",

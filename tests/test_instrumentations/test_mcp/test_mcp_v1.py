@@ -5,6 +5,10 @@ Client and server talk over mcp's in-memory transport
 process through the real SDK, with no network and no cassettes.
 """
 
+# The dev dependency pins mcp 2.x, which basedpyright checks this module
+# against; it only runs under CI's mcp 1.x overlay (see conftest.py).
+# pyright: reportMissingImports=false, reportAttributeAccessIssue=false, reportCallIssue=false
+
 from __future__ import annotations
 
 import json

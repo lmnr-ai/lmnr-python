@@ -32,7 +32,7 @@ lmnr datasets pull <id>       # Pull dataset
 ```
 
 - CI: `lint.yml` (ruff check + format check), `typecheck.yml` (basedpyright), `run-tests.yml` (pytest).
-- The `uv run --with openai==3.26.0 ...` overlay step in `run-tests.yml` is a temporary workaround (litellm caps `openai<3`). Do not copy that pattern for other packages/versions.
+- `run-tests.yml` has two `uv run --with <pkg>==X ...` overlay steps. `openai==3.26.0` is a temporary workaround (litellm caps `openai<3`). `mcp==1.30.0` is permanent while mcp 1.x is supported: the dev pin is mcp 2.x and the 1.x instrumentation is a separate set of wrappers (`instrumentation/mcp/AGENTS.md`). Do not add more overlays without a reason of the same kind.
 - The husky pre-commit hook (`.husky/pre-commit`) runs `ruff check --fix` + `ruff format` on staged Python files and fails the commit if ruff changed anything; re-stage and commit again.
 
 ## Tooling
@@ -114,7 +114,7 @@ LMNR_BASE_URL         # API base URL (default: https://api.lmnr.ai)
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/langchain/AGENTS.md` - callback handler, hand-off of LLM runs to provider instrumentors, LLM-run suppression flag, LangGraph topology, OpenAI traceparent
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/langfuse/AGENTS.md` - Langfuse bridge
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/litellm/AGENTS.md`
-- `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/mcp/AGENTS.md` - two targets (`send_request` / `_handle_request`), `_meta` trace propagation, mcp 2.x no-op, what was dropped from OpenLLMetry
+- `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/mcp/AGENTS.md` - 1.x vs 2.x wrapper sets (picked by installed major), 2.x native-span replacement (middleware, `send_discover`, dispatcher `otel_span`), `_meta` trace propagation, 1.x CI overlay, what was dropped from OpenLLMetry
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/microsoft_agent_framework/AGENTS.md`
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/openai/AGENTS.md` - chat `with_raw_response` + cached streams, Responses-API streaming + replay, Decisions API
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/openai_agents/AGENTS.md` - span-I/O invariant, `mcp_tools` span parenting, `SpanError` handling, usage gaps on old SDKs, handoff parenting + root path repair, output-block roles, chat-span dedup

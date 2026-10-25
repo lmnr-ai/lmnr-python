@@ -27,3 +27,8 @@ jobs:
       # so the Decisions API tests run against an overlay of the newer SDK.
       - name: Run Decisions API tests (openai 3.x)
         run: uv run --with openai==3.26.0 pytest tests/test_instrumentations/test_openai/traces/test_decisions.py
+
+      # The dev dependency pins mcp 2.x, so the 1.x instrumentation (a separate
+      # set of wrappers, see instrumentation/mcp/AGENTS.md) runs against an overlay.
+      - name: Run MCP tests (mcp 1.x)
+        run: uv run --with mcp==1.30.0 pytest tests/test_instrumentations/test_mcp tests/test_instrumentor_targets.py -k mcp
