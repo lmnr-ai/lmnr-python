@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime
 import json
+from collections import ChainMap
 from collections.abc import Mapping, Sequence
 from decimal import Decimal
 from enum import Enum
@@ -21,6 +22,9 @@ from langchain_core.messages import BaseMessage
 from langchain_core.outputs import LLMResult
 from opentelemetry.trace import Span
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.reasoning import (
+    set_reasoning_attributes,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     set_span_attribute,
     should_send_prompts,
@@ -217,6 +221,10 @@ def set_request_attributes(
         set_span_attribute(span, "gen_ai.request.temperature", temperature)
     if isinstance(top_p, (int, float)):
         set_span_attribute(span, "gen_ai.request.top_p", top_p)
+    # Chat model fields as the integrations report them: `reasoning_effort` /
+    # `reasoning` (OpenAI, Groq), `thinking` / `output_config` (Anthropic),
+    # `thinking_budget` / `thinking_level` / `thinking_config` (Google GenAI)
+    set_reasoning_attributes(span, ChainMap(dict(params), dict(serialized_kwargs)))
 
     tools = params.get("tools") or params.get("functions")
     if should_send_prompts() and isinstance(tools, list) and tools:

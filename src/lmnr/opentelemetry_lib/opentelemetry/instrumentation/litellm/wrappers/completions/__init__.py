@@ -11,6 +11,9 @@ from pydantic import BaseModel
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.litellm.utils import (
     infer_provider,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.reasoning import (
+    set_reasoning_attributes,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     dont_throw,
     extract_json_schema,
@@ -42,12 +45,7 @@ def process_completion_kwargs(
     set_span_attribute(span, "gen_ai.request.stop_sequences", kwargs.get("stop"))
     set_span_attribute(span, "gen_ai.request.frequency_penalty", kwargs.get("frequency_penalty"))
     set_span_attribute(span, "gen_ai.request.presence_penalty", kwargs.get("presence_penalty"))
-    set_span_attribute(span, "gen_ai.request.reasoning_effort", kwargs.get("reasoning_effort"))
-    set_span_attribute(
-        span,
-        "gen_ai.request.thinking_budget",
-        (kwargs.get("thinking") or {}).get("budget_tokens"),  # pyright: ignore[reportUnknownArgumentType, reportUnknownMemberType]
-    )
+    set_reasoning_attributes(span, kwargs)
     set_span_attribute(
         span,
         "gen_ai.request.base_url",

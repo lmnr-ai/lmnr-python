@@ -836,6 +836,7 @@ def test_google_genai_reasoning_tokens(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
+    assert (spans[0].attributes or {})["gen_ai.request.thinking_budget"] == 512
     assert (spans[0].attributes or {})[
         "gen_ai.usage.reasoning_tokens"
     ] == usage.thoughts_token_count
@@ -876,6 +877,7 @@ def test_google_genai_reasoning_tokens_with_include_thoughts(
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
+    assert (spans[0].attributes or {})["gen_ai.request.thinking_budget"] == 512
     assert (spans[0].attributes or {})[
         "gen_ai.usage.reasoning_tokens"
     ] == usage.thoughts_token_count
@@ -929,6 +931,7 @@ async def test_google_genai_reasoning_tokens_async(span_exporter: InMemorySpanEx
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
+    assert (spans[0].attributes or {})["gen_ai.request.thinking_budget"] == 512
     assert (spans[0].attributes or {})[
         "gen_ai.usage.reasoning_tokens"
     ] == usage.thoughts_token_count
@@ -970,6 +973,7 @@ async def test_google_genai_reasoning_tokens_with_include_thoughts_async(
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
+    assert (spans[0].attributes or {})["gen_ai.request.thinking_budget"] == 512
     assert (spans[0].attributes or {})[
         "gen_ai.usage.reasoning_tokens"
     ] == usage.thoughts_token_count
@@ -996,6 +1000,24 @@ async def test_google_genai_reasoning_tokens_with_include_thoughts_async(
             "index": 0,
         }
     ]
+
+
+@pytest.mark.vcr
+def test_google_genai_thinking_level(span_exporter: InMemorySpanExporter):
+    client = Client(api_key=os.getenv("GEMINI_API_KEY", "123"))
+    client.models.generate_content(
+        model="gemini-3.5-flash-lite",
+        contents="How many times does the letter 'r' appear in the word strawberry?",
+        config=types.GenerateContentConfig(
+            thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW),
+        ),
+    )
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    attributes = spans[0].attributes or {}
+    assert attributes["gen_ai.request.thinking_level"] == "LOW"
+    assert "gen_ai.request.thinking_budget" not in attributes
 
 
 @pytest.mark.vcr

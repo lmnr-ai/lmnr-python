@@ -48,6 +48,8 @@ def test_anthropic_thinking_legacy(
     attributes = anthropic_span.attributes or {}
 
     assert anthropic_span.name == "anthropic.chat"
+    assert attributes["gen_ai.request.thinking_type"] == "enabled"
+    assert attributes["gen_ai.request.thinking_budget"] == 1024
 
     # Verify input messages
     input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
@@ -113,6 +115,8 @@ async def test_async_anthropic_thinking_legacy(
     attributes = anthropic_span.attributes or {}
 
     assert anthropic_span.name == "anthropic.chat"
+    assert attributes["gen_ai.request.thinking_type"] == "enabled"
+    assert attributes["gen_ai.request.thinking_budget"] == 1024
 
     # Verify input messages
     input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
@@ -183,6 +187,8 @@ def test_anthropic_thinking_streaming_legacy(
     attributes = anthropic_span.attributes or {}
 
     assert anthropic_span.name == "anthropic.chat"
+    assert attributes["gen_ai.request.thinking_type"] == "enabled"
+    assert attributes["gen_ai.request.thinking_budget"] == 1024
 
     # Verify input messages
     input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
@@ -254,6 +260,8 @@ async def test_async_anthropic_thinking_streaming_legacy(
     attributes = anthropic_span.attributes or {}
 
     assert anthropic_span.name == "anthropic.chat"
+    assert attributes["gen_ai.request.thinking_type"] == "enabled"
+    assert attributes["gen_ai.request.thinking_budget"] == 1024
 
     # Verify input messages
     input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
@@ -272,3 +280,35 @@ async def test_async_anthropic_thinking_streaming_legacy(
     assert thinking_blocks[0]["thinking"] == thinking
     assert len(text_blocks) >= 1
     assert text_blocks[0]["text"] == text
+
+
+@pytest.mark.vcr
+def test_anthropic_thinking_adaptive_effort(
+    instrumentor: Any,
+    anthropic_client: Anthropic,
+    span_exporter: InMemorySpanExporter,
+):
+    response = anthropic_client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=2048,
+        thinking={"type": "adaptive"},
+        output_config={"effort": "low"},
+        messages=[
+            {
+                "role": "user",
+                "content": "How many times does the letter 'r' appear in the word strawberry?",
+            },
+        ],
+    )
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    anthropic_span = spans[0]
+    attributes = anthropic_span.attributes or {}
+
+    assert anthropic_span.name == "anthropic.chat"
+    assert attributes["gen_ai.request.thinking_type"] == "adaptive"
+    assert attributes["gen_ai.request.effort"] == "low"
+    # Adaptive thinking has no token budget
+    assert "gen_ai.request.thinking_budget" not in attributes
+    assert attributes["gen_ai.response.id"] == response.id

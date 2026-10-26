@@ -1,0 +1,133 @@
+interactions:
+- request:
+    body: '{"model":"gpt-5-nano","input":"How many times does the letter ''r'' appear
+      in the word strawberry?","reasoning":{"effort":"low"},"stream":false}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '142'
+      content-type:
+      - application/json
+      host:
+      - api.openai.com
+      user-agent:
+      - litellm/1.103.4
+    method: POST
+    uri: https://api.openai.com/v1/responses
+  response:
+    body:
+      string: !!binary |
+        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
+    headers:
+      access-control-expose-headers:
+      - X-Request-ID, Server-Timing-Total
+      - CF-Ray
+      - CF-Ray
+      alt-svc:
+      - h3=":443"; ma=86400
+      cf-cache-status:
+      - DYNAMIC
+      cf-ray:
+      - a50911099c3cb394-EWR
+      connection:
+      - keep-alive
+      content-encoding:
+      - gzip
+      content-type:
+      - application/json
+      date:
+      - Mon, 26 Oct 2026 11:19:33 GMT
+      openai-organization:
+      - user-xzaeeoqlanzncr8pomspsknu
+      openai-processing-ms:
+      - '1398'
+      openai-project:
+      - proj_aT4OgTR5NJ9iNjg4xWc82hiE
+      openai-version:
+      - '2020-10-01'
+      server:
+      - cloudflare
+      set-cookie:
+      - __cf_bm=4v80Ix.JvfTTdTjk2rjuwmVU.lW31Ohw.mX2qOXL6SA-1793013572.091146-1.0.1.1-gv6_71bPrDl0g_eEzOrJPmDl.f7zFJSvVZwysYUkGWTYw7nCPVySrDKpwBizs8VteoavZHlodxboTBkLBSPbnj8zBRA8u_RXh7QllZX_Q_fKT_wAN4hAIC3_5FUN.jVq;
+        HttpOnly; SameSite=None; Secure; Path=/; Domain=api.openai.com; Expires=Mon,
+        26 Oct 2026 11:49:33 GMT
+      strict-transport-security:
+      - max-age=31536000; includeSubDomains; preload
+      transfer-encoding:
+      - chunked
+      x-content-type-options:
+      - nosniff
+      x-ratelimit-limit-requests:
+      - '30000'
+      x-ratelimit-limit-tokens:
+      - '180000000'
+      x-ratelimit-remaining-requests:
+      - '29999'
+      x-ratelimit-remaining-tokens:
+      - '180000000'
+      x-ratelimit-reset-requests:
+      - 2ms
+      x-ratelimit-reset-tokens:
+      - 0s
+      x-request-id:
+      - req_50a2ee8b863f4dfe9262f4d9e7a39efb
+    status:
+      code: 200
+      message: OK
+version: 1

@@ -211,6 +211,7 @@ def test_responses_reasoning(
     attributes = span.attributes or {}
     attributes = span.attributes or {}
     assert attributes["gen_ai.request.reasoning_effort"] == "low"
+    assert attributes["gen_ai.response.reasoning_effort"] == "low"
     assert cast(int, attributes["gen_ai.usage.reasoning_tokens"]) > 0
     # When reasoning summary is None/empty, the attribute should not be set
     assert "gen_ai.completion.0.reasoning" not in attributes
@@ -241,6 +242,7 @@ def test_responses_reasoning_dict_issue(
 
     # Verify the reasoning attributes are properly set without causing warnings
     assert attributes["gen_ai.request.reasoning_effort"] == "medium"
+    assert attributes["gen_ai.response.reasoning_effort"] == "medium"
     assert attributes["gen_ai.request.reasoning_summary"] == "auto"
     # This should not cause an "Invalid type dict" warning and should contain serialized reasoning
     assert "gen_ai.completion.0.reasoning" in attributes

@@ -34,6 +34,9 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.utils imp
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
     BaseLaminarInstrumentor,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.reasoning import (
+    set_reasoning_attributes,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     LaminarInstrumentationScopeAttributes,
     LaminarInstrumentorConfig,
@@ -103,6 +106,7 @@ def _set_request_attributes(
         config_dict.get("presence_penalty"),
     )
     set_span_attribute(span, gen_ai_attributes.GEN_AI_REQUEST_SEED, config_dict.get("seed"))
+    set_reasoning_attributes(span, config_dict)
 
     if schema := config_dict.get("response_schema"):
         try:

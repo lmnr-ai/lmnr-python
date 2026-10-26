@@ -26,6 +26,9 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.anthropic.utils import
     aextract_response_data,
     extract_response_data,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.reasoning import (
+    set_reasoning_attributes,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     dont_throw,
     model_as_dict,
@@ -103,6 +106,7 @@ async def aset_input_attributes(span: Span, kwargs: dict[str, Any]):
     set_span_attribute(span, GEN_AI_REQUEST_PRESENCE_PENALTY, kwargs.get("presence_penalty"))
     set_span_attribute(span, "llm.is_streaming", kwargs.get("stream"))
     set_span_attribute(span, "anthropic.request.service_tier", kwargs.get("service_tier"))
+    set_reasoning_attributes(span, kwargs)
 
     if should_send_prompts():
         if kwargs.get("prompt") is not None:
