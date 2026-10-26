@@ -17,6 +17,9 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
 from opentelemetry.trace import Span
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.groq.event_models import Usage
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.reasoning import (
+    set_reasoning_attributes,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     dont_throw,
     model_as_dict,
@@ -59,6 +62,7 @@ def set_model_input_attributes(span: Span, kwargs: dict[str, Any]):
     set_span_attribute(span, GEN_AI_REQUEST_FREQUENCY_PENALTY, kwargs.get("frequency_penalty"))
     set_span_attribute(span, GEN_AI_REQUEST_PRESENCE_PENALTY, kwargs.get("presence_penalty"))
     set_span_attribute(span, "llm.is_streaming", kwargs.get("stream") or False)
+    set_reasoning_attributes(span, kwargs)
 
 
 def set_streaming_response_attributes(

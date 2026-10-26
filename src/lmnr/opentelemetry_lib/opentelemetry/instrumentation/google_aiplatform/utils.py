@@ -17,6 +17,9 @@ import proto  # pyright: ignore[reportMissingTypeStubs]
 from opentelemetry.semconv._incubating.attributes import gen_ai_attributes
 from opentelemetry.trace import Span
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.reasoning import (
+    set_reasoning_attributes,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     dont_throw,
     set_span_attribute,
@@ -224,6 +227,7 @@ def set_generative_request_attributes(
     set_span_attribute(
         span, gen_ai_attributes.GEN_AI_REQUEST_CHOICE_COUNT, config.get("candidate_count")
     )
+    set_reasoning_attributes(span, config)
     response_schema = config.get("response_schema")
     if response_schema:
         set_span_attribute(

@@ -8,6 +8,10 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
 from opentelemetry.trace import Span, Status, StatusCode
 from typing_extensions import TypedDict
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.reasoning import (
+    GEN_AI_RESPONSE_REASONING_EFFORT,
+    get_reasoning_effort,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     dont_throw,
     set_span_attribute,
@@ -66,6 +70,9 @@ def _set_final_response_attributes(
         final_items: list[dict[str, Any]] = []
         if reasoning := final_response.get("reasoning"):
             reasoning_dict = to_dict(reasoning)
+            set_span_attribute(
+                span, GEN_AI_RESPONSE_REASONING_EFFORT, get_reasoning_effort(final_response)
+            )
             if reasoning_dict.get("summary") or reasoning_dict.get("effort"):
                 final_items.append(reasoning_dict)
         for item in final_response.get("output") or []:

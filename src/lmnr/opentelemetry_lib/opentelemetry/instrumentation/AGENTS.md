@@ -17,3 +17,19 @@
 ## GenAI message attributes
 
 - **The replay cache keys off `gen_ai.input.messages`, which app-server PREFERS over the legacy `gen_ai.prompt.{N}.*` reconstruction.** In `app-server/src/traces/spans.rs::parse_and_enrich_attributes`, the `gen_ai.input.messages` branch (and `gen_ai.output.messages`) OVERWRITES whatever the `gen_ai.prompt.{N}.*` / `ai.prompt.messages` handlers put on `self.input`/`self.output`. So a provider that emits ONLY the legacy per-index attrs has no hashable input for the cache. Both the chat-completions and LiteLLM-responses paths already stamp `gen_ai.input.messages`; the OpenAI **Responses-API** wrapper historically stamped only `gen_ai.prompt.{N}.*`, so it was invisible to replay until we added `build_genai_input_messages` / `build_genai_output_messages` in `instrumentation/openai/v1/responses_wrappers.py` (stamped from `set_data_attributes`, alongside — not replacing — the legacy attrs that the existing `test_responses.py` asserts on).
+
+## Reasoning / thinking attributes
+
+- **All providers record reasoning config through `shared/reasoning.py::set_reasoning_attributes(span, params)`.** It reads whichever known shape `params` has (kwargs mapping, pydantic config or plain object). There is no semconv, so each knob keeps its provider name:
+  - `gen_ai.request.reasoning_effort`: OpenAI / Groq / LiteLLM `reasoning_effort`, or the Responses API's `reasoning.effort`.
+  - `gen_ai.request.thinking_type` / `gen_ai.request.thinking_budget`: Anthropic `thinking.type` / `.budget_tokens`.
+  - `gen_ai.request.effort`: Anthropic `output_config.effort`.
+  - `gen_ai.request.thinking_budget` / `gen_ai.request.thinking_level`: Gemini `thinking_config.*`, or flat on LangChain's `ChatGoogleGenerativeAI` params.
+- `gen_ai.response.reasoning_effort` comes from the Responses API's echoed `reasoning.effort` (OpenAI and LiteLLM responses). That is the effort actually applied, including the default when the request left it unset.
+- **The helper must never raise into the caller.**
+  - It is `@dont_throw`, and every read goes through `_get` / `_as_str` / `_as_int`, which return None for anything unexpected: SDK sentinels (`NOT_GIVEN`), mocks, wrong types, and `bool` budgets.
+  - Call it as its own statement so a failure can't skip the attributes after it.
+  - Enums are recorded as `.value` for str enums (google-genai `ThinkingLevel`) and as `.name` for int enums (Vertex proto `ThinkingLevel`).
+  - A budget of `0` is recorded, not dropped as falsy.
+- A new knob goes into the helper, not into each provider, because LiteLLM and LangChain pass several providers' shapes through the same kwargs.
+- Coverage: VCR tests exist for OpenAI, Anthropic, google-genai and LiteLLM. Groq has no recording key, Vertex is gRPC, and the LangChain tests use fakes, so those three are wired but untested.

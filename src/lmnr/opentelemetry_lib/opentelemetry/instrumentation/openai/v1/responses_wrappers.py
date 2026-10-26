@@ -27,6 +27,10 @@ from wrapt import ObjectProxy
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.context_keys import (
     DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.reasoning import (
+    GEN_AI_RESPONSE_REASONING_EFFORT,
+    get_reasoning_effort,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
 )
@@ -191,6 +195,7 @@ class TracedData(pydantic.BaseModel):
     # Reasoning attributes
     request_reasoning_summary: str | None = pydantic.Field(default=None)
     request_reasoning_effort: str | None = pydantic.Field(default=None)
+    response_reasoning_effort: str | None = pydantic.Field(default=None)
 
     request_service_tier: str | None = pydantic.Field(default=None)
     response_service_tier: str | None = pydantic.Field(default=None)
@@ -317,6 +322,11 @@ def set_data_attributes(traced_response: TracedData, span: Span):
         span,
         "gen_ai.request.reasoning_effort",
         traced_response.request_reasoning_effort or (),
+    )
+    set_span_attribute(
+        span,
+        GEN_AI_RESPONSE_REASONING_EFFORT,
+        traced_response.response_reasoning_effort,
     )
 
     set_span_attribute(
@@ -996,6 +1006,8 @@ def _build_traced_data(
             or request_reasoning_summary,
             request_reasoning_effort=existing_data.get("request_reasoning_effort")
             or request_reasoning_effort,
+            response_reasoning_effort=get_reasoning_effort(parsed_response)
+            or existing_data.get("response_reasoning_effort"),
             request_service_tier=existing_data.get(
                 "request_service_tier", kwargs.get("service_tier")
             ),

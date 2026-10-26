@@ -11,6 +11,11 @@ from pydantic import BaseModel
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.litellm.utils import (
     infer_provider,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.reasoning import (
+    GEN_AI_RESPONSE_REASONING_EFFORT,
+    get_reasoning_effort,
+    set_reasoning_attributes,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     dont_throw,
     extract_json_schema,
@@ -49,13 +54,7 @@ def process_responses_kwargs(
         kwargs.get("max_output_tokens"),
     )
 
-    # reasoning parameter for o1-style models
-    if reasoning := kwargs.get("reasoning"):
-        set_span_attribute(
-            span,
-            "gen_ai.request.reasoning_effort",
-            reasoning.get("effort") if isinstance(reasoning, dict) else None,  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
-        )
+    set_reasoning_attributes(span, kwargs)
 
     # Structured output via text_format
     if text_format := kwargs.get("text_format"):
@@ -127,6 +126,9 @@ def process_responses_response(
     final_items = []
     if reasoning := response_dict.get("reasoning"):
         reasoning_dict = to_dict(reasoning)
+        set_span_attribute(
+            span, GEN_AI_RESPONSE_REASONING_EFFORT, get_reasoning_effort(response_dict)
+        )
         if reasoning_dict.get("summary") or reasoning_dict.get("effort"):
             final_items.append(reasoning_dict)  # pyright: ignore[reportUnknownMemberType]
     if isinstance(response_dict.get("output"), list):

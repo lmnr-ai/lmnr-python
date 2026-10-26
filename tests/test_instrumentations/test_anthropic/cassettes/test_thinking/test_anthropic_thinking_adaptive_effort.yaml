@@ -1,0 +1,126 @@
+interactions:
+- request:
+    body: '{"max_tokens":2048,"messages":[{"role":"user","content":"How many times
+      does the letter ''r'' appear in the word strawberry?"}],"model":"claude-sonnet-4-6","output_config":{"effort":"low"},"thinking":{"type":"adaptive"}}'
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate
+      anthropic-version:
+      - '2026-10-21'
+      connection:
+      - keep-alive
+      content-length:
+      - '218'
+      content-type:
+      - application/json
+      host:
+      - api.anthropic.com
+      traceparent:
+      - 00-118dbdcb3e4b4c2dbf4f7d0758e777fb-7c91cd03ad7abfa5-03
+      user-agent:
+      - Anthropic/Python 2.3.0
+      x-stainless-arch:
+      - x64
+      x-stainless-async:
+      - 'false'
+      x-stainless-lang:
+      - python
+      x-stainless-os:
+      - Linux
+      x-stainless-package-version:
+      - 2.3.0
+      x-stainless-read-timeout:
+      - '600'
+      x-stainless-retry-count:
+      - '0'
+      x-stainless-runtime:
+      - CPython
+      x-stainless-runtime-version:
+      - 3.12.10
+      x-stainless-timeout:
+      - '600'
+    method: POST
+    uri: https://api.anthropic.com/v1/messages
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAA/3WUXXOqOhiF/wrDzZ6xsguCljrTC/CrKuJ3FU/POBFSiEKCSRBpp//9hHZru/eZ
+        fQGEdy1WQuZ58yYnJICx3JT9GGQBVBjBGHLFUBpyVUaBEBIWblVNa4XTA86f3KPBSTDvrfNRDXPh
+        4UUKSxdkDIRQFCiJywJgDDEOPjw+wRyKUfOft4ufRwgfEA7LhMuwKTNOQb6DlBZNiSlcoQpQcmWn
+        QDGiSvGMnzGVQJpCQJkEuJQShjgimEl6VTKr0r30IOkSR2I1IpihEAOe0XK+Dl+2WsfQbtkjz0Kp
+        Nc2dxtgy7oonOh+3NzN9TPY+ndxO5ue1UYNPQD87Jogax5TbOb/dT7PlKi/uHMdeHCA+aBu1dzMn
+        WuaP+ETv9oaL4RouF/2ZVztHwWoWO2v3tEvqcdBSVWfhGVan3w96UbpLuLgCMGhbqrfqGO4iNISu
+        uXufu2177yG1PmpPC2fV0dxevxj1npC38tRNSuxOTv6SD4gV3PFb1+t1wpy92voauCz04Gy+8who
+        D2xKsduY4TxSbbdjzPv5IdQt5jnmTrdJ3dzvHcM74OGqNnoE2qvlq2wwiLyXkzfx8x5p1/PTOV8c
+        Z5MbblI3hI94GKdZ8TJsof7kkcf+8f5c7BzHnIAY+bNl2wyWp/mhmPQ6yf7F77LH23Z3aLY8vTFf
+        Jsb9fXIqGD+N4aCw9fm6H5+yk9/K1c1sEye7QXt/A1hn73f1rmXoGtPMdY3D841aN17HB8+aPjzI
+        79UvluD5g8Ty0ZQdyKUESj7JMJd4BKUYcg4FLwhLz98Ie5abJU8lZpUKrVSuqH2+fd4/kFtcQ6Qf
+        9MeVv0pFr1Q+Yfspv//7iTlAGFK5ibM4FgBykm4pBKKpxMIgDraCRiz/Ehg8ZhD78Dd3AEVEzC61
+        7KOpmm8ywmnGt5wI+IRYM8RswI/g1hfxZQdsfzeoF13Iwd+0y7dlPkwjmEAK4m09+b//S9WiP9X3
+        qkwy/r2kqeYfta/feru2+9VeN0QEg/SEfLjlqNw+uTw5AkCD8hDCL5CW+7QNIRFSGJMdiMtNTCEM
+        vntFTIBAiAnjyP+1he//AUflOkXiBAAA
+    headers:
+      anthropic-organization-id:
+      - 04aa8588-6567-40cb-9042-a54b20ebaf4f
+      anthropic-ratelimit-input-tokens-limit:
+      - '10000000'
+      anthropic-ratelimit-input-tokens-remaining:
+      - '10000000'
+      anthropic-ratelimit-input-tokens-reset:
+      - '2026-10-26T11:17:50Z'
+      anthropic-ratelimit-output-tokens-limit:
+      - '2000000'
+      anthropic-ratelimit-output-tokens-remaining:
+      - '2000000'
+      anthropic-ratelimit-output-tokens-reset:
+      - '2026-10-26T11:17:51Z'
+      anthropic-ratelimit-requests-limit:
+      - '20000'
+      anthropic-ratelimit-requests-remaining:
+      - '19999'
+      anthropic-ratelimit-requests-reset:
+      - '2026-10-26T11:17:49Z'
+      anthropic-ratelimit-tokens-limit:
+      - '12000000'
+      anthropic-ratelimit-tokens-remaining:
+      - '12000000'
+      anthropic-ratelimit-tokens-reset:
+      - '2026-10-26T11:17:50Z'
+      anthropic-workspace-id:
+      - wrkspc_01KBcypdzqfmaK8TJ2jTCRrY
+      cf-cache-status:
+      - DYNAMIC
+      cf-ray:
+      - a5090e877c898cc3-EWR
+      connection:
+      - keep-alive
+      content-encoding:
+      - gzip
+      content-security-policy:
+      - default-src 'none'; frame-ancestors 'none'
+      content-type:
+      - application/json
+      date:
+      - Mon, 26 Oct 2026 11:17:51 GMT
+      request-id:
+      - req_011CgQknw9JE7SNUVKG5xAPK
+      server:
+      - cloudflare
+      server-timing:
+      - x-originResponse;dur=1984
+      strict-transport-security:
+      - max-age=31536000; includeSubDomains; preload
+      traceresponse:
+      - 00-8f0439e5da5adeb48c2aa175db1f9f55-07923f8e97dd790e-01
+      transfer-encoding:
+      - chunked
+      vary:
+      - Accept-Encoding
+      x-robots-tag:
+      - none
+    status:
+      code: 200
+      message: OK
+version: 1

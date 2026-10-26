@@ -805,6 +805,8 @@ def test_litellm_completion_with_parallel_tool_calls(
     assert spans[0].name == "litellm.completion"
     assert (spans[0].attributes or {})["gen_ai.system"] == "gemini"
     assert (spans[0].attributes or {})["gen_ai.request.model"] == "gemini/gemini-2.5-flash"
+    assert (spans[0].attributes or {})["gen_ai.request.thinking_type"] == "enabled"
+    assert (spans[0].attributes or {})["gen_ai.request.thinking_budget"] == 0
     assert (spans[0].attributes or {})["gen_ai.response.model"] == "gemini-2.5-flash"
     assert (spans[0].attributes or {})["gen_ai.response.id"] == response.id
     assert (spans[0].attributes or {})["gen_ai.usage.input_tokens"] == 129
@@ -1480,6 +1482,8 @@ async def test_litellm_completion_with_parallel_tool_calls_async(
     assert spans[0].name == "litellm.completion"
     assert (spans[0].attributes or {})["gen_ai.system"] == "gemini"
     assert (spans[0].attributes or {})["gen_ai.request.model"] == "gemini/gemini-2.5-flash"
+    assert (spans[0].attributes or {})["gen_ai.request.thinking_type"] == "enabled"
+    assert (spans[0].attributes or {})["gen_ai.request.thinking_budget"] == 0
     assert (spans[0].attributes or {})["gen_ai.response.model"] == "gemini-2.5-flash"
     assert (spans[0].attributes or {})["gen_ai.response.id"] == response.id
     assert (spans[0].attributes or {})["gen_ai.usage.input_tokens"] == 129
@@ -1761,6 +1765,28 @@ def test_litellm_responses_basic(span_exporter: InMemorySpanExporter):
         str(uuid.UUID(int=_ctx(spans[0]).span_id)),
     )
     check_span_has_basic_attributes(spans[0])
+
+
+@pytest.mark.vcr(record_mode="once")
+@pytest.mark.parametrize("stream", [False, True])
+def test_litellm_responses_reasoning_effort(span_exporter: InMemorySpanExporter, stream: bool):
+    if "OPENAI_API_KEY" not in os.environ:
+        os.environ["OPENAI_API_KEY"] = "test-key"
+
+    response = litellm.responses(
+        model="gpt-5-nano",
+        input="How many times does the letter 'r' appear in the word strawberry?",
+        reasoning={"effort": "low"},
+        stream=stream,
+    )
+    if stream:
+        for _ in cast(SyncResponsesAPIStreamingIterator, response):
+            pass
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert (spans[0].attributes or {})["gen_ai.request.reasoning_effort"] == "low"
+    assert (spans[0].attributes or {})["gen_ai.response.reasoning_effort"] == "low"
 
 
 @pytest.mark.vcr(record_mode="once")

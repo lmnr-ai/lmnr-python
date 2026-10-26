@@ -51,4 +51,5 @@ def environment():
 
 @pytest.fixture(scope="module")
 def vcr_config() -> dict[str, list[str]]:
-    return {"filter_headers": ["x-api-key"]}
+    # `authorization` too: an OAuth-style key (`sk-ant-...` bearer) is sent there
+    return {"filter_headers": ["x-api-key", "authorization"]}

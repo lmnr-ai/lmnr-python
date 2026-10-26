@@ -1,0 +1,74 @@
+interactions:
+- request:
+    body: '{"contents": [{"parts": [{"text": "How many times does the letter ''r''
+      appear in the word strawberry?"}], "role": "user"}], "generationConfig": {"thinkingConfig":
+      {"thinking_level": "LOW"}}}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '189'
+      content-type:
+      - application/json
+      host:
+      - generativelanguage.googleapis.com
+      user-agent:
+      - google-genai-sdk/2.19.0 gl-python/3.12.10
+      x-goog-api-client:
+      - google-genai-sdk/2.19.0 gl-python/3.12.10
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAC/2VU25KiSBB99ysIXiZCp0csVHTfFJVGAW943dnYKKCQa4FVhYAd/e+D9tpjz/JQ
+        kZF5Kk/WiTy81TiOtyF2fAcyRPm/uL+rDMe93c9bLcEMYVYVHqkqmULCfmM/vrenuIIwVNwu8aaH
+        uAgxhgj3jXzjYJoiSChXr4v1Osf8GFHOxxyrUHlCHI4yAnMLEVL+4H7in5iyep3U67dcFVRRyX//
+        g8hLspPH1v4JQ5YRdCMdE30kk8FosAs37mph6TrrGUvF03JnNu/N6WKxXaaX1UAQriAM180WoCLD
+        k2yIgkI0jGWvqcZuf9LtOySTt4F7Aba1M0i4Pe6n50JuGakhjPuvYjqOYq2ZOrra3EjabO4KstVe
+        Q7M3O80UlXlXM/bCw6EYHYLxNEiGDlYvAGzW/nRwbApWdnWDVr979DL1bK5y3RrMe3iz9mbeUG2C
+        /GR3gIdD3UvnxARUapaivc0aLVYGcr8RWUwKxVTaCOGmMQjayCvUTkMR9bJcXWxa+KgXpt78tECb
+        dZDl16MKNFGxgWCKobWATJugXPA0oEI5CNFJkdpH3Y8PZOhRYZIchNdI3Sq+IrUyXyhl3QTb9TFb
+        vfYMakpY0db5YtAwRmZnSqagYR3M2V4HNHTmVpmdWbG8DuRU6hMoOaqggL6pDA9LtdADn4COJJ/V
+        FZUgHl7QodsKJkhN1tHOyqUFSCbKnGUbfFCSjUH3x+Zut99N9O15DsHrRBg2UYhYsYouAUaL3Rlo
+        iYJbC4RFJTsi186KBtleZVmym5421DJcmL0d3bkzfxUJcXeXTaegHAxGbDlp2EZgWXa31I6nduPS
+        SYz2bBouiWeeqR5FpHVA/NOqvX/G//zeQJ4k0X3j4sRB0QP+/gDwro996q0QpAm+wdbmfPG5wLyP
+        HVRUaaH2ILi35jMKT0hHDFaehJ/O41OSxCkzkxBhOcnunmx1P5o9WfhLHUj/1VnCYPTH1f73//Wl
+        o4rVj569/WT76pEw8ll59/V4bz5ZsSL40vuhRO1JsIdVv47YAo83UEQuvo1MH5EbA2XVmyBxbqre
+        Ff0QeYsI9T/UPKG40vdF/NF5cSNIvZdqOHQfiieIpgmmSHXu/4Or68JkEoOLOBPyf2c5iYfDnK+9
+        134B+lwh3gAFAAA=
+    headers:
+      alt-svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      content-encoding:
+      - gzip
+      content-type:
+      - application/json; charset=UTF-8
+      date:
+      - Mon, 26 Oct 2026 11:18:43 GMT
+      server:
+      - scaffolding on HTTPServer2
+      server-timing:
+      - gfet4t7; dur=885
+      transfer-encoding:
+      - chunked
+      vary:
+      - Origin
+      - X-Origin
+      - Referer
+      x-content-type-options:
+      - nosniff
+      x-frame-options:
+      - SAMEORIGIN
+      x-gemini-service-tier:
+      - standard
+      x-xss-protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+version: 1
