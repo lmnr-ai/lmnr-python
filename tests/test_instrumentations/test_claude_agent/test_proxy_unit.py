@@ -100,45 +100,62 @@ def test_restore_env(monkeypatch: pytest.MonkeyPatch):
     assert "KEY3" not in os.environ
 
 
+def _reserve_port() -> socket.socket:
+    """Bind a socket to an OS-assigned free port, without listening.
+
+    Never hard-code a port here: fixed ports like 45300 sit inside the kernel's
+    ephemeral range, so any outgoing connection that recently used one as its
+    source port (it lingers in TIME_WAIT for ~60s) makes ``bind`` fail with
+    EADDRINUSE even with SO_REUSEADDR. While the socket is bound the port stays
+    reserved and connecting to it is refused until ``listen()`` is called.
+    """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(("127.0.0.1", 0))
+    return sock
+
+
 def test_is_port_open():
     """Test port checking."""
-    # Create a listening socket
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server.bind(("127.0.0.1", 45300))
+    server = _reserve_port()
     server.listen(1)
+    closed = _reserve_port()
 
     try:
-        assert claude_utils.is_port_open(45300) is True
-        assert claude_utils.is_port_open(45301) is False
+        assert claude_utils.is_port_open(server.getsockname()[1]) is True
+        assert claude_utils.is_port_open(closed.getsockname()[1]) is False
     finally:
         server.close()
+        closed.close()
 
 
 def test_wait_for_port():
     """Test waiting for port to become available."""
-    port = 45302
+    server = _reserve_port()
+    port = server.getsockname()[1]
 
-    def start_server():
+    def start_listening():
         time.sleep(0.3)
-        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server.bind(("127.0.0.1", port))
         server.listen(1)
-        time.sleep(1)
-        server.close()
 
-    thread = threading.Thread(target=start_server, daemon=True)
+    thread = threading.Thread(target=start_listening, daemon=True)
     thread.start()
 
-    result = claude_utils.wait_for_port(port, timeout=2.0)
-    assert result is True
+    try:
+        result = claude_utils.wait_for_port(port, timeout=2.0)
+        assert result is True
+    finally:
+        thread.join()
+        server.close()
 
 
 def test_wait_for_port_timeout():
     """Test timeout when port doesn't open."""
-    result = claude_utils.wait_for_port(45303, timeout=0.5)
-    assert result is False
+    closed = _reserve_port()
+    try:
+        result = claude_utils.wait_for_port(closed.getsockname()[1], timeout=0.5)
+        assert result is False
+    finally:
+        closed.close()
 
 
 def test_resolve_target_url_from_env(
