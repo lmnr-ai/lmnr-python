@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import datetime
 import json
-from collections import ChainMap
 from collections.abc import Mapping, Sequence
 from decimal import Decimal
 from enum import Enum
@@ -223,8 +222,15 @@ def set_request_attributes(
         set_span_attribute(span, "gen_ai.request.top_p", top_p)
     # Chat model fields as the integrations report them: `reasoning_effort` /
     # `reasoning` (OpenAI, Groq), `thinking` / `output_config` (Anthropic),
-    # `thinking_budget` / `thinking_level` / `thinking_config` (Google GenAI)
-    set_reasoning_attributes(span, ChainMap(dict(params), dict(serialized_kwargs)))
+    # `thinking_budget` / `thinking_level` / `thinking_config` (Google GenAI).
+    # Like `param`, a `None` invocation param falls through to the constructor kwargs
+    reasoning_params = {
+        key: value
+        for source in (serialized_kwargs, params)
+        for key, value in source.items()
+        if value is not None
+    }
+    set_reasoning_attributes(span, reasoning_params)
 
     tools = params.get("tools") or params.get("functions")
     if should_send_prompts() and isinstance(tools, list) and tools:
