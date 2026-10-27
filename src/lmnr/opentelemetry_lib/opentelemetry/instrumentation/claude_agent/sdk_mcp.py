@@ -59,10 +59,15 @@ class _ToolCallsOnly:
         return await self._inner(ctx, call_next)
 
 
-def restrict_server_spans_to_tool_calls(server_config: Any) -> None:
-    """Swap the default `mcp` span middleware on an SDK server for a `tools/call`-only one.
+def restrict_server_spans_to_tool_calls(server: Any) -> None:
+    """Swap the default `mcp` span middleware on a server for a `tools/call`-only one.
 
-    No-op on `mcp` versions without server middleware.
+    Idempotent, and a no-op on `mcp` versions without server middleware. Called
+    both when an SDK server is created and on every message bridged to it: a
+    server built before `Laminar.initialize()` (e.g. at import time) never went
+    through the `create_sdk_mcp_server` wrapper, and `mcp` reads
+    `server.middleware` per request, so swapping it before the message lands is
+    enough.
     """
     try:
         otel_middleware_cls: Any = importlib.import_module(
@@ -71,7 +76,6 @@ def restrict_server_spans_to_tool_calls(server_config: Any) -> None:
     except (ImportError, AttributeError):
         return
 
-    server: Any = server_config.get("instance") if isinstance(server_config, dict) else None  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
     middleware: Any = getattr(server, "middleware", None)
     if not isinstance(middleware, list):
         return

@@ -76,7 +76,9 @@ def wrap_create_sdk_mcp_server(
     """
     result = wrapped(*args, **kwargs)
     try:
-        restrict_server_spans_to_tool_calls(result)
+        server_config: Any = result
+        if isinstance(server_config, dict):
+            restrict_server_spans_to_tool_calls(server_config.get("instance"))  # pyright: ignore[reportUnknownMemberType]
     except Exception:
         logger.debug("Failed to restrict SDK MCP server spans", exc_info=True)
     return result
@@ -89,7 +91,18 @@ async def wrap_sdk_mcp_request(
     args: Sequence[Any],
     kwargs: dict[str, Any],
 ) -> T:
-    """Wrapper for `Query._handle_sdk_mcp_request`: stamp trace context into the message."""
+    """Wrapper for `Query._handle_sdk_mcp_request`.
+
+    Restricts the target server's spans to `tools/call` (it may predate the
+    instrumentation) and stamps trace context into the message.
+    """
+    try:
+        server_name = args[0] if args else kwargs.get("server_name")
+        servers = getattr(instance, "sdk_mcp_servers", None)
+        if isinstance(servers, dict):
+            restrict_server_spans_to_tool_calls(servers.get(server_name))  # pyright: ignore[reportUnknownMemberType]
+    except Exception:
+        logger.debug("Failed to restrict SDK MCP server spans", exc_info=True)
     try:
         transport = getattr(instance, "transport", None)
         if len(args) >= 2:
