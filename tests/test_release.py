@@ -78,6 +78,12 @@ def test_sentry_release_wins_over_platform_sha(monkeypatch: pytest.MonkeyPatch) 
     assert detect_release() == "my-app@1.0.0"
 
 
+def test_github_sha_wins_over_sentry_release(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GITHUB_SHA", SHA)
+    monkeypatch.setenv("SENTRY_RELEASE", "my-app@1.0.0")
+    assert detect_release() == SHA
+
+
 @pytest.mark.parametrize("name", release_module._RELEASE_ENV_VARS)
 def test_each_platform_var(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
     monkeypatch.setenv(name, SHA)

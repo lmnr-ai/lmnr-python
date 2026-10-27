@@ -14,8 +14,10 @@ from lmnr.sdk.utils import from_env
 
 MAX_RELEASE_LENGTH = 128
 
-# Explicitly set releases, then platform commit SHAs.
+# The GitHub Actions commit (CI runs, e.g. evals), explicitly set releases, then
+# platform commit SHAs.
 _RELEASE_ENV_VARS = (
+    "GITHUB_SHA",
     "SENTRY_RELEASE",
     "VERCEL_GIT_COMMIT_SHA",
     "RENDER_GIT_COMMIT",
