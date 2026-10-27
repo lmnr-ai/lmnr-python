@@ -95,6 +95,7 @@ lmnr datasets pull <id>       # Pull dataset
 ```
 LMNR_PROJECT_API_KEY  # API key (can also pass to initialize())
 LMNR_BASE_URL         # API base URL (default: https://api.lmnr.ai)
+LMNR_RELEASE          # Release (git SHA) stamped on spans; auto-detected if unset
 ```
 
 ## Nested AGENTS.md files
@@ -102,7 +103,7 @@ LMNR_BASE_URL         # API base URL (default: https://api.lmnr.ai)
 - `tests/AGENTS.md` - VCR cassettes, spy-test pattern, debug tests, known flakes
 - `src/lmnr/sdk/AGENTS.md` - logging, HTTP error reporting, `json_dumps` / bytes, eval trace type
 - `src/lmnr/sdk/debug/AGENTS.md` - debug mode / replay, TS parity
-- `src/lmnr/opentelemetry_lib/tracing/AGENTS.md` - import-cycle wiring, tracing singleton + provider reuse, default instrument set, span batching / export, payload size limit
+- `src/lmnr/opentelemetry_lib/tracing/AGENTS.md` - import-cycle wiring, tracing singleton + provider reuse, default instrument set, span batching / export, release stamp, payload size limit
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/AGENTS.md` - instrumentor structure, error status (exception events), GenAI message attributes
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/anthropic/AGENTS.md` - structured output, `with_raw_response`, native OTel spans (dropped unless content mode), stream manager + error spans, anthropic 2.x / `httpx2`
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/claude_agent/AGENTS.md` - settings.json precedence, proxy

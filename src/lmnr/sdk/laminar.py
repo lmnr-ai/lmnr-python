@@ -243,6 +243,7 @@ class Laminar:
         session_recording_options: SessionRecordingOptions | None = None,
         force_http: bool = False,
         metadata: dict[str, AttributeValue] | None = None,
+        release: str | None = None,
     ):
         """Initialize Laminar context across the application.
         This method must be called before using any other Laminar methods or
@@ -307,6 +308,15 @@ class Laminar:
                 Defaults to None (uses default masking behavior).
             force_http (bool, optional): If set to True, the HTTP OTEL exporter will be\
                 used instead of the gRPC OTEL exporter. Defaults to False.
+            metadata (dict[str, AttributeValue] | None, optional): Metadata added\
+                to every trace. Merged over the `LMNR_TRACE_METADATA` environment\
+                variable. Defaults to None.
+            release (str | None, optional): The release of the running code,\
+                usually its git commit SHA. Laminar groups an agent's traces into\
+                versions by release. If not specified, read from the LMNR_RELEASE\
+                environment variable, common deploy platform variables (Vercel,\
+                Render, Railway, Heroku, Cloud Run, ...), or the checked-out git\
+                commit. Defaults to None.
         Raises:
             ValueError: If project API key is not set
         """
@@ -407,6 +417,7 @@ class Laminar:
             otel_logger_level=otel_logger_level,
             session_recording_options=session_recording_options,
             force_http=force_http,
+            release=release,
         )
 
         # A previous initialize()/shutdown() cycle leaves the Langfuse bridge

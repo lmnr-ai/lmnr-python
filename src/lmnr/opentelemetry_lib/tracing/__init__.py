@@ -92,6 +92,7 @@ def init_tracing(
     set_global_tracer_provider: bool = True,
     otel_logger_level: int = logging.ERROR,
     session_recording_options: SessionRecordingOptions | None = None,
+    release: str | None = None,
 ) -> TracerWrapper:
     """Initialize Laminar tracing. Idempotent: a second call returns the
     existing wrapper and ignores the new arguments."""
@@ -140,6 +141,7 @@ def init_tracing(
             timeout_seconds=timeout,
             force_http=force_http,
             disable_batch=disable_batch,
+            release=release,
         )
 
         if _tracer_provider is None:
