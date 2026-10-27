@@ -3,7 +3,9 @@ from types import ModuleType, SimpleNamespace
 from typing import Any
 
 import pytest
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
+from lmnr import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.sdk_mcp import (
     build_traceparent,
     restrict_server_spans_to_tool_calls,
@@ -63,15 +65,13 @@ async def test_only_tool_calls_keep_mcp_spans(monkeypatch: pytest.MonkeyPatch):
 
     other = object()
     server = SimpleNamespace(middleware=[other, OpenTelemetryMiddleware()])
-    config = {"type": "sdk", "name": "t", "instance": server}
-
-    restrict_server_spans_to_tool_calls(config)
+    restrict_server_spans_to_tool_calls(server)
     assert server.middleware[0] is other
     wrapper = server.middleware[1]
     assert not isinstance(wrapper, OpenTelemetryMiddleware)
 
     # a second pass must not double-wrap
-    restrict_server_spans_to_tool_calls(config)
+    restrict_server_spans_to_tool_calls(server)
     assert server.middleware[1] is wrapper
 
     async def call_next(ctx: Any) -> str:
@@ -82,5 +82,64 @@ async def test_only_tool_calls_keep_mcp_spans(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_servers_without_middleware_are_left_alone():
-    restrict_server_spans_to_tool_calls({"type": "sdk", "instance": SimpleNamespace()})
+    restrict_server_spans_to_tool_calls(SimpleNamespace())
     restrict_server_spans_to_tool_calls(None)
+
+
+@pytest.mark.asyncio
+async def test_server_built_before_instrumentation_only_traces_tool_calls(
+    span_exporter: InMemorySpanExporter,
+):
+    """Servers created at import time, before `Laminar.initialize()`, never went
+    through the `create_sdk_mcp_server` wrapper. The bridge wrapper must still
+    restrict their spans and parent them."""
+    otel = pytest.importorskip("mcp.server._otel")
+    from claude_agent_sdk import create_sdk_mcp_server, tool
+    from claude_agent_sdk._internal.query import Query
+
+    @tool("add", "Add two numbers", {"a": int, "b": int})
+    async def add(args: dict[str, Any]) -> dict[str, Any]:
+        return {"content": [{"type": "text", "text": str(args["a"] + args["b"])}]}
+
+    server = create_sdk_mcp_server(name="toy", tools=[add])["instance"]
+    # Undo the creation-time swap: this is what an import-time server looks like.
+    server.middleware = [otel.OpenTelemetryMiddleware()]
+
+    with Laminar.start_as_current_span("turn") as turn:
+        ctx = turn.get_span_context()
+        transport = _transport(build_traceparent(f"{ctx.trace_id:032x}", f"{ctx.span_id:016x}"))
+    query = Query(transport=transport, is_streaming_mode=True, sdk_mcp_servers={"toy": server})
+    try:
+        messages: list[dict[str, Any]] = [
+            {
+                "jsonrpc": "2.0",
+                "id": 0,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-06-18",
+                    "capabilities": {},
+                    "clientInfo": {"name": "cli", "version": "0"},
+                },
+            },
+            {"jsonrpc": "2.0", "method": "notifications/initialized"},
+            {"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {"name": "add", "arguments": {"a": 2, "b": 3}},
+            },
+        ]
+        responses = [await query._handle_sdk_mcp_request("toy", m) for m in messages]
+    finally:
+        for bridge in query._sdk_mcp_bridges.values():
+            await bridge.aclose()
+
+    assert "error" not in (responses[3] or {}), responses
+    spans = {s.name: s for s in span_exporter.get_finished_spans()}
+    assert set(spans) == {"turn", "add.tool"}, sorted(spans)
+    tool_span = spans["add.tool"]
+    assert tool_span.parent is not None
+    assert tool_span.parent.span_id == ctx.span_id
+    assert tool_span.context is not None
+    assert tool_span.context.trace_id == ctx.trace_id
