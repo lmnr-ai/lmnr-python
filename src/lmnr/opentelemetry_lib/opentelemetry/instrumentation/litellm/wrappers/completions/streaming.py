@@ -168,6 +168,12 @@ def _set_accumulated_attributes(
             set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, input_tokens)
             set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, output_tokens)
             set_span_attribute(span, "llm.usage.total_tokens", total_tokens)
+            if output_details := usage.get("completion_tokens_details"):
+                set_span_attribute(
+                    span,
+                    "gen_ai.usage.reasoning_tokens",
+                    output_details.get("reasoning_tokens"),
+                )
 
             input_details = to_dict(usage.get("prompt_tokens_details", {}))
             if "cached_tokens" in input_details:
