@@ -50,6 +50,7 @@ lmnr datasets pull <id>       # Pull dataset
 - `evaluations/` - `evaluate()` function and `Evaluation` class for running tests
 - `client/` - HTTP clients (`LaminarClient`, `AsyncLaminarClient`) for API interactions
 - `debug/` - debug mode / replay (cross-language parity surface with the TS SDK)
+- `trajectory/` - lmnr-atif, Laminar's extension to Harbor's ATIF trajectory format (spec in `spec/lmnr-atif/`)
 
 ### OpenTelemetry Layer (`src/lmnr/opentelemetry_lib/`)
 - `tracing/instruments.py` - `Instruments` enum listing all auto-instrumentable providers
@@ -103,6 +104,7 @@ LMNR_RELEASE          # Release (git SHA) stamped on spans; auto-detected if uns
 - `tests/AGENTS.md` - VCR cassettes, spy-test pattern, debug tests, known flakes
 - `src/lmnr/sdk/AGENTS.md` - logging, HTTP error reporting, `json_dumps` / bytes, eval trace type
 - `src/lmnr/sdk/debug/AGENTS.md` - debug mode / replay, TS parity
+- `src/lmnr/sdk/trajectory/AGENTS.md` - lmnr-atif spec location, version bumps, schema/doc/fixture sync, harbor validation
 - `src/lmnr/opentelemetry_lib/tracing/AGENTS.md` - import-cycle wiring, tracing singleton + provider reuse, default instrument set, span batching / export, release stamp, payload size limit
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/AGENTS.md` - instrumentor structure, error status (exception events), GenAI message attributes
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/anthropic/AGENTS.md` - structured output, `with_raw_response`, native OTel spans (dropped unless content mode), stream manager + error spans, anthropic 2.x / `httpx2`
