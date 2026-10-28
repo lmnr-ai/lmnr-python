@@ -513,11 +513,13 @@ class LaminarPlugin:
             trajectory_path = _trajectory_path(event)
             if trajectory_path is not None:
                 try:
-                    _span_count = emit_trajectory_spans(
+                    converter = emit_trajectory_spans(
                         trajectory_path,
                         span.get_laminar_span_context(),
                         start_ns=parse_timestamp_ns(timing.started_at),
                     )
+                    if converter.parent_attributes:
+                        span.set_attributes(converter.parent_attributes)
                 except Exception as e:
                     logger.warning(f"Could not convert trajectory {trajectory_path}: {e}")
         span.set_output(self._executor_output(event))
