@@ -97,6 +97,8 @@ lmnr datasets pull <id>       # Pull dataset
 LMNR_PROJECT_API_KEY  # API key (can also pass to initialize())
 LMNR_BASE_URL         # API base URL (default: https://api.lmnr.ai)
 LMNR_RELEASE          # Release (git SHA) stamped on spans; auto-detected if unset
+LMNR_TRAJECTORY_PATH  # Write the run as an lmnr-atif (ATIF) file; local-only, no key needed. May contain {trace_id}, {pid}
+LMNR_TRAJECTORY_FORCE_EXPORT  # With LMNR_TRAJECTORY_PATH: also export spans to Laminar
 ```
 
 ## Nested AGENTS.md files
@@ -105,7 +107,7 @@ LMNR_RELEASE          # Release (git SHA) stamped on spans; auto-detected if uns
 - `src/lmnr/sdk/AGENTS.md` - logging, HTTP error reporting, `json_dumps` / bytes, eval trace type
 - `src/lmnr/sdk/debug/AGENTS.md` - debug mode / replay, TS parity
 - `src/lmnr/sdk/trajectory/AGENTS.md` - lmnr-atif spec location, version bumps, schema/doc/fixture sync, harbor validation
-- `src/lmnr/opentelemetry_lib/tracing/AGENTS.md` - import-cycle wiring, tracing singleton + provider reuse, default instrument set, span batching / export, release stamp, payload size limit
+- `src/lmnr/opentelemetry_lib/tracing/AGENTS.md` - import-cycle wiring, tracing singleton + provider reuse, default instrument set, span batching / export, release stamp, trajectory file (`LMNR_TRAJECTORY_PATH`), payload size limit
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/AGENTS.md` - instrumentor structure, error status (exception events), GenAI message attributes
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/anthropic/AGENTS.md` - structured output, `with_raw_response`, native OTel spans (dropped unless content mode), stream manager + error spans, anthropic 2.x / `httpx2`
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/claude_agent/AGENTS.md` - settings.json precedence, proxy

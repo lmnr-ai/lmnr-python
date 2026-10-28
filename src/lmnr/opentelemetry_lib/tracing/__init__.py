@@ -7,10 +7,15 @@ from collections.abc import Sequence
 from opentelemetry import trace
 from opentelemetry._logs import set_logger_provider
 from opentelemetry.sdk._logs import LoggerProvider
-from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+from opentelemetry.sdk._logs.export import (
+    BatchLogRecordProcessor,
+    LogRecordExporter,
+    LogRecordExportResult,
+)
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SpanExporter
+from typing_extensions import override
 
 from lmnr.opentelemetry_lib.tracing.context import setup_thread_context_inheritance
 from lmnr.opentelemetry_lib.tracing.exporter import LaminarLogExporter
@@ -59,6 +64,19 @@ __all__ = [
 
 LOG = get_default_logger(__name__)
 
+
+class _DiscardingLogExporter(LogRecordExporter):
+    """Local-only mode: nothing leaves the process."""
+
+    @override
+    def export(self, batch: object) -> LogRecordExportResult:
+        return LogRecordExportResult.SUCCESS
+
+    @override
+    def shutdown(self) -> None:
+        pass
+
+
 # Serializes `init_tracing`. The singleton itself lives in `tracing/wrapper.py`.
 _lock = threading.Lock()
 # The providers are built ONCE per process and reused across
@@ -93,9 +111,15 @@ def init_tracing(
     otel_logger_level: int = logging.ERROR,
     session_recording_options: SessionRecordingOptions | None = None,
     release: str | None = None,
+    trajectory_path: str | None = None,
+    export: bool = True,
 ) -> TracerWrapper:
     """Initialize Laminar tracing. Idempotent: a second call returns the
-    existing wrapper and ignores the new arguments."""
+    existing wrapper and ignores the new arguments.
+
+    `trajectory_path` writes an lmnr-atif trajectory file of the run (see
+    `tracing/trajectory.py`). `export=False` keeps spans and logs local.
+    """
     global _tracer_provider, _logger_provider
 
     # Silence some opentelemetry warnings
@@ -125,7 +149,7 @@ def init_tracing(
                 base_url=base_http_url or "https://api.lmnr.ai",
                 project_api_key=project_api_key,
             )
-            if project_api_key
+            if project_api_key and export
             else None
         )
 
@@ -142,6 +166,8 @@ def init_tracing(
             force_http=force_http,
             disable_batch=disable_batch,
             release=release,
+            trajectory_path=trajectory_path,
+            export=export,
         )
 
         if _tracer_provider is None:
@@ -161,12 +187,16 @@ def init_tracing(
         tracer_provider.add_span_processor(span_processor)
 
         # Setup LoggerProvider for OTel logs
-        log_exporter = LaminarLogExporter(
-            base_url=base_url,
-            port=http_port if force_http else port,
-            api_key=project_api_key,
-            timeout_seconds=timeout,
-            force_http=force_http,
+        log_exporter = (
+            LaminarLogExporter(
+                base_url=base_url,
+                port=http_port if force_http else port,
+                api_key=project_api_key,
+                timeout_seconds=timeout,
+                force_http=force_http,
+            )
+            if export
+            else _DiscardingLogExporter()
         )
         log_processor = BatchLogRecordProcessor(log_exporter)
         if _logger_provider is None:

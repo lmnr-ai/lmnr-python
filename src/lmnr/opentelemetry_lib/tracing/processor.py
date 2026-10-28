@@ -9,6 +9,7 @@ from opentelemetry.sdk.trace.export import (
     BatchSpanProcessor,
     SimpleSpanProcessor,
     SpanExporter,
+    SpanExportResult,
 )
 from opentelemetry.util.types import AttributeValue
 from typing_extensions import override
@@ -44,6 +45,7 @@ from lmnr.opentelemetry_lib.tracing.context import (
 )
 from lmnr.opentelemetry_lib.tracing.exporter import LaminarSpanExporter
 from lmnr.opentelemetry_lib.tracing.release import detect_release
+from lmnr.opentelemetry_lib.tracing.trajectory import TrajectoryCollector
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import MetadataType
 from lmnr.sdk.utils import from_env, is_otel_attribute_value_type, json_dumps
@@ -62,6 +64,15 @@ def _replay_active() -> bool:
         return replay_enabled()
     except Exception:
         return False
+
+
+class _DiscardingSpanExporter(SpanExporter):
+    """Local-only mode (`LMNR_TRAJECTORY_PATH` without force-export): spans go
+    to the trajectory file and nowhere else."""
+
+    @override
+    def export(self, spans: object) -> SpanExportResult:
+        return SpanExportResult.SUCCESS
 
 
 class LaminarSpanProcessor(SpanProcessor):
@@ -90,6 +101,8 @@ class LaminarSpanProcessor(SpanProcessor):
         disable_batch: bool = False,
         exporter: SpanExporter | None = None,
         release: str | None = None,
+        trajectory_path: str | None = None,
+        export: bool = True,
     ):
         self._instance_lock = threading.RLock()
         self._paths_lock = threading.RLock()
@@ -101,15 +114,28 @@ class LaminarSpanProcessor(SpanProcessor):
         self.flush_by_size = flush_by_size
         self.release = detect_release(release)
         port = http_port if force_http else grpc_port
-        self.exporter: SpanExporter = exporter or LaminarSpanExporter(
-            base_url=base_url,
-            port=port,
-            api_key=api_key,
-            timeout_seconds=timeout_seconds,
-            force_http=force_http,
-        )
+        self.export: bool = export
+        if not export:
+            self.exporter: SpanExporter = _DiscardingSpanExporter()
+        else:
+            self.exporter = exporter or LaminarSpanExporter(
+                base_url=base_url,
+                port=port,
+                api_key=api_key,
+                timeout_seconds=timeout_seconds,
+                force_http=force_http,
+            )
         self.instance = (
-            SimpleSpanProcessor(self.exporter) if disable_batch else self._new_batch_processor()
+            SimpleSpanProcessor(self.exporter)
+            if disable_batch or not export
+            else self._new_batch_processor()
+        )
+        # Sees exactly the spans that would be exported, so the file and the
+        # trace in Laminar hold the same calls.
+        self.trajectory: TrajectoryCollector | None = (
+            TrajectoryCollector(trajectory_path, exported=export, release=self.release)
+            if trajectory_path
+            else None
         )
         self.__span_id_to_path = {}
         self.__span_id_lists = {}
@@ -217,6 +243,12 @@ class LaminarSpanProcessor(SpanProcessor):
                         ),
                     )
 
+        if self.trajectory is not None:
+            try:
+                self.trajectory.on_start(span)
+            except Exception:
+                self.logger.debug("Failed to track span for the trajectory", exc_info=True)
+
         with self._instance_lock:
             self.instance.on_start(span, parent_context)
 
@@ -233,9 +265,22 @@ class LaminarSpanProcessor(SpanProcessor):
                     _popped = self.__span_id_to_path.pop(span_context.span_id)
                 except KeyError:
                     pass
-        if (from_env("LMNR_DISABLE_TRACING") or "false").lower().strip() == "true" or (
+        disabled = (from_env("LMNR_DISABLE_TRACING") or "false").lower().strip() == "true" or bool(
             span.attributes and span.attributes.get("lmnr.internal.disabled")
-        ):
+        )
+
+        if self.trajectory is not None:
+            try:
+                # A span disabled after it started still has to leave the
+                # open set, or every later file would say `complete: false`.
+                if disabled:
+                    self.trajectory.forget(span)
+                else:
+                    self.trajectory.on_end(span)
+            except Exception:
+                self.logger.debug("Failed to record span for the trajectory", exc_info=True)
+
+        if disabled:
             return
 
         with self._instance_lock:
@@ -260,10 +305,15 @@ class LaminarSpanProcessor(SpanProcessor):
 
     @override
     def force_flush(self, timeout_millis: int = 30000) -> bool:
+        written = self.trajectory.write() if self.trajectory is not None else True
         with self._instance_lock:
-            return self.instance.force_flush(timeout_millis)
+            return self.instance.force_flush(timeout_millis) and written
 
     def force_reinit(self) -> bool:
+        if not self.export:
+            # Nothing to reconnect; just the clean-state part of the protocol.
+            self.clear()
+            return True
         if not isinstance(self.exporter, LaminarSpanExporter):
             self.logger.warning(
                 "LaminarSpanProcessor is not using LaminarSpanExporter, cannot force reinit"
@@ -297,6 +347,8 @@ class LaminarSpanProcessor(SpanProcessor):
 
     @override
     def shutdown(self):
+        if self.trajectory is not None:
+            self.trajectory.shutdown()
         with self._instance_lock:
             self.instance.shutdown()
 

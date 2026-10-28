@@ -12,6 +12,7 @@ recorded step. Verifier rewards become evaluation scores.
 """
 
 import asyncio
+import os
 import re
 import uuid
 from dataclasses import dataclass
@@ -230,14 +231,21 @@ class LaminarPlugin:
             # trajectory instead. For the same reason we don't take over the
             # global tracer provider: OTel-instrumented libraries in the Harbor
             # process (e.g. the Daytona SDK) would export a trace per call.
-            Laminar.initialize(
-                project_api_key=self.project_api_key,
-                base_url=self.base_url,
-                http_port=self.http_port,
-                grpc_port=self.grpc_port,
-                instruments=set(),
-                set_global_tracer_provider=False,
-            )
+            # LMNR_TRAJECTORY_PATH is meant for the agent: here it would switch
+            # the plugin's own spans to local-only, so it is hidden meanwhile.
+            trajectory_path = os.environ.pop("LMNR_TRAJECTORY_PATH", None)
+            try:
+                Laminar.initialize(
+                    project_api_key=self.project_api_key,
+                    base_url=self.base_url,
+                    http_port=self.http_port,
+                    grpc_port=self.grpc_port,
+                    instruments=set(),
+                    set_global_tracer_provider=False,
+                )
+            finally:
+                if trajectory_path is not None:
+                    os.environ["LMNR_TRAJECTORY_PATH"] = trajectory_path
             client_url, client_port = self.base_url, self.http_port
         self._client = AsyncLaminarClient(
             base_url=client_url,
