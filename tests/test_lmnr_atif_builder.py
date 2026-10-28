@@ -337,6 +337,117 @@ def test_tool_result_from_span_only_forces_an_exact_next_input():
     ]
 
 
+def _tool_call_output(call_id: str, name: str, arguments: dict[str, Any]) -> list[Any]:
+    function = {"name": name, "arguments": json.dumps(arguments)}
+    return [{"role": "assistant", "tool_calls": [{"id": call_id, "function": function}]}]
+
+
+def _results(step: dict[str, Any]) -> list[Any]:
+    return [r["content"] for r in step.get("observation", {}).get("results", [])]
+
+
+def test_concurrent_calls_keep_their_own_tool_spans():
+    """The second call starts before the first one's tool runs; that must not
+    cut the first call's window, nor let it take the second call's tool."""
+    trajectory = build_trajectory(
+        [
+            _record(1, None, "root", "DEFAULT", 0, 10),
+            _llm(
+                2, 0, 1, [{"role": "user", "content": "A"}], _tool_call_output("a", "s", {"q": 1})
+            ),
+            _llm(
+                3,
+                0.5,
+                1.5,
+                [{"role": "user", "content": "B"}],
+                _tool_call_output("b", "s", {"q": 2}),
+            ),
+            _record(
+                4,
+                1,
+                "s",
+                "TOOL",
+                1.6,
+                2,
+                {"lmnr.span.input": '{"q": 2}', "lmnr.span.output": '"B"'},
+            ),
+            _record(
+                5,
+                1,
+                "s",
+                "TOOL",
+                1.7,
+                2,
+                {"lmnr.span.input": '{"q": 1}', "lmnr.span.output": '"A"'},
+            ),
+        ]
+    )
+    assert trajectory is not None
+    steps = trajectory["steps"]
+    assert [(s["source"], _results(s)) for s in steps] == [
+        ("user", []),
+        ("agent", ["A"]),
+        ("user", []),
+        ("agent", ["B"]),
+    ]
+
+
+def test_later_system_prompt_without_a_first_one_is_an_override():
+    """With no system prompt on the first call, a later call's leading system
+    message is that call's system prompt, not a message in the history."""
+    hi = {"role": "user", "content": "hi"}
+    yo = {"role": "assistant", "content": "yo"}
+    second = [{"role": "system", "content": "S"}, hi, yo, {"role": "user", "content": "more"}]
+    trajectory = build_trajectory(
+        [
+            _record(1, None, "root", "DEFAULT", 0, 10),
+            _llm(2, 0, 1, [hi], [yo]),
+            _llm(3, 2, 3, second, [{"role": "assistant", "content": "ok"}]),
+        ]
+    )
+    assert trajectory is not None
+    steps = trajectory["steps"]
+    assert [s["source"] for s in steps] == ["user", "agent", "user", "agent"]
+    assert steps[3]["extra"]["lmnr"]["system_prompt"] == "S"
+    assert "input_messages" not in steps[3]["extra"]["lmnr"]
+    ext = TrajectoryExtension.read(trajectory)
+    assert reader.input_messages(steps, 3, ext) == second
+
+
+def test_repeated_generated_tool_call_ids_keep_their_own_results():
+    """Two Gemini conversations in one agent both generate `convert_1`; each
+    call's observation is the result its own next call received."""
+
+    def content(role: str, *parts: dict[str, Any]) -> dict[str, Any]:
+        return {"role": role, "parts": list(parts)}
+
+    def call(x: int) -> dict[str, Any]:
+        return content("model", {"function_call": {"name": "convert", "args": {"x": x}}})
+
+    def result(value: str) -> dict[str, Any]:
+        response = {"name": "convert", "response": {"output": value}}
+        return content("user", {"function_response": response})
+
+    records = [_record(1, None, "root", "DEFAULT", 0, 20)]
+    for n, (prompt, value) in enumerate([("one", "ONE"), ("two", "TWO")]):
+        ask = content("user", {"text": prompt})
+        done = content("model", {"text": f"done {prompt}"})
+        records += [
+            _llm(10 * n + 2, 10 * n, 10 * n + 1, [ask], [{"content": call(n)}]),
+            _llm(
+                10 * n + 3,
+                10 * n + 2,
+                10 * n + 3,
+                [ask, call(n), result(value)],
+                [{"content": done}],
+            ),
+        ]
+    trajectory = build_trajectory(records)
+    assert trajectory is not None
+    observed = [_results(s) for s in trajectory["steps"] if s["source"] == "agent"]
+    assert observed == [["ONE"], [], ["TWO"], []]
+
+
 def test_inline_images_go_through_the_media_sink():
     stored: list[tuple[str, str]] = []
 
@@ -563,6 +674,21 @@ def test_plain_strings_and_unknown_shapes_degrade_to_text():
         [{"role": "user", "content": {"weird": True}}], None
     )
     assert messages == [{"role": "user", "content": '{"weird": true}'}]
+
+
+def test_output_after_a_prefilled_assistant_turn_stays_separate():
+    prefill = {"role": "assistant", "content": [{"type": "text", "text": "{"}]}
+    output = {"role": "assistant", "content": [{"type": "text", "text": '"a": 1}'}]}
+    messages, message, reason = normalize_call(
+        [{"role": "user", "content": "json please"}, prefill],
+        [{**output, "stop_reason": "end_turn"}],
+    )
+    assert messages == [
+        {"role": "user", "content": "json please"},
+        {"role": "assistant", "content": "{"},
+    ]
+    assert message == {"role": "assistant", "content": '"a": 1}'}
+    assert reason == "end_turn"
 
 
 def test_tool_definitions_in_every_shape_become_openai_functions():

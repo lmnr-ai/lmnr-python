@@ -461,9 +461,11 @@ def normalize_call(
         input_raw = [{"role": "user", "content": input_raw}]
     for raw in cast(list[Any], input_raw) if isinstance(input_raw, list) else []:
         conversation.add(raw, merge_assistant=as_dict(raw).get("type") is not None)
+    # Copies: the output is appended to the same conversation below. `finish`
+    # drops the closed marks, so close again: an input that ends on an
+    # assistant turn (an Anthropic prefill) must not absorb the output.
+    input_messages = [dict(m) for m in conversation.finish()]
     conversation.close_assistant()
-    # A copy: the output is appended to the same conversation below.
-    input_messages = list(conversation.finish())
     count = len(input_messages)
 
     finish_reason: str | None = None

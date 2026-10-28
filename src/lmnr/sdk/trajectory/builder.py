@@ -385,8 +385,10 @@ class _Builder:
         default_system = calls[0].system if calls else []
         # A system message right after the default system prompt (a compaction
         # note, injected context) is part of the conversation, not the prompt.
+        # Without a default system prompt, a later call's leading system
+        # messages are its own system prompt.
         default_keys = [_message_key(m) for m in default_system]
-        for call in calls[1:]:
+        for call in calls[1:] if default_system else []:
             extra = len(call.system) - len(default_system)
             if (
                 extra > 0
@@ -407,8 +409,10 @@ class _Builder:
         # then the call, then steps without an LLM call.
         entries: list[tuple[int, int, int, int, dict[str, Any]]] = []
         matched = self._match_tools(calls, tool_spans)
-        # Tool results seen in a later call's input, by tool call id.
-        results_from_input: dict[str, Message] = {}
+        # Tool results seen in the next call's input, by (index of the call
+        # that made the tool call, tool call id). Ids alone can repeat across
+        # conversations (Gemini's generated `<name>_<k>`).
+        results_from_input: dict[tuple[int, str], Message] = {}
         base: list[Message] = []
         prev_call_ids: list[str] = []
         for k, call in enumerate(calls):
@@ -442,7 +446,8 @@ class _Builder:
             for j, message in enumerate(new):
                 role = message.get("role")
                 if any(message is r for r in results):
-                    _ = results_from_input.setdefault(str(message["tool_call_id"]), message)
+                    key = (k - 1, str(message["tool_call_id"]))
+                    _ = results_from_input.setdefault(key, message)
                     continue
                 if role == "assistant":
                     continue
@@ -576,17 +581,32 @@ class _Builder:
         """TOOL spans that executed each LLM call's tool calls, by (call, id)."""
         matched: dict[tuple[int, str], tuple[_Span, dict[str, Any]]] = {}
         used: set[str] = set()
+        windows: list[list[_Span]] = []
         for k, call in enumerate(calls):
-            window_end = calls[k + 1].span.start if k + 1 < len(calls) else None
-            window = [
-                s
-                for s in tool_spans
-                if s.start >= call.span.start and (window_end is None or s.start < window_end)
-            ]
-            tool_calls = dicts((call.output or {}).get("tool_calls"))
-            # By call id, then by name and arguments, then by name alone.
-            for strategy in range(3):
-                for tool in tool_calls:
+            # A call's tools start after it does, and before the next call that
+            # started after it ended (and so could have seen their results).
+            # Calls running at the same time (fan-out) don't cut the window.
+            window_end = next(
+                (c.span.start for c in calls[k + 1 :] if c.span.start >= call.span.end), None
+            )
+            windows.append(
+                [
+                    s
+                    for s in tool_spans
+                    if s.start >= call.span.start and (window_end is None or s.start < window_end)
+                ]
+            )
+        # By call id (exact, so not limited to the window), then by name and
+        # arguments, then by name alone. Each strategy runs over every call
+        # before the next, weaker one, so a name-only match can't take a span
+        # that a concurrent call matches more precisely.
+        for strategy in range(3):
+            for k, call in enumerate(calls):
+                if strategy == 0:
+                    window = [s for s in tool_spans if s.start >= call.span.start]
+                else:
+                    window = windows[k]
+                for tool in dicts((call.output or {}).get("tool_calls")):
                     key = (k, str(tool.get("tool_call_id")))
                     if key in matched:
                         continue
@@ -643,7 +663,7 @@ class _Builder:
         k: int,
         overrides: dict[str, Any],
         matched: dict[tuple[int, str], tuple[_Span, dict[str, Any]]],
-        results_from_input: dict[str, Message],
+        results_from_input: dict[tuple[int, str], Message],
         refs_by_call: dict[tuple[int, str], list[str]],
         sub_trajectories: dict[str, dict[str, Any]],
     ) -> tuple[dict[str, Any], _Totals]:
@@ -678,7 +698,7 @@ class _Builder:
             tool_calls.append(entry)
             totals.tool_calls += 1
 
-            from_input = results_from_input.get(call_id)
+            from_input = results_from_input.get((k, call_id))
             refs = refs_by_call.get((k, call_id), [])
             if from_input is None and tool_span is None and not refs:
                 continue
@@ -884,6 +904,8 @@ class _Builder:
             values = [s["metrics"][metric] for s in own_steps if metric in s.get("metrics", {})]
             if values:
                 final[key] = sum(values)
+        # ATIF defines token totals over this trajectory's steps, but
+        # `total_cost_usd` as including subagents, so only the cost is merged.
         if totals.cost is not None:
             final["total_cost_usd"] = round(totals.cost, 10)
         final["total_steps"] = len(steps)
