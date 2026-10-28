@@ -582,8 +582,12 @@ async def test_unattributed_observation_goes_on_last_tool(
 LMNR_ATIF_FIXTURES = Path(__file__).resolve().parents[1] / "spec" / "lmnr-atif" / "fixtures"
 
 
-def lmnr_atif_fixture(name: str) -> dict[str, Any]:
-    return json.loads((LMNR_ATIF_FIXTURES / name).read_text())
+def lmnr_atif_fixture(name: str, exported: bool = False) -> dict[str, Any]:
+    """A spec fixture. Not exported by default: an exported file's spans are
+    already in Laminar, so the plugin doesn't rebuild them."""
+    trajectory = json.loads((LMNR_ATIF_FIXTURES / name).read_text())
+    trajectory["extra"]["lmnr"]["exported"] = exported
+    return trajectory
 
 
 async def run_trial_with_trajectory(
@@ -645,10 +649,33 @@ async def test_lmnr_atif_trajectory_uses_exact_timings_and_call_details(
     assert tuple(agent["lmnr.trajectory.trace_ids"]) == tuple(
         trajectory["extra"]["lmnr"]["trace_ids"]
     )
-    assert agent["lmnr.trajectory.exported"] is True
+    assert agent["lmnr.trajectory.exported"] is False
     assert agent["lmnr.trajectory.complete"] is True
     assert agent["lmnr.trajectory.llm_calls"] == 2
     assert agent["lmnr.trajectory.duration_ms"] == 3790
+
+
+@pytest.mark.asyncio
+async def test_exported_lmnr_atif_trajectory_is_linked_not_rebuilt(
+    span_exporter: InMemorySpanExporter, client: MagicMock, tmp_path: Path
+):
+    """The SDK exported these spans itself (dual mode): rebuilding them would
+    record every call twice, so the agent span only links to the traces."""
+    trajectory = lmnr_atif_fixture("subagents.json", exported=True)
+    await run_trial_with_trajectory(client, tmp_path, trajectory)
+
+    spans = span_exporter.get_finished_spans()
+    assert not [s for s in spans if (s.attributes or {}).get("lmnr.trajectory.source_span_id")]
+    assert not [s for s in spans if (s.attributes or {}).get("lmnr.span.type") in ("LLM", "TOOL")]
+    agent = spans_by_name(span_exporter)["agent"][0].attributes or {}
+    assert agent["lmnr.trajectory.exported"] is True
+    assert tuple(agent["lmnr.trajectory.trace_ids"]) == tuple(
+        trajectory["extra"]["lmnr"]["trace_ids"]
+    )
+    assert (
+        agent["lmnr.trajectory.llm_calls"]
+        == trajectory["final_metrics"]["extra"]["lmnr"]["llm_calls"]
+    )
 
 
 @pytest.mark.asyncio

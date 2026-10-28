@@ -218,6 +218,7 @@ class TrajectoryConverter:
     them use them as-is, with no nudging. Their input is the call's exact input
     (per-call system prompt, or an `input_messages` override after compaction),
     and their tool definitions, request parameters and errors are recorded too.
+    One with `exported: true` emits no spans: they are already in Laminar.
     """
 
     def __init__(self, base_dir: Path | None = None):
@@ -240,6 +241,11 @@ class TrajectoryConverter:
         ext = TrajectoryExtension.read(trajectory, parent=parent_ext)
         if depth == 0 and ext is not None:
             self.parent_attributes = _trajectory_attributes(trajectory, ext)
+            # The SDK already exported the spans behind this file; rebuilding
+            # them would record every call twice. `lmnr.trajectory.trace_ids`
+            # on the agent span links to them instead.
+            if ext.fields.get("exported") is True:
+                return
         steps = reader.steps_of(trajectory)
         agent = trajectory.get("agent") or {}
         default_model = agent.get("model_name")
