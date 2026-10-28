@@ -1,0 +1,207 @@
+{
+  "options": {},
+  "spans": [
+    {
+      "trace_id": "c0ffee00-1234-4567-89ab-cdef01234567",
+      "span_id": "00000000-0000-0000-0000-000000000040",
+      "parent_span_id": null,
+      "name": "research_pipeline",
+      "span_type": "DEFAULT",
+      "start_time": "2026-10-28T09:00:00.000000Z",
+      "end_time": "2026-10-28T09:00:08.000000Z",
+      "attributes": {}
+    },
+    {
+      "trace_id": "c0ffee00-1234-4567-89ab-cdef01234567",
+      "span_id": "00000000-0000-0000-0000-000000000041",
+      "parent_span_id": "00000000-0000-0000-0000-000000000040",
+      "name": "anthropic.chat",
+      "span_type": "LLM",
+      "start_time": "2026-10-28T09:00:00.000000Z",
+      "end_time": "2026-10-28T09:00:01.500000Z",
+      "attributes": {
+        "gen_ai.system": "anthropic",
+        "gen_ai.request.model": "claude-sonnet-4-5",
+        "gen_ai.response.model": "claude-sonnet-4-5",
+        "gen_ai.tool.definitions": "[{\"name\": \"delegate_research\", \"input_schema\": {\"type\": \"object\", \"properties\": {\"topic\": {\"type\": \"string\"}}}}, {\"name\": \"summarize_sources\", \"input_schema\": {\"type\": \"object\", \"properties\": {\"urls\": {\"type\": \"array\"}}}}]",
+        "gen_ai.input.messages": "[{\"role\": \"system\", \"content\": \"You coordinate research. Delegate, then compare.\"}, {\"role\": \"user\", \"content\": \"Compare Postgres and ClickHouse for analytics.\"}]",
+        "gen_ai.output.messages": "[{\"role\": \"assistant\", \"content\": [{\"type\": \"tool_use\", \"id\": \"toolu_d1\", \"name\": \"delegate_research\", \"input\": {\"topic\": \"ClickHouse\"}}, {\"type\": \"tool_use\", \"id\": \"toolu_s1\", \"name\": \"summarize_sources\", \"input\": {\"urls\": [\"https://clickhouse.com/docs\"]}}], \"stop_reason\": \"tool_use\"}]"
+      }
+    },
+    {
+      "trace_id": "c0ffee00-1234-4567-89ab-cdef01234567",
+      "span_id": "00000000-0000-0000-0000-000000000042",
+      "parent_span_id": "00000000-0000-0000-0000-000000000040",
+      "name": "delegate_research",
+      "span_type": "TOOL",
+      "start_time": "2026-10-28T09:00:01.550000Z",
+      "end_time": "2026-10-28T09:00:04.700000Z",
+      "attributes": {
+        "lmnr.span.input": "{\"topic\": \"ClickHouse\"}",
+        "lmnr.span.output": "\"ClickHouse is a columnar database built for analytical queries.\""
+      }
+    },
+    {
+      "trace_id": "c0ffee00-1234-4567-89ab-cdef01234567",
+      "span_id": "00000000-0000-0000-0000-000000000043",
+      "parent_span_id": "00000000-0000-0000-0000-000000000042",
+      "name": "researcher.workflow",
+      "span_type": "DEFAULT",
+      "start_time": "2026-10-28T09:00:01.600000Z",
+      "end_time": "2026-10-28T09:00:04.650000Z",
+      "attributes": {
+        "gen_ai.operation.name": "invoke_agent",
+        "gen_ai.agent.name": "researcher"
+      }
+    },
+    {
+      "trace_id": "c0ffee00-1234-4567-89ab-cdef01234567",
+      "span_id": "00000000-0000-0000-0000-000000000049",
+      "parent_span_id": "00000000-0000-0000-0000-000000000043",
+      "name": "ChatOpenAI.chat",
+      "span_type": "LLM",
+      "start_time": "2026-10-28T09:00:01.600000Z",
+      "end_time": "2026-10-28T09:00:02.550000Z",
+      "attributes": {
+        "gen_ai.system": "openai",
+        "gen_ai.request.model": "gpt-5.5-mini",
+        "gen_ai.response.model": "gpt-5.5-mini",
+        "gen_ai.input.messages": "[{\"role\": \"system\", \"content\": \"You research databases. Cite sources.\"}, {\"role\": \"user\", \"content\": \"Research: ClickHouse\"}]"
+      }
+    },
+    {
+      "trace_id": "c0ffee00-1234-4567-89ab-cdef01234567",
+      "span_id": "00000000-0000-0000-0000-000000000045",
+      "parent_span_id": "00000000-0000-0000-0000-000000000049",
+      "name": "openai.chat",
+      "span_type": "LLM",
+      "start_time": "2026-10-28T09:00:01.610000Z",
+      "end_time": "2026-10-28T09:00:02.500000Z",
+      "attributes": {
+        "gen_ai.system": "openai",
+        "gen_ai.request.model": "gpt-5.5-mini",
+        "gen_ai.response.model": "gpt-5.5-mini",
+        "gen_ai.tool.definitions": "[{\"type\": \"function\", \"function\": {\"name\": \"web_search\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}}}}]",
+        "gen_ai.input.messages": "[{\"role\": \"system\", \"content\": \"You research databases. Cite sources.\"}, {\"role\": \"user\", \"content\": \"Research: ClickHouse\"}]",
+        "gen_ai.output.messages": "[{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": null, \"tool_calls\": [{\"id\": \"call_w1\", \"type\": \"function\", \"function\": {\"name\": \"web_search\", \"arguments\": \"{\\\"query\\\": \\\"ClickHouse analytics benchmarks\\\"}\"}}], \"refusal\": null, \"annotations\": []}, \"finish_reason\": \"tool_calls\"}]"
+      }
+    },
+    {
+      "trace_id": "c0ffee00-1234-4567-89ab-cdef01234567",
+      "span_id": "00000000-0000-0000-0000-000000000046",
+      "parent_span_id": "00000000-0000-0000-0000-000000000043",
+      "name": "web_search",
+      "span_type": "TOOL",
+      "start_time": "2026-10-28T09:00:02.550000Z",
+      "end_time": "2026-10-28T09:00:03.400000Z",
+      "attributes": {
+        "lmnr.span.input": "{\"query\": \"ClickHouse analytics benchmarks\"}",
+        "lmnr.span.output": "\"ClickBench results: ClickHouse leads on most queries.\""
+      }
+    },
+    {
+      "trace_id": "c0ffee00-1234-4567-89ab-cdef01234567",
+      "span_id": "00000000-0000-0000-0000-00000000004a",
+      "parent_span_id": "00000000-0000-0000-0000-000000000043",
+      "name": "researcher.answer",
+      "span_type": "DEFAULT",
+      "start_time": "2026-10-28T09:00:03.440000Z",
+      "end_time": "2026-10-28T09:00:04.620000Z",
+      "attributes": {
+        "gen_ai.agent.name": "researcher"
+      }
+    },
+    {
+      "trace_id": "c0ffee00-1234-4567-89ab-cdef01234567",
+      "span_id": "00000000-0000-0000-0000-000000000047",
+      "parent_span_id": "00000000-0000-0000-0000-00000000004a",
+      "name": "openai.chat",
+      "span_type": "LLM",
+      "start_time": "2026-10-28T09:00:03.450000Z",
+      "end_time": "2026-10-28T09:00:04.600000Z",
+      "attributes": {
+        "gen_ai.system": "openai",
+        "gen_ai.request.model": "gpt-5.5-mini",
+        "gen_ai.response.model": "gpt-5.5-mini",
+        "gen_ai.tool.definitions": "[{\"type\": \"function\", \"function\": {\"name\": \"web_search\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}}}}}]",
+        "gen_ai.input.messages": "[{\"role\": \"system\", \"content\": \"You research databases. Cite sources.\"}, {\"role\": \"user\", \"content\": \"Research: ClickHouse\"}, {\"role\": \"assistant\", \"content\": null, \"tool_calls\": [{\"id\": \"call_w1\", \"type\": \"function\", \"function\": {\"name\": \"web_search\", \"arguments\": \"{\\\"query\\\": \\\"ClickHouse analytics benchmarks\\\"}\"}}]}, {\"role\": \"tool\", \"tool_call_id\": \"call_w1\", \"content\": \"ClickBench results: ClickHouse leads on most queries.\"}]",
+        "gen_ai.output.messages": "[{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"ClickHouse is a columnar database built for analytical queries.\", \"refusal\": null, \"annotations\": []}, \"finish_reason\": \"stop\"}]"
+      }
+    },
+    {
+      "trace_id": "c0ffee00-1234-4567-89ab-cdef01234567",
+      "span_id": "00000000-0000-0000-0000-000000000044",
+      "parent_span_id": "00000000-0000-0000-0000-000000000040",
+      "name": "summarize_sources",
+      "span_type": "TOOL",
+      "start_time": "2026-10-28T09:00:01.560000Z",
+      "end_time": "2026-10-28T09:00:03.000000Z",
+      "attributes": {
+        "lmnr.span.input": "{\"urls\": [\"https://clickhouse.com/docs\"]}",
+        "lmnr.span.output": "\"ClickHouse targets analytics.\""
+      }
+    },
+    {
+      "trace_id": "c0ffee00-1234-4567-89ab-cdef01234567",
+      "span_id": "00000000-0000-0000-0000-000000000048",
+      "parent_span_id": "00000000-0000-0000-0000-000000000044",
+      "name": "openai.chat",
+      "span_type": "LLM",
+      "start_time": "2026-10-28T09:00:01.700000Z",
+      "end_time": "2026-10-28T09:00:02.900000Z",
+      "attributes": {
+        "gen_ai.system": "openai",
+        "gen_ai.request.model": "gpt-5.5-mini",
+        "gen_ai.response.model": "gpt-5.5-mini",
+        "gen_ai.input.messages": "[{\"role\": \"user\", \"content\": \"Summarize: https://clickhouse.com/docs\"}]",
+        "gen_ai.output.messages": "[{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"ClickHouse targets analytics.\", \"refusal\": null, \"annotations\": []}, \"finish_reason\": \"stop\"}]"
+      }
+    },
+    {
+      "trace_id": "c0ffee00-1234-4567-89ab-cdef01234567",
+      "span_id": "00000000-0000-0000-0000-000000000050",
+      "parent_span_id": "00000000-0000-0000-0000-000000000040",
+      "name": "fact_checker",
+      "span_type": "DEFAULT",
+      "start_time": "2026-10-28T09:00:04.900000Z",
+      "end_time": "2026-10-28T09:00:05.800000Z",
+      "attributes": {
+        "gen_ai.agent.name": "fact_checker",
+        "lmnr.span.input": "{\"claims\": [\"ClickHouse is columnar.\"]}"
+      }
+    },
+    {
+      "trace_id": "c0ffee00-1234-4567-89ab-cdef01234567",
+      "span_id": "00000000-0000-0000-0000-000000000051",
+      "parent_span_id": "00000000-0000-0000-0000-000000000050",
+      "name": "openai.chat",
+      "span_type": "LLM",
+      "start_time": "2026-10-28T09:00:05.000000Z",
+      "end_time": "2026-10-28T09:00:05.800000Z",
+      "attributes": {
+        "gen_ai.system": "openai",
+        "gen_ai.request.model": "gpt-5.5-mini",
+        "gen_ai.response.model": "gpt-5.5-mini",
+        "gen_ai.input.messages": "[{\"role\": \"user\", \"content\": \"Check: ClickHouse is columnar.\"}]",
+        "gen_ai.output.messages": "[{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"All claims verified.\", \"refusal\": null, \"annotations\": []}, \"finish_reason\": \"stop\"}]"
+      }
+    },
+    {
+      "trace_id": "c0ffee00-1234-4567-89ab-cdef01234567",
+      "span_id": "00000000-0000-0000-0000-000000000052",
+      "parent_span_id": "00000000-0000-0000-0000-000000000040",
+      "name": "anthropic.chat",
+      "span_type": "LLM",
+      "start_time": "2026-10-28T09:00:05.900000Z",
+      "end_time": "2026-10-28T09:00:07.200000Z",
+      "attributes": {
+        "gen_ai.system": "anthropic",
+        "gen_ai.request.model": "claude-sonnet-4-5",
+        "gen_ai.response.model": "claude-sonnet-4-5",
+        "gen_ai.tool.definitions": "[{\"name\": \"delegate_research\", \"input_schema\": {\"type\": \"object\", \"properties\": {\"topic\": {\"type\": \"string\"}}}}, {\"name\": \"summarize_sources\", \"input_schema\": {\"type\": \"object\", \"properties\": {\"urls\": {\"type\": \"array\"}}}}]",
+        "gen_ai.input.messages": "[{\"role\": \"system\", \"content\": \"You coordinate research. Delegate, then compare.\"}, {\"role\": \"user\", \"content\": \"Compare Postgres and ClickHouse for analytics.\"}, {\"role\": \"assistant\", \"content\": [{\"type\": \"tool_use\", \"id\": \"toolu_d1\", \"name\": \"delegate_research\", \"input\": {\"topic\": \"ClickHouse\"}}, {\"type\": \"tool_use\", \"id\": \"toolu_s1\", \"name\": \"summarize_sources\", \"input\": {\"urls\": [\"https://clickhouse.com/docs\"]}}]}, {\"role\": \"user\", \"content\": [{\"type\": \"tool_result\", \"tool_use_id\": \"toolu_d1\", \"content\": \"ClickHouse is a columnar database built for analytical queries.\"}, {\"type\": \"tool_result\", \"tool_use_id\": \"toolu_s1\", \"content\": \"ClickHouse targets analytics.\"}]}, {\"role\": \"user\", \"content\": \"Fact check: All claims verified.\"}]",
+        "gen_ai.output.messages": "[{\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"ClickHouse is the better fit for analytics.\"}], \"stop_reason\": \"end_turn\"}]"
+      }
+    }
+  ]
+}

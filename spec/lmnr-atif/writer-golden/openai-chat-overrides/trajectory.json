@@ -1,0 +1,371 @@
+{
+  "schema_version": "ATIF-v1.8",
+  "session_id": "trip-planner-session-7",
+  "trajectory_id": "8d0e6a51-3b2c-4d1e-9f7a-0b1c2d3e4f50",
+  "agent": {
+    "name": "plan_trip",
+    "version": "unknown",
+    "model_name": "openai/gpt-5.5-2026-08-01",
+    "tool_definitions": [
+      {
+        "type": "function",
+        "function": {
+          "name": "search_hotels",
+          "description": "Search hotels near a place.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "near": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "near"
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "timestamp": "2026-10-28T09:00:00.000000Z",
+      "source": "system",
+      "message": "You are a travel agent.",
+      "extra": {
+        "lmnr": {
+          "source_span_id": "00000000-0000-0000-0000-000000000011"
+        }
+      }
+    },
+    {
+      "step_id": 2,
+      "timestamp": "2026-10-28T09:00:00.000000Z",
+      "source": "system",
+      "message": "Always quote prices in EUR.",
+      "extra": {
+        "lmnr": {
+          "source_span_id": "00000000-0000-0000-0000-000000000011",
+          "role": "developer"
+        }
+      }
+    },
+    {
+      "step_id": 3,
+      "timestamp": "2026-10-28T09:00:00.000000Z",
+      "source": "user",
+      "message": "Plan a trip to Lisbon.",
+      "extra": {
+        "lmnr": {
+          "source_span_id": "00000000-0000-0000-0000-000000000011"
+        }
+      }
+    },
+    {
+      "step_id": 4,
+      "timestamp": "2026-10-28T09:00:01.200000Z",
+      "source": "agent",
+      "model_name": "gpt-5.5-2026-08-01",
+      "reasoning_effort": "low",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_f1",
+          "function_name": "search_flights",
+          "arguments": {
+            "destination": "LIS"
+          },
+          "extra": {
+            "lmnr": {
+              "span_id": "00000000-0000-0000-0000-000000000012",
+              "start_time": "2026-10-28T09:00:01.250000Z",
+              "end_time": "2026-10-28T09:00:02.000000Z"
+            }
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_f1",
+            "content": "TP1234 €180; FR8821 €95",
+            "extra": {
+              "lmnr": {
+                "status": "ok"
+              }
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 420,
+        "completion_tokens": 18
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "lmnr": {
+          "span_id": "00000000-0000-0000-0000-000000000011",
+          "start_time": "2026-10-28T09:00:00.000000Z",
+          "end_time": "2026-10-28T09:00:01.200000Z",
+          "provider": "openai",
+          "finish_reason": "tool_calls",
+          "status": "ok",
+          "tool_definitions": [
+            {
+              "type": "function",
+              "function": {
+                "name": "search_flights",
+                "description": "Search flights to a destination.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "destination": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "destination"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "function",
+              "function": {
+                "name": "search_hotels",
+                "description": "Search hotels near a place.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "near": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "near"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step_id": 5,
+      "timestamp": "2026-10-28T09:00:03.100000Z",
+      "source": "agent",
+      "model_name": "gpt-5.5-2026-08-01",
+      "reasoning_effort": "low",
+      "message": "I found TP1234 (€180, lounge access included) and FR8821 (€95). Which one do you prefer?",
+      "metrics": {
+        "prompt_tokens": 470,
+        "completion_tokens": 26
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "lmnr": {
+          "span_id": "00000000-0000-0000-0000-000000000013",
+          "start_time": "2026-10-28T09:00:02.050000Z",
+          "end_time": "2026-10-28T09:00:03.100000Z",
+          "provider": "openai",
+          "finish_reason": "stop",
+          "status": "ok",
+          "system_prompt": "You are a travel agent.\n\nAlways quote prices in EUR.\n\nThe user is a premium member: mention lounge access.",
+          "tool_definitions": []
+        }
+      }
+    },
+    {
+      "step_id": 6,
+      "timestamp": "2026-10-28T09:00:10.000000Z",
+      "source": "user",
+      "message": "TP1234 please. Then find a hotel near Alfama.",
+      "extra": {
+        "lmnr": {
+          "source_span_id": "00000000-0000-0000-0000-000000000014"
+        }
+      }
+    },
+    {
+      "step_id": 7,
+      "timestamp": "2026-10-28T09:00:11.000000Z",
+      "source": "agent",
+      "model_name": "gpt-5.5-2026-08-01",
+      "reasoning_effort": "low",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_h1",
+          "function_name": "search_hotels",
+          "arguments": {
+            "near": "Alfama"
+          },
+          "extra": {
+            "lmnr": {
+              "span_id": "00000000-0000-0000-0000-000000000015",
+              "start_time": "2026-10-28T09:00:11.050000Z",
+              "end_time": "2026-10-28T09:00:11.800000Z"
+            }
+          }
+        },
+        {
+          "tool_call_id": "call_h2",
+          "function_name": "search_hotels",
+          "arguments": {},
+          "extra": {
+            "lmnr": {
+              "raw_arguments": "{\"near\": \"Baixa\""
+            }
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_h1",
+            "content": "Casa Alfama €120/night; Memmo Alfama €210/night",
+            "extra": {
+              "lmnr": {
+                "status": "ok"
+              }
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 530,
+        "completion_tokens": 17
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "lmnr": {
+          "span_id": "00000000-0000-0000-0000-000000000014",
+          "start_time": "2026-10-28T09:00:10.000000Z",
+          "end_time": "2026-10-28T09:00:11.000000Z",
+          "provider": "openai",
+          "finish_reason": "tool_calls",
+          "status": "ok"
+        }
+      }
+    },
+    {
+      "step_id": 8,
+      "timestamp": "2026-10-28T09:00:12.000000Z",
+      "source": "system",
+      "message": "Earlier turns were compacted into a summary.",
+      "extra": {
+        "lmnr": {
+          "source_span_id": "00000000-0000-0000-0000-000000000016"
+        }
+      }
+    },
+    {
+      "step_id": 9,
+      "timestamp": "2026-10-28T09:00:12.000000Z",
+      "source": "user",
+      "message": "Summary so far: flying TP1234 to Lisbon; hotels near Alfama are Casa Alfama (€120/night) and Memmo Alfama (€210/night).",
+      "extra": {
+        "lmnr": {
+          "source_span_id": "00000000-0000-0000-0000-000000000016"
+        }
+      }
+    },
+    {
+      "step_id": 10,
+      "timestamp": "2026-10-28T09:00:13.400000Z",
+      "source": "agent",
+      "model_name": "gpt-5.5-2026-08-01",
+      "reasoning_effort": "low",
+      "message": "I recommend Casa Alfama at €120/night.",
+      "metrics": {
+        "prompt_tokens": 160,
+        "completion_tokens": 30
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "lmnr": {
+          "span_id": "00000000-0000-0000-0000-000000000016",
+          "start_time": "2026-10-28T09:00:12.000000Z",
+          "end_time": "2026-10-28T09:00:13.400000Z",
+          "provider": "openai",
+          "finish_reason": "stop",
+          "status": "ok",
+          "input_messages": [
+            {
+              "role": "system",
+              "content": "Earlier turns were compacted into a summary."
+            },
+            {
+              "role": "user",
+              "content": "Summary so far: flying TP1234 to Lisbon; hotels near Alfama are Casa Alfama (€120/night) and Memmo Alfama (€210/night)."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "step_id": 11,
+      "timestamp": "2026-10-28T09:00:15.000000Z",
+      "source": "user",
+      "message": "Any cheaper one?",
+      "extra": {
+        "lmnr": {
+          "source_span_id": "00000000-0000-0000-0000-000000000017"
+        }
+      }
+    },
+    {
+      "step_id": 12,
+      "timestamp": "2026-10-28T09:00:16.000000Z",
+      "source": "agent",
+      "model_name": "gpt-5.5-2026-08-01",
+      "reasoning_effort": "low",
+      "message": "Casa Alfama is the cheapest near Alfama.",
+      "metrics": {
+        "prompt_tokens": 190,
+        "completion_tokens": 12
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "lmnr": {
+          "span_id": "00000000-0000-0000-0000-000000000017",
+          "start_time": "2026-10-28T09:00:15.000000Z",
+          "end_time": "2026-10-28T09:00:16.000000Z",
+          "provider": "openai",
+          "finish_reason": "stop",
+          "status": "ok"
+        }
+      }
+    }
+  ],
+  "final_metrics": {
+    "total_prompt_tokens": 1770,
+    "total_completion_tokens": 103,
+    "total_steps": 12,
+    "extra": {
+      "lmnr": {
+        "duration_ms": 16000.0,
+        "llm_calls": 5,
+        "tool_calls": 3,
+        "errors": 0
+      }
+    }
+  },
+  "extra": {
+    "lmnr": {
+      "spec_version": "0.1.0",
+      "producer": {
+        "name": "lmnr-golden",
+        "version": "0"
+      },
+      "trace_ids": [
+        "8d0e6a51-3b2c-4d1e-9f7a-0b1c2d3e4f50"
+      ],
+      "root_span_id": "00000000-0000-0000-0000-000000000010",
+      "exported": false,
+      "complete": true
+    }
+  }
+}

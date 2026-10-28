@@ -1,0 +1,66 @@
+{
+  "schema_version": "ATIF-v1.8",
+  "session_id": "aa11bb22-cc33-4d44-8e55-ff6677889900",
+  "trajectory_id": "aa11bb22-cc33-4d44-8e55-ff6677889900",
+  "agent": {
+    "name": "triage.workflow",
+    "version": "unknown",
+    "model_name": "openai/gpt-5.5-mini"
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "timestamp": "2026-10-28T09:00:00.200000Z",
+      "source": "user",
+      "message": "My card was charged twice.",
+      "extra": {
+        "lmnr": {
+          "source_span_id": "00000000-0000-0000-0000-000000000062"
+        }
+      }
+    },
+    {
+      "step_id": 2,
+      "timestamp": "2026-10-28T09:00:01.800000Z",
+      "source": "agent",
+      "model_name": "gpt-5.5-mini",
+      "message": "billing",
+      "llm_call_count": 1,
+      "extra": {
+        "lmnr": {
+          "span_id": "00000000-0000-0000-0000-000000000062",
+          "start_time": "2026-10-28T09:00:00.200000Z",
+          "end_time": "2026-10-28T09:00:01.800000Z",
+          "provider": "openai",
+          "status": "ok"
+        }
+      }
+    }
+  ],
+  "final_metrics": {
+    "total_steps": 2,
+    "extra": {
+      "lmnr": {
+        "duration_ms": 1600.0,
+        "llm_calls": 1,
+        "tool_calls": 0,
+        "errors": 0
+      }
+    }
+  },
+  "extra": {
+    "lmnr": {
+      "spec_version": "0.1.0",
+      "producer": {
+        "name": "lmnr-golden",
+        "version": "0"
+      },
+      "trace_ids": [
+        "aa11bb22-cc33-4d44-8e55-ff6677889900"
+      ],
+      "root_span_id": "00000000-0000-0000-0000-000000000060",
+      "exported": false,
+      "complete": true
+    }
+  }
+}
