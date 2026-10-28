@@ -140,8 +140,10 @@ class TrajectoryCollector:
         self.snapshot_interval: float = snapshot_interval
         self._reset()
         # Fork handlers can't be unregistered: hold the collector weakly.
-        ref = weakref.WeakMethod(self._reset)
-        os.register_at_fork(after_in_child=lambda: (method := ref()) and method())
+        # `register_at_fork` doesn't exist on Windows (no fork there either).
+        if hasattr(os, "register_at_fork"):
+            ref = weakref.WeakMethod(self._reset)
+            os.register_at_fork(after_in_child=lambda: (method := ref()) and method())
 
     def _reset(self) -> None:
         """Fresh state. Also run in a forked child: locks held by another
@@ -212,6 +214,10 @@ class TrajectoryCollector:
             try:
                 _ = write_trajectories(records, self.path, options)
             except Exception as e:
+                # Retry at the next snapshot even if no other span ends: the
+                # last snapshot is what a killed agent leaves behind.
+                with self._lock:
+                    self._dirty = True
                 if not self._warned:
                     self._warned = True
                     LOG.warning(f"Could not write the trajectory to {self.path}: {e}")

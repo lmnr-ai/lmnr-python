@@ -220,6 +220,28 @@ def test_snapshots_are_written_in_the_background(harness: Harness):
         assert harness.read()["extra"]["lmnr"]["complete"] is False
 
 
+def test_failed_write_is_retried_at_the_next_snapshot(tmp_path: Path):
+    blocker = tmp_path / "not-a-dir"
+    _ = blocker.write_text("")
+    h = Harness(blocker / "trajectory.json", export=False)
+    h.collector.snapshot_interval = 0
+    tool_loop(h)
+    assert not h.collector.write()
+    assert h.collector._dirty  # the snapshot thread will try again
+    blocker.unlink()
+    assert h.collector.write()
+    assert not h.collector._dirty
+    assert h.read()["extra"]["lmnr"]["complete"] is True
+    h.provider.shutdown()
+
+
+def test_collector_works_without_fork_support(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    # Windows has no `os.register_at_fork`.
+    monkeypatch.delattr(os, "register_at_fork")
+    collector = TrajectoryCollector(str(tmp_path / "t.json"), exported=False)
+    assert collector.write()
+
+
 def test_shutdown_writes_the_final_file(harness: Harness):
     tool_loop(harness)
     harness.provider.shutdown()
@@ -361,6 +383,29 @@ def test_force_export_needs_an_api_key(uninitialized: Any, monkeypatch: pytest.M
     kwargs = uninitialized.call_args.kwargs
     assert kwargs["trajectory_path"] == "/tmp/run/trajectory.json"
     assert kwargs["export"] is True
+
+
+def test_write_trajectory_false_ignores_the_path_even_from_dotenv(
+    uninitialized: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """A host process (the harbor plugin) whose env is meant for its agent."""
+    _ = (tmp_path / ".env").write_text("LMNR_TRAJECTORY_PATH=/tmp/run/trajectory.json\n")
+    monkeypatch.chdir(tmp_path)
+    Laminar.initialize(project_api_key="key", write_trajectory=False)
+    kwargs = uninitialized.call_args.kwargs
+    assert kwargs["trajectory_path"] is None
+    assert kwargs["export"] is True
+
+
+def test_dotenv_trajectory_path_applies_by_default(
+    uninitialized: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    _ = (tmp_path / ".env").write_text("LMNR_TRAJECTORY_PATH=/tmp/run/trajectory.json\n")
+    monkeypatch.chdir(tmp_path)
+    Laminar.initialize()
+    kwargs = uninitialized.call_args.kwargs
+    assert kwargs["trajectory_path"] == "/tmp/run/trajectory.json"
+    assert kwargs["export"] is False
 
 
 def test_without_a_trajectory_path_nothing_changes(uninitialized: Any):

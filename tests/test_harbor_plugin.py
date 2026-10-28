@@ -9,7 +9,6 @@ from __future__ import annotations
 import datetime
 import itertools
 import json
-import os
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -1138,23 +1137,14 @@ async def test_initialize_does_not_take_over_global_tracer_provider(client, tmp_
 
 
 @pytest.mark.asyncio
-async def test_agent_trajectory_path_does_not_make_the_plugin_local_only(
-    client, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    # LMNR_TRAJECTORY_PATH is for the agent; in the Harbor process it would
-    # stop the plugin's own spans from being exported.
-    monkeypatch.setenv("LMNR_TRAJECTORY_PATH", "/logs/agent/trajectory.json")
-    seen: list[str | None] = []
+async def test_agent_trajectory_path_does_not_make_the_plugin_local_only(client, tmp_path: Path):
+    # LMNR_TRAJECTORY_PATH (env or .env) is for the agent; in the Harbor
+    # process it would stop the plugin's own spans from being exported.
     plugin = LaminarPlugin(project_api_key="test_key")
     with (
         patch.object(Laminar, "is_initialized", return_value=False),
-        patch.object(
-            Laminar,
-            "initialize",
-            side_effect=lambda **_: seen.append(os.environ.get("LMNR_TRAJECTORY_PATH")),
-        ),
+        patch.object(Laminar, "initialize") as initialize,
     ):
         await plugin.on_job_start(FakeJob(tmp_path / "job"))
-    assert seen == [None]
-    assert os.environ["LMNR_TRAJECTORY_PATH"] == "/logs/agent/trajectory.json"
+    assert initialize.call_args.kwargs["write_trajectory"] is False
     await plugin.on_job_end(SimpleNamespace())

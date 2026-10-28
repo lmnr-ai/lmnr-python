@@ -244,6 +244,7 @@ class Laminar:
         force_http: bool = False,
         metadata: dict[str, AttributeValue] | None = None,
         release: str | None = None,
+        write_trajectory: bool = True,
     ):
         """Initialize Laminar context across the application.
         This method must be called before using any other Laminar methods or
@@ -317,6 +318,10 @@ class Laminar:
                 environment variable, common deploy platform variables (Vercel,\
                 Render, Railway, Heroku, Cloud Run, ...), or the checked-out git\
                 commit. Defaults to None.
+            write_trajectory (bool, optional): Whether LMNR_TRAJECTORY_PATH\
+                (see below) applies to this process. Set to False in a process\
+                whose environment is meant for an agent it runs, so its own\
+                spans are still exported. Defaults to True.
 
         Environment:
             LMNR_TRAJECTORY_PATH: write the run as an lmnr-atif trajectory\
@@ -337,7 +342,7 @@ class Laminar:
 
         from lmnr.sdk.debug.config import is_truthy
 
-        trajectory_path = from_env("LMNR_TRAJECTORY_PATH") or None
+        trajectory_path = (from_env("LMNR_TRAJECTORY_PATH") or None) if write_trajectory else None
         export = trajectory_path is None or is_truthy(from_env("LMNR_TRAJECTORY_FORCE_EXPORT"))
 
         if (
