@@ -73,15 +73,40 @@ def _process_streaming_chunk(chunk: Any) -> tuple[Any, Any, Any]:
     return content, finish_reason, usage
 
 
+def _accumulate_streaming_tool_calls(chunk: Any, tool_calls: dict[int, dict[str, str]]) -> None:
+    """Merge the tool call deltas of a streaming chunk into `tool_calls`, keyed by index."""
+    if not getattr(chunk, "choices", None):
+        return
+
+    for tool_call in getattr(chunk.choices[0].delta, "tool_calls", None) or []:
+        index = getattr(tool_call, "index", None)
+        if index is None:
+            # No index: a delta that names a call starts a new one, any other continues the last.
+            starts_call = getattr(tool_call, "id", None) or getattr(
+                getattr(tool_call, "function", None), "name", None
+            )
+            index = len(tool_calls) if starts_call or not tool_calls else max(tool_calls)
+        entry = tool_calls.setdefault(index, {"id": "", "name": "", "arguments": ""})
+        if getattr(tool_call, "id", None):
+            entry["id"] = tool_call.id
+        function = getattr(tool_call, "function", None)
+        if function is not None:
+            if getattr(function, "name", None):
+                entry["name"] = function.name
+            if getattr(function, "arguments", None):
+                entry["arguments"] += function.arguments
+
+
 @dont_throw
 def _handle_streaming_response(
     span: Span,
     accumulated_content: Any,
     finish_reason: str | None,
     usage: Usage | None,
+    tool_calls: dict[int, dict[str, str]] | None = None,
 ):
     set_model_streaming_response_attributes(span, usage)
-    set_streaming_response_attributes(span, accumulated_content, finish_reason, usage)
+    set_streaming_response_attributes(span, accumulated_content, finish_reason, usage, tool_calls)
 
 
 def _create_stream_processor(
@@ -92,6 +117,7 @@ def _create_stream_processor(
     accumulated_content = ""
     finish_reason = None
     usage = None
+    tool_calls: dict[int, dict[str, str]] = {}
 
     for chunk in response:
         try:
@@ -102,12 +128,13 @@ def _create_stream_processor(
                 finish_reason = chunk_finish_reason
             if chunk_usage:
                 usage = chunk_usage
+            _accumulate_streaming_tool_calls(chunk, tool_calls)
         except Exception:
             logger.warning("Failed to process streaming chunk for groq span", exc_info=True)
         finally:
             yield chunk
 
-    _handle_streaming_response(span, accumulated_content, finish_reason, usage)
+    _handle_streaming_response(span, accumulated_content, finish_reason, usage, tool_calls)
 
     if span.is_recording():
         span.set_status(Status(StatusCode.OK))
@@ -122,6 +149,7 @@ async def _create_async_stream_processor(
     accumulated_content = ""
     finish_reason = None
     usage = None
+    tool_calls: dict[int, dict[str, str]] = {}
 
     async for chunk in response:
         try:
@@ -132,6 +160,7 @@ async def _create_async_stream_processor(
                 finish_reason = chunk_finish_reason
             if chunk_usage:
                 usage = chunk_usage
+            _accumulate_streaming_tool_calls(chunk, tool_calls)
         except Exception:
             logger.warning(
                 "Failed to process streaming chunk for groq span",
@@ -140,7 +169,7 @@ async def _create_async_stream_processor(
         finally:
             yield chunk
 
-    _handle_streaming_response(span, accumulated_content, finish_reason, usage)
+    _handle_streaming_response(span, accumulated_content, finish_reason, usage, tool_calls)
 
     if span.is_recording():
         span.set_status(Status(StatusCode.OK))
