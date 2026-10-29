@@ -38,14 +38,56 @@ _RELEASE = "lmnr.span.release"
 # Legacy indexed prompt attributes: only the system prompt is read (the OpenAI
 # Responses API records `instructions` nowhere else).
 _LEGACY_SYSTEM = ("gen_ai.prompt.0.role", "gen_ai.prompt.0.content")
+# The AI SDK's TOOL span attributes the builder matches tool calls by (the
+# TypeScript SDK records them; kept here so both collectors stay alike).
+_AI_SDK_TOOL_CALL = ("ai.toolCall.id", "ai.toolCall.name")
 
 
-def span_type(attributes: Mapping[str, Any]) -> str:
-    """The span's type as app-server infers it (`traces/spans.rs::span_type`),
-    so the file and the Laminar UI agree on what is an LLM or tool call."""
-    explicit = attributes.get(SPAN_TYPE)
-    if isinstance(explicit, str) and explicit:
-        return explicit
+# app-server's `SpanType` enum (`db/spans.rs`).
+_SPAN_TYPES = frozenset(
+    (
+        "DEFAULT",
+        "LLM",
+        "PIPELINE",
+        "EXECUTOR",
+        "EVALUATOR",
+        "HUMAN_EVALUATOR",
+        "EVALUATION",
+        "TOOL",
+        "CACHED",
+    )
+)
+_OPENROUTER_SPAN_TYPE = "span.type"
+_OPENROUTER_METADATA_PREFIX = "trace.metadata.openrouter."
+
+
+def span_type(attributes: Mapping[str, Any], name: str = "") -> str:
+    """The span's type as app-server sees it (`traces/spans.rs`), so the file
+    and the Laminar UI agree on what is an LLM or tool call: `span_type()`,
+    plus the two rules applied after it, `is_ai_sdk_tool_call_span` (TOOL) and
+    the cached-LLM case of `is_llm_span` (a debug-replay hit is still an LLM
+    call)."""
+    if name == "ai.toolCall" or any(k in attributes for k in _AI_SDK_TOOL_CALL):
+        return "TOOL"
+    kind = _base_span_type(attributes)
+    if kind == "CACHED" and attributes.get("lmnr.span.original_type") == "LLM":
+        return "LLM"
+    return kind
+
+
+def _base_span_type(attributes: Mapping[str, Any]) -> str:
+    """`span_type()` in app-server's `traces/spans.rs`."""
+    if SPAN_TYPE in attributes:
+        explicit = attributes[SPAN_TYPE]
+        return explicit if isinstance(explicit, str) and explicit in _SPAN_TYPES else "DEFAULT"
+    # OpenRouter Broadcast types its own spans.
+    openrouter_type = attributes.get(_OPENROUTER_SPAN_TYPE)
+    if (
+        isinstance(openrouter_type, str)
+        and openrouter_type != "generation"
+        and any(k.startswith(_OPENROUTER_METADATA_PREFIX) for k in attributes)
+    ):
+        return "DEFAULT"
     operation = attributes.get("gen_ai.operation.name")
     if operation in ("chat", "text_completion", "embeddings", "generate_content"):
         return "LLM"
@@ -73,7 +115,7 @@ def _keep(key: str, attributes: Mapping[str, Any], kind: str) -> bool:
         return not (kind == "LLM" and "gen_ai.input.messages" in attributes)
     if key == SPAN_OUTPUT:
         return not (kind == "LLM" and "gen_ai.output.messages" in attributes)
-    return key in (_SESSION_ID, _RELEASE, SPAN_TYPE)
+    return key in (_SESSION_ID, _RELEASE, SPAN_TYPE, *_AI_SDK_TOOL_CALL)
 
 
 def _value(value: Any) -> Any:
@@ -107,7 +149,7 @@ def span_record(span: ReadableSpan, end_time_ns: int | None = None) -> SpanRecor
     if context is None or start is None or end is None:
         return None
     attributes = dict(span.attributes or {})
-    kind = span_type(attributes)
+    kind = span_type(attributes, span.name)
     return SpanRecord(
         trace_id=str(uuid.UUID(int=context.trace_id)),
         span_id=str(uuid.UUID(int=context.span_id)),

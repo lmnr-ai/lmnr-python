@@ -740,3 +740,346 @@ def test_tool_definitions_in_every_shape_become_openai_functions():
         {"type": "web_search_20250305", "name": "web_search", "max_uses": 3},
     ]
     assert normalize_tools(None) == []
+
+
+# -- shapes only the TypeScript SDK records -------------------------------------------
+
+
+def test_ai_sdk_prompt_parts():
+    messages, output, _reason = normalize_call(
+        [
+            {"role": "system", "content": "Be brief."},
+            {"role": "user", "content": [{"type": "text", "text": "weather?"}]},
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "reasoning", "text": "use the tool"},
+                    {
+                        "type": "tool-call",
+                        "toolCallId": "c1",
+                        "toolName": "weather",
+                        "input": {"city": "Paris"},
+                        "providerOptions": {"openai": {}},
+                    },
+                    {"type": "tool-call", "toolCallId": "c2", "toolName": "weather", "input": "{}"},
+                ],
+            },
+            {
+                "role": "tool",
+                "content": [
+                    {
+                        "type": "tool-result",
+                        "toolCallId": "c1",
+                        "toolName": "weather",
+                        "output": {"type": "json", "value": {"temp_c": 18}},
+                    },
+                    {
+                        "type": "tool-result",
+                        "toolCallId": "c2",
+                        "toolName": "weather",
+                        "output": {"type": "error-text", "value": "no city"},
+                    },
+                    {"type": "tool-approval-response", "approvalId": "a1", "approved": True},
+                ],
+            },
+        ],
+        [
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "source", "sourceType": "url", "id": "s1", "url": "https://x"},
+                    {"type": "text", "text": "18C."},
+                ],
+            }
+        ],
+    )
+    assert messages == [
+        {"role": "system", "content": "Be brief."},
+        {"role": "user", "content": "weather?"},
+        {
+            "role": "assistant",
+            "content": "",
+            "reasoning_content": "use the tool",
+            "tool_calls": [
+                {"tool_call_id": "c1", "function_name": "weather", "arguments": {"city": "Paris"}},
+                {"tool_call_id": "c2", "function_name": "weather", "arguments": {}},
+            ],
+        },
+        {"role": "tool", "tool_call_id": "c1", "content": '{"temp_c": 18}'},
+        {"role": "tool", "tool_call_id": "c2", "content": "no city", "_is_error": True},
+    ]
+    assert output == {"role": "assistant", "content": "18C."}
+
+
+@pytest.mark.parametrize(
+    ("output", "content", "is_error"),
+    [
+        ({"type": "text", "value": "done"}, "done", False),
+        ({"type": "json", "value": ["a", "é"]}, '["a", "é"]', False),
+        ({"type": "json", "value": "quoted"}, '"quoted"', False),
+        ({"type": "error-json", "value": {"code": 1}}, '{"code": 1}', True),
+        ({"type": "execution-denied", "reason": "not allowed"}, "not allowed", False),
+        (
+            {
+                "type": "content",
+                "value": [{"type": "text", "text": "a"}, {"type": "text", "text": "b"}],
+            },
+            [{"type": "text", "text": "a"}, {"type": "text", "text": "b"}],
+            False,
+        ),
+    ],
+)
+def test_ai_sdk_tool_result_outputs(output: dict[str, Any], content: Any, is_error: bool):
+    part = {"type": "tool-result", "toolCallId": "c1", "toolName": "t", "output": output}
+    messages, _output, _reason = normalize_call([{"role": "tool", "content": [part]}], None)
+    expected: dict[str, Any] = {"role": "tool", "tool_call_id": "c1", "content": content}
+    if is_error:
+        expected["_is_error"] = True
+    assert messages == [expected]
+
+
+def test_ai_sdk_provider_executed_tool_result_in_output():
+    _messages, output, _reason = normalize_call(
+        [],
+        [
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool-call",
+                        "toolCallId": "ws",
+                        "toolName": "web_search",
+                        "input": "{}",
+                        "providerExecuted": True,
+                    },
+                    {
+                        "type": "tool-result",
+                        "toolCallId": "ws",
+                        "toolName": "web_search",
+                        "result": {"hits": 0},
+                        "isError": True,
+                    },
+                ],
+            }
+        ],
+    )
+    assert output == {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [{"tool_call_id": "ws", "function_name": "web_search", "arguments": {}}],
+    }
+
+
+def test_ai_sdk_file_parts():
+    stored: list[tuple[str, str]] = []
+
+    def sink(data: str, media_type: str) -> str:
+        stored.append((data, media_type))
+        return "images/x.png"
+
+    messages, _output, _reason = normalize_call(
+        [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "file", "mediaType": "image/png", "data": "iVBORw0KGgo="},
+                    {
+                        "type": "file",
+                        "mediaType": "image/jpeg",
+                        "data": {"type": "url", "url": "https://x/cat.jpg"},
+                    },
+                    {
+                        "type": "file",
+                        "mediaType": "image/png",
+                        "data": {"type": "data", "data": "AA=="},
+                    },
+                    {
+                        "type": "file",
+                        "mediaType": "application/pdf",
+                        "filename": "a.pdf",
+                        "data": "x",
+                    },
+                ],
+            }
+        ],
+        None,
+        sink,
+    )
+    assert stored == [("iVBORw0KGgo=", "image/png"), ("AA==", "image/png")]
+    assert messages[0]["content"] == [
+        {"type": "image", "source": {"media_type": "image/png", "path": "images/x.png"}},
+        {"type": "image", "source": {"media_type": "image/jpeg", "path": "https://x/cat.jpg"}},
+        {"type": "image", "source": {"media_type": "image/png", "path": "images/x.png"}},
+        {"type": "text", "text": "[file: a.pdf]"},
+    ]
+
+
+def test_otel_semconv_parts():
+    messages, output, reason = normalize_call(
+        [
+            {"role": "system", "parts": [{"type": "text", "content": "Be brief."}]},
+            {"role": "user", "parts": [{"type": "text", "content": "weather?"}]},
+            {
+                "role": "assistant",
+                "parts": [
+                    {"type": "reasoning", "content": "use the tool"},
+                    {
+                        "type": "tool_call",
+                        "id": "c1",
+                        "name": "weather",
+                        "arguments": {"city": "Paris"},
+                    },
+                ],
+            },
+            {
+                "role": "tool",
+                "parts": [{"type": "tool_call_response", "id": "c1", "response": "18C"}],
+            },
+            {
+                "role": "user",
+                "parts": [{"type": "uri", "mime_type": "image/png", "uri": "https://x/a.png"}],
+            },
+        ],
+        [
+            {
+                "role": "assistant",
+                "parts": [{"type": "text", "content": "18C."}],
+                "finish_reason": "stop",
+            }
+        ],
+    )
+    assert messages == [
+        {"role": "system", "content": "Be brief."},
+        {"role": "user", "content": "weather?"},
+        {
+            "role": "assistant",
+            "content": "",
+            "reasoning_content": "use the tool",
+            "tool_calls": [
+                {"tool_call_id": "c1", "function_name": "weather", "arguments": {"city": "Paris"}}
+            ],
+        },
+        {"role": "tool", "tool_call_id": "c1", "content": "18C"},
+        {
+            "role": "user",
+            "content": [
+                {"type": "image", "source": {"media_type": "image/png", "path": "https://x/a.png"}}
+            ],
+        },
+    ]
+    assert output == {"role": "assistant", "content": "18C."}
+    assert reason == "stop"
+
+
+def test_semconv_tool_results_read_result_too():
+    """The Cohere instrumentations write `result` instead of `response`."""
+    messages, _output, _reason = normalize_call(
+        [
+            {
+                "role": "tool",
+                "parts": [{"type": "tool_call_response", "id": "c1", "result": {"temp": 18}}],
+            }
+        ],
+        None,
+    )
+    assert messages == [{"role": "tool", "tool_call_id": "c1", "content": '{"temp": 18}'}]
+
+
+def test_chat_tool_calls_with_top_level_arguments():
+    _messages, output, _reason = normalize_call(
+        [],
+        [
+            {
+                "role": "model",
+                "content": "Checking.",
+                "tool_calls": [{"id": "c1", "name": "weather", "arguments": '{"city": "Paris"}'}],
+            }
+        ],
+    )
+    assert output is not None
+    assert output["tool_calls"] == [
+        {"tool_call_id": "c1", "function_name": "weather", "arguments": {"city": "Paris"}}
+    ]
+
+
+@pytest.mark.parametrize(
+    "attributes",
+    [
+        {"ai.toolCall.id": "c1", "ai.toolCall.name": "lookup"},
+        {"gen_ai.tool.call.id": "c1"},
+        {"gen_ai.tool.name": "lookup"},
+        {"ai.toolCall.name": "lookup"},
+    ],
+)
+def test_tool_spans_are_matched_by_their_tool_name_and_call_id(attributes: dict[str, Any]):
+    """AI SDK (`ai.tool <name>`) and OTel GenAI (`execute_tool <name>`) TOOL
+    span names decorate the tool's name, so the attributes decide."""
+    trajectory = build_trajectory(
+        [
+            _record(1, None, "root", "DEFAULT", 0, 5),
+            _llm(
+                2, 0, 1, [{"role": "user", "content": "go"}], _tool_call_output("c1", "lookup", {})
+            ),
+            _record(
+                3,
+                1,
+                "ai.tool lookup",
+                "TOOL",
+                1.1,
+                1.2,
+                {"lmnr.span.output": '"found"', **attributes},
+            ),
+        ]
+    )
+    assert trajectory is not None
+    assert [s["source"] for s in trajectory["steps"]] == ["user", "agent"]
+    assert _results(trajectory["steps"][1]) == ["found"]
+
+
+def test_unmatched_and_implicit_subagent_tool_spans_use_the_tool_name():
+    hi = [{"role": "user", "content": "hi"}]
+    yo = [{"role": "assistant", "content": "yo"}]
+    helper_call = _llm(5, 3, 4, hi, yo)
+    trajectory = build_trajectory(
+        [
+            _record(1, None, "root", "DEFAULT", 0, 10),
+            _llm(2, 0, 1, hi, yo),
+            _record(3, 1, "execute_tool search", "TOOL", 2, 2.5, {"gen_ai.tool.name": "search"}),
+            _record(4, 1, "ai.tool research", "TOOL", 3, 5, {"ai.toolCall.name": "research"}),
+            _record(5, 4, helper_call.name, "LLM", 3, 4, helper_call.attributes),
+        ]
+    )
+    assert trajectory is not None
+    names = [s["tool_calls"][0]["function_name"] for s in trajectory["steps"][2:]]
+    assert names == ["search", "research"]
+    assert trajectory["subagent_trajectories"][0]["agent"]["name"] == "research"
+
+
+def test_a_failed_call_without_output_does_not_leak_into_the_next_input():
+    """A call with no output (it failed) is still an agent step, and a reader
+    adds its empty assistant message to the next call's input (§6.4). A retry
+    with the same input therefore needs an `input_messages` override."""
+    ask = {"role": "user", "content": "What's the weather in Paris?"}
+    system = {"role": "system", "content": "Use the tools."}
+    error = {"type": "NotFoundError", "message": "404 no such model"}
+    failed = _llm(2, 0, 1, [ask], None)
+    failed.attributes.pop("gen_ai.output.messages")
+    failed.error = error
+    records = [
+        _record(1, None, "agent", "DEFAULT", 0, 5),
+        failed,
+        _llm(3, 2, 3, [system, ask], [{"role": "assistant", "content": "Sunny"}]),
+        _llm(4, 3, 4, [ask], [{"role": "assistant", "content": "Sunny again"}]),
+    ]
+    trajectory = build_trajectory(records)
+    assert trajectory is not None
+    steps = trajectory["steps"]
+    ext = TrajectoryExtension.read(trajectory)
+    assert [s["source"] for s in steps] == ["user", "agent", "agent", "agent"]
+    assert steps[1]["extra"]["lmnr"]["error"] == error
+    for index, record in zip((1, 2, 3), records[1:], strict=True):
+        actual, _output, _reason = normalize_call(
+            json.loads(record.attributes["gen_ai.input.messages"]), None
+        )
+        rebuilt = reader.input_messages(steps, index, ext)
+        assert _comparable(rebuilt) == _comparable(actual), index

@@ -21,6 +21,13 @@ Shapes understood, detected per message so mixed lists work:
   `file_data`. Gemini calls often have no id, so the k-th call without one in
   a conversation gets the id `<name>_<k>` (marked `synthetic_id`), and its
   response is matched by name in order.
+- Vercel AI SDK (LanguageModel prompts, as the TypeScript SDK records them):
+  `tool-call` parts (`toolCallId`, `toolName`, `input`), `role: "tool"`
+  messages of `tool-result` parts (`output: {type, value}`, `error-*` types
+  are failures), `reasoning` parts, and `file` parts with a `mediaType`.
+- OpenTelemetry GenAI semantic conventions: `{role, parts}` with typed parts
+  (`text`, `reasoning`, `tool_call`, `tool_call_response`, `blob`, `uri`,
+  `file`), as LangChain.js records its own LLM spans.
 
 Anything else degrades to role + text. Nothing here raises on bad input.
 """
@@ -53,6 +60,10 @@ _SCHEMA_KEYS = (
 )
 
 _ROLE_ALIASES = {"model": "assistant", "human": "user", "ai": "assistant", "function": "tool"}
+
+# Blocks with nothing the model reads as text: redacted reasoning, AI SDK
+# reasoning images, citations, and tool approval responses.
+_SKIPPED_BLOCKS = {"redacted_thinking", "reasoning-file", "source", "tool-approval-response"}
 
 
 def _get(obj: dict[str, Any], *keys: str) -> Any:
@@ -183,7 +194,7 @@ def _parts(
                 text = "\n".join(str(s.get("text") or "") for s in dicts(block["summary"]))
             if text:
                 sink.setdefault("reasoning", []).append(str(text))
-        elif kind == "redacted_thinking":
+        elif kind in _SKIPPED_BLOCKS:
             continue
         elif kind == "tool_use":
             sink.setdefault("tool_calls", []).append(
@@ -198,6 +209,20 @@ def _parts(
                     **({"_is_error": True} if block.get("is_error") is True else {}),
                 }
             )
+        elif kind == "tool-call":
+            sink.setdefault("tool_calls", []).append(
+                tool_call(block.get("toolCallId"), block.get("toolName"), block.get("input"))
+            )
+        elif kind == "tool-result":
+            content, is_error = _ai_sdk_tool_output(block, media)
+            sink.setdefault("tool_results", []).append(
+                {
+                    "role": "tool",
+                    "tool_call_id": str(block.get("toolCallId") or ""),
+                    "content": content,
+                    **({"_is_error": True} if is_error else {}),
+                }
+            )
         elif kind in ("image", "input_image", "image_url"):
             source = as_dict(block.get("source"))
             image_url = block.get("image_url")
@@ -210,6 +235,8 @@ def _parts(
                     media,
                 )
             )
+        elif kind == "file" and "mediaType" in block:
+            parts.append(_ai_sdk_file(block, media))
         elif kind in ("document", "file", "input_file"):
             parts.append(
                 text_part(f"[file: {block.get('filename') or block.get('file_id') or ''}]")
@@ -218,6 +245,80 @@ def _parts(
             parts.append(text_part("[audio]"))
         else:
             parts.append(text_part(json.dumps(block, ensure_ascii=False, default=str)))
+    return parts
+
+
+def _ai_sdk_tool_output(block: dict[str, Any], media: MediaSink | None) -> tuple[Any, bool]:
+    """Content of an AI SDK `tool-result` part, and whether the tool failed.
+
+    Prompt parts carry `output: {type, value}`; results a provider executed
+    itself (in a call's output) carry `result` and `isError` instead.
+    """
+    output = as_dict(block.get("output"))
+    if not output:
+        return _result_content(block.get("result"), media), block.get("isError") is True
+    kind = output.get("type")
+    if kind == "execution-denied":
+        return str(output.get("reason") or ""), False
+    if kind in ("json", "error-json"):
+        # A JSON value, not content parts; providers send it serialized.
+        value = json.dumps(output.get("value"), ensure_ascii=False, default=str)
+        return value, kind == "error-json"
+    return _result_content(output.get("value"), media), kind == "error-text"
+
+
+def _ai_sdk_file(block: dict[str, Any], media: MediaSink | None) -> dict[str, Any]:
+    """An AI SDK `file` part. `data` is base64 or a URL string, or (v7)
+    `{type: "data", data}` / `{type: "url", url}`."""
+    data = block.get("data")
+    url = None
+    if isinstance(data, dict):
+        source = as_dict(data)
+        url = source.get("url") if source.get("type") == "url" else None
+        data = source.get("data") if source.get("type") == "data" else None
+    elif isinstance(data, str) and data.startswith(("http://", "https://", "data:")):
+        data, url = None, data
+    media_type = block.get("mediaType")
+    if isinstance(media_type, str) and media_type.startswith("image/"):
+        return _media_part(media_type, data, url, media)
+    return text_part(f"[file: {block.get('filename') or ''}]")
+
+
+def _semconv_parts(
+    parts_raw: list[Any], media: MediaSink | None, sink: dict[str, list[Any]]
+) -> list[dict[str, Any]]:
+    """Typed parts of the OpenTelemetry GenAI semantic conventions."""
+    parts: list[dict[str, Any]] = []
+    for part in dicts(parts_raw):
+        kind = part.get("type")
+        if kind == "text":
+            parts.append(text_part(str(part.get("content") or "")))
+        elif kind in ("reasoning", "thinking"):
+            if part.get("content"):
+                sink.setdefault("reasoning", []).append(str(part["content"]))
+        elif kind == "tool_call":
+            sink.setdefault("tool_calls", []).append(
+                tool_call(part.get("id"), part.get("name"), part.get("arguments"))
+            )
+        elif kind == "tool_call_response":
+            # The conventions name the payload `response`; the Cohere
+            # instrumentations (both SDKs) write `result`.
+            response = part.get("response") if "response" in part else part.get("result")
+            sink.setdefault("tool_results", []).append(
+                {
+                    "role": "tool",
+                    "tool_call_id": str(part.get("id") or ""),
+                    "content": _result_content(response, media),
+                }
+            )
+        elif kind == "blob":
+            parts.append(_media_part(part.get("mime_type"), part.get("content"), None, media))
+        elif kind == "uri":
+            parts.append(_media_part(part.get("mime_type"), None, part.get("uri"), media))
+        elif kind == "file":
+            parts.append(text_part(f"[file: {part.get('file_id') or ''}]"))
+        else:
+            parts.append(text_part(json.dumps(part, ensure_ascii=False, default=str)))
     return parts
 
 
@@ -377,7 +478,11 @@ class _Conversation:
 
         sink = {}
         if "parts" in item:
-            parts = _gemini_parts(item.get("parts") or [], self.media, sink)
+            parts_raw: Any = item.get("parts") or []
+            if any("type" in p for p in dicts(parts_raw)):
+                parts = _semconv_parts(parts_raw, self.media, sink)
+            else:
+                parts = _gemini_parts(parts_raw, self.media, sink)
         else:
             content = item.get("content")
             if isinstance(content, list):
@@ -394,7 +499,7 @@ class _Conversation:
                 tool_call(
                     call.get("id"),
                     function.get("name") or call.get("name"),
-                    function.get("arguments"),
+                    function.get("arguments") if "arguments" in function else call.get("arguments"),
                 )
             )
         for call in sink.get("gemini_calls", []):
@@ -405,6 +510,10 @@ class _Conversation:
 
         if role == "tool":
             self.close_assistant()
+            if sink.get("tool_results") and not parts:
+                # AI SDK and semconv tool messages hold their results as parts.
+                self.messages.extend(sink["tool_results"])
+                return
             message: Message = {
                 "role": "tool",
                 "tool_call_id": str(item.get("tool_call_id") or item.get("name") or ""),

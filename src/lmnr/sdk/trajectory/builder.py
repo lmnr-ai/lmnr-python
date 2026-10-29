@@ -319,7 +319,7 @@ class _Builder:
             child_scope, child_agent = span.id, marker
         elif span.is_tool and span.hosts_llm():
             self.boundaries[span.id] = "implicit"
-            child_scope, child_agent = span.id, span.record.name
+            child_scope, child_agent = span.id, _tool_name(span)
         elif marker is not None:
             child_agent = marker
         for child in span.children:
@@ -478,7 +478,11 @@ class _Builder:
             if canonical_json(call.tools) != canonical_json(default_tools):
                 overrides[k]["tool_definitions"] = call.tools
 
-            base = conversation + ([call.output] if call.output is not None else [])
+            # A call without output (a failed one) is still a step, and a reader
+            # adds its empty assistant message to the next input (§6.4).
+            base = conversation + [
+                call.output if call.output is not None else {"role": "assistant", "content": ""}
+            ]
             prev_call_ids = [
                 str(c.get("tool_call_id")) for c in dicts((call.output or {}).get("tool_calls"))
             ]
@@ -799,7 +803,7 @@ class _Builder:
         totals.add_time(span.start, span.end)
         call_id = f"lmnr-{span.id}"
         arguments = span.json_attr("lmnr.span.input")
-        call = tool_call(call_id, span.record.name or "tool", arguments, synthetic_id=True)
+        call = tool_call(call_id, _tool_name(span) or "tool", arguments, synthetic_id=True)
         call["extra"]["lmnr"].update(
             {
                 "span_id": span.id,
@@ -872,7 +876,7 @@ class _Builder:
         elif self.boundaries[boundary.id] == "agent":
             name = boundary.agent_marker or boundary.record.name
         else:
-            name = boundary.record.name
+            name = _tool_name(boundary)
         agent: dict[str, Any] = {"name": name or "agent", "version": self.release}
         models = Counter(
             "/".join(p for p in (_provider(c.span), _model(c.span)) if p)
@@ -948,10 +952,29 @@ class _Builder:
 
 def _tool_matches(strategy: int, span: _Span, tool: dict[str, Any]) -> bool:
     if strategy == 0:
-        return span.attrs.get("gen_ai.tool.call.id") == tool.get("tool_call_id")
-    if span.record.name != tool.get("function_name"):
+        return _tool_call_id(span) == tool.get("tool_call_id")
+    if _tool_name(span) != tool.get("function_name"):
         return False
     return strategy == 2 or span.json_attr("lmnr.span.input") == tool.get("arguments")
+
+
+def _tool_call_id(span: _Span) -> Any:
+    """The id of the tool call a TOOL span executed (`ai.toolCall.id`: the AI SDK)."""
+    for key in ("gen_ai.tool.call.id", "ai.toolCall.id"):
+        if key in span.attrs:
+            return span.attrs[key]
+    return None
+
+
+def _tool_name(span: _Span) -> str:
+    """The name of the tool a TOOL span ran. Span names often decorate it:
+    `execute_tool <name>` (OpenTelemetry GenAI conventions), `ai.tool <name>`
+    (AI SDK), `<name>.tool` (MCP)."""
+    for key in ("gen_ai.tool.name", "ai.toolCall.name"):
+        value = span.attrs.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return span.record.name
 
 
 def _provider(span: _Span) -> str | None:
