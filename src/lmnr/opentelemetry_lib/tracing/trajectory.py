@@ -27,7 +27,7 @@ from opentelemetry.sdk.trace import ReadableSpan, Span
 from lmnr.opentelemetry_lib.tracing.attributes import SPAN_INPUT, SPAN_OUTPUT, SPAN_TYPE
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.trajectory.builder import BuildOptions, SpanRecord, format_time
-from lmnr.sdk.trajectory.writer import write_trajectories
+from lmnr.sdk.trajectory.writer import TRACE_ID, write_trajectories
 
 LOG = get_default_logger(__name__)
 
@@ -123,6 +123,9 @@ def span_record(span: ReadableSpan, end_time_ns: int | None = None) -> SpanRecor
 
 @dataclass
 class _EndingRun:
+    """A run `new_run` ended while some of its spans were still open."""
+
+    run: int
     records: dict[str, SpanRecord]
     # Ids of its spans that are still open.
     open: set[int]
@@ -161,12 +164,16 @@ class TrajectoryCollector:
         self._write_lock: threading.Lock = threading.Lock()
         self._records: dict[str, SpanRecord] = {}
         self._open: dict[int, Span] = {}
-        # Spans still open when a run ended: they belong to that run, so
-        # they are dropped when they end instead of joining the next one.
-        self._retired: set[int] = set()
-        # The last ended run, kept until its open spans end, so its file can
-        # be rewritten complete.
-        self._ending: _EndingRun | None = None
+        # Runs are numbered; `new_run` starts the next one.
+        self._run: int = 0
+        # Ended runs whose spans are still open. Those spans stay out of later
+        # runs, and once the last one ends, the run's files are rewritten
+        # complete.
+        self._endings: list[_EndingRun] = []
+        # While a run is ending: each file's key (`_file_key`) mapped to the
+        # latest run that recorded a span for it. An ended run doesn't rewrite
+        # a file a later run has written.
+        self._claimed: dict[str | None, int] = {}
         self._dirty: bool = False
         self._wake: threading.Event = threading.Event()
         self._stopped: bool = False
@@ -185,11 +192,11 @@ class TrajectoryCollector:
         the file first: this run's spans are gone afterwards. A span still open
         here (an `@observe` handler that calls `force_flush` before returning)
         stays out of the next run. When the last of them ends, the ended run's
-        file is rewritten complete, unless the next run has recorded spans by
-        then (the file is the next run's now)."""
+        files are rewritten complete, except those a later run has written."""
         with self._lock:
-            self._retired.update(self._open)
-            self._ending = _EndingRun(self._records, set(self._open)) if self._open else None
+            if self._open:
+                self._endings.append(_EndingRun(self._run, self._records, set(self._open)))
+            self._run += 1
             self._records = {}
             self._open = {}
             self._dirty = False
@@ -202,10 +209,10 @@ class TrajectoryCollector:
         ended: list[SpanRecord] | None = None
         with self._lock:
             _ = self._open.pop(span_id, None)
-            if span_id in self._retired:
-                self._retired.discard(span_id)
-                ended = self._end_retired(span_id, None)
-        if ended is not None:
+            ending = self._ending_run(span_id)
+            if ending is not None:
+                ended = self._end_span(ending, span_id, None)
+        if ended:
             with self._write_lock:
                 _ = self._write(ended, (), retry=False)
 
@@ -216,11 +223,13 @@ class TrajectoryCollector:
             span_id = span.context.span_id if span.context is not None else None
             if span_id is not None:
                 _ = self._open.pop(span_id, None)
-            if span_id is not None and span_id in self._retired:
-                self._retired.discard(span_id)
-                ended = self._end_retired(span_id, record)
+            ending = self._ending_run(span_id) if span_id is not None else None
+            if ending is not None and span_id is not None:
+                ended = self._end_span(ending, span_id, record)
             elif record is not None:
                 self._records[record.span_id] = record
+                if self._endings:
+                    self._claimed[self._file_key(record)] = self._run
                 self._dirty = True
                 if self._thread is None and not self._stopped and self.snapshot_interval > 0:
                     self._thread = threading.Thread(
@@ -228,23 +237,38 @@ class TrajectoryCollector:
                     )
                     self._thread.start()
         # `write` takes `_write_lock` before `_lock`, never the other way round.
-        if ended is not None:
+        if ended:
             with self._write_lock:
                 _ = self._write(ended, (), retry=False)
 
-    def _end_retired(self, span_id: int, record: SpanRecord | None) -> list[SpanRecord] | None:
-        """Record a span of the ended run. Returns that run's records once its
-        last open span has ended and its file is still its own. Holds `_lock`."""
-        ending = self._ending
-        if ending is None or span_id not in ending.open:
-            return None
+    def _file_key(self, record: SpanRecord) -> str | None:
+        """Which file `record` goes into: its trace's, or the one shared file."""
+        return record.trace_id if TRACE_ID in self.path else None
+
+    def _ending_run(self, span_id: int) -> _EndingRun | None:
+        """The ended run `span_id` is a still-open span of. Holds `_lock`."""
+        return next((e for e in self._endings if span_id in e.open), None)
+
+    def _end_span(
+        self, ending: _EndingRun, span_id: int, record: SpanRecord | None
+    ) -> list[SpanRecord] | None:
+        """Record a span of an ended run. Once its last open span has ended,
+        returns the records of its files that no later run has written.
+        Holds `_lock`."""
         ending.open.discard(span_id)
         if record is not None:
             ending.records[record.span_id] = record
         if ending.open:
             return None
-        self._ending = None
-        return None if self._records else list(ending.records.values())
+        self._endings.remove(ending)
+        ended = [
+            r
+            for r in ending.records.values()
+            if self._claimed.get(self._file_key(r), ending.run) <= ending.run
+        ]
+        if not self._endings:
+            self._claimed = {}
+        return ended
 
     def _snapshots(self) -> None:
         while not self._wake.wait(self.snapshot_interval):

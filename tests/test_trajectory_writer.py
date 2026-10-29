@@ -343,6 +343,38 @@ def test_a_run_ended_by_force_reinit_does_not_overwrite_the_next_one(harness: Ha
     assert harness.read()["agent"]["name"] == "second"
 
 
+def test_a_later_trace_does_not_keep_an_ended_runs_trace_file_incomplete(tmp_path: Path):
+    h = Harness(tmp_path / "{trace_id}.json", export=False)
+    with h.span("handler") as handler:
+        tool_loop(h, root="agent")
+        _ = h.processor.force_flush()
+        assert h.processor.force_reinit()
+        token = otel_context.attach(otel_context.Context())
+        try:
+            tool_loop(h, root="second")
+            _ = h.processor.force_flush()
+        finally:
+            otel_context.detach(token)
+    files = {h.read(f)["agent"]["name"]: h.read(f) for f in tmp_path.glob("*.json")}
+    assert set(files) == {"handler", "second"}
+    first = files["handler"]
+    assert first["trajectory_id"] == str(uuid.UUID(int=handler.get_span_context().trace_id))
+    assert first["extra"]["lmnr"]["complete"] is True
+    h.provider.shutdown()
+
+
+def test_a_second_force_reinit_keeps_the_pending_rewrite(harness: Harness):
+    with harness.span("handler"):
+        tool_loop(harness, root="agent")
+        _ = harness.processor.force_flush()
+        assert harness.processor.force_reinit()
+        _ = harness.processor.force_flush()
+        assert harness.processor.force_reinit()
+    trajectory = harness.read()
+    assert trajectory["agent"]["name"] == "handler"
+    assert trajectory["extra"]["lmnr"]["complete"] is True
+
+
 def test_without_a_placeholder_every_trace_goes_into_one_file(harness: Harness):
     tool_loop(harness, root="first")
     tool_loop(harness, root="second")
