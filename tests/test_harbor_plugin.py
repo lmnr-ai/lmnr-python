@@ -1197,28 +1197,25 @@ def test_agent_trajectory_reaches_harbor_agents(tmp_path: Path):
     """Against real Harbor: trial configs are built before `on_job_start` and
     the agent copies its env when the trial is created, after it."""
     pytest.importorskip("harbor")
+    import importlib
     import logging
 
-    from harbor.agents.factory import (  # pyright: ignore[reportMissingImports]
-        AgentFactory,
-    )
-    from harbor.job_plan import JobPlan  # pyright: ignore[reportMissingImports]
-    from harbor.models.job.config import JobConfig  # pyright: ignore[reportMissingImports]
-    from harbor.models.trial.config import (  # pyright: ignore[reportMissingImports]
-        AgentConfig,
-        TaskConfig,
-    )
-    from harbor.models.trial.paths import (  # pyright: ignore[reportMissingImports]
-        EnvironmentPaths,
-    )
+    def harbor(module: str) -> Any:
+        return importlib.import_module(f"harbor.{module}")
+
+    AgentFactory = harbor("agents.factory").AgentFactory
+    JobPlan = harbor("job_plan").JobPlan
+    JobConfig = harbor("models.job.config").JobConfig
+    trial_config = harbor("models.trial.config")
+    EnvironmentPaths = harbor("models.trial.paths").EnvironmentPaths
 
     assert AGENT_TRAJECTORY_PATH == str(EnvironmentPaths.agent_dir / "trajectory.json")
-    config: Any = JobConfig(agents=[AgentConfig(name="nop")])
-    trial_configs: Any = JobPlan.build_trial_configs(
-        config, [TaskConfig(path=tmp_path)], job_id=uuid.uuid4()
+    config = JobConfig(agents=[trial_config.AgentConfig(name="nop")])
+    trial_configs = JobPlan.build_trial_configs(
+        config, [trial_config.TaskConfig(path=tmp_path)], job_id=uuid.uuid4()
     )
     _request_agent_trajectories(cast(Any, SimpleNamespace(config=config)))
-    agent: Any = AgentFactory.create_agent_from_config(
+    agent = AgentFactory.create_agent_from_config(
         trial_configs[0].agent, logs_dir=tmp_path / "logs", logger=logging.getLogger(__name__)
     )
     assert agent.extra_env["LMNR_TRAJECTORY_PATH"] == AGENT_TRAJECTORY_PATH
