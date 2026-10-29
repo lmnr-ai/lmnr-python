@@ -43,12 +43,12 @@ def dicts(value: Any) -> list[dict[str, Any]]:
     return [cast(dict[str, Any], v) for v in cast(list[Any], value) if isinstance(v, dict)]
 
 
-def lmnr_extra(obj: Any) -> dict[str, Any]:
+def _lmnr_extra(obj: Any) -> dict[str, Any]:
     """`obj["extra"]["lmnr"]` as a dict, or {} when absent or malformed."""
     return as_dict(as_dict(as_dict(obj).get("extra")).get(NAMESPACE))
 
 
-def parse_spec_version(value: Any) -> tuple[int, int, int] | None:
+def _parse_spec_version(value: Any) -> tuple[int, int, int] | None:
     if not isinstance(value, str):
         return None
     match = _SEMVER.match(value)
@@ -62,8 +62,8 @@ def is_compatible(version: Any, reference: str = SPEC_VERSION) -> bool:
 
     Same major version and, while the major is 0, the same minor version.
     """
-    ours = parse_spec_version(reference)
-    theirs = parse_spec_version(version)
+    ours = _parse_spec_version(reference)
+    theirs = _parse_spec_version(version)
     if ours is None or theirs is None or ours[0] != theirs[0]:
         return False
     return ours[0] != 0 or ours[1] == theirs[1]
@@ -106,7 +106,7 @@ class TrajectoryExtension:
         if not isinstance(trajectory, dict):
             return None
         trajectory = cast(dict[str, Any], trajectory)
-        fields = lmnr_extra(trajectory)
+        fields = _lmnr_extra(trajectory)
         if not fields and parent is None:
             return None
         version = fields.get("spec_version")
@@ -144,12 +144,12 @@ class TrajectoryExtension:
 
     def override(self, step: dict[str, Any], key: str, kind: DefKind) -> Any:
         """A step's resolved `extra.lmnr.<key>` override, or None if absent."""
-        return self.resolve(lmnr_extra(step).get(key), kind)
+        return self.resolve(_lmnr_extra(step).get(key), kind)
 
 
 def fields(obj: Any, ext: TrajectoryExtension | None) -> dict[str, Any]:
     """`obj.extra.lmnr`, but only when the trajectory's extension is readable."""
-    return lmnr_extra(obj) if ext is not None else {}
+    return _lmnr_extra(obj) if ext is not None else {}
 
 
 def steps_of(trajectory: dict[str, Any]) -> list[dict[str, Any]]:
