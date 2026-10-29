@@ -50,6 +50,11 @@ logger = get_default_logger(__name__)
 
 DEFAULT_GROUP_NAME = "harbor"
 
+# Where an agent using Laminar's SDK writes its lmnr-atif trajectory: Harbor's
+# `EnvironmentPaths.agent_dir` inside the environment, which is the trial's
+# `agent/` directory that `_trajectory_path` reads.
+AGENT_TRAJECTORY_PATH = "/logs/agent/trajectory.json"
+
 
 def _parse_bool(value: Any) -> bool:
     if isinstance(value, bool):
@@ -158,6 +163,8 @@ class LaminarPlugin:
             self._handle_error("Failed to create Laminar evaluation", e)
             return
 
+        if self.trajectory_spans:
+            _request_agent_trajectories(job)
         job.on_trial_started(self._on_trial_started)
         job.on_agent_started(self._on_agent_started)
         job.on_verification_started(self._on_verification_started)
@@ -639,6 +646,22 @@ def _trial_dir(event: "TrialHookEvent") -> Path | None:
         return Path(event.config.trials_dir) / event.config.trial_name
     except Exception:
         return None
+
+
+def _request_agent_trajectories(job: "Job") -> None:
+    """Make agents that use Laminar's SDK write their trajectory where the
+    plugin reads it (`LMNR_TRAJECTORY_PATH`, which also keeps their spans out
+    of Laminar until the plugin replays them under the trial).
+
+    Must run in `on_job_start`: Harbor copies `AgentConfig.env` into the agent
+    when it creates a trial, before any trial hook fires. The trial configs
+    `Job.create` built share these `AgentConfig` objects. A value the user set
+    (`--ae LMNR_TRAJECTORY_PATH=...`) wins.
+    """
+    for agent in getattr(job.config, "agents", None) or []:
+        env = getattr(agent, "env", None)
+        if isinstance(env, dict):
+            _ = cast(dict[str, str], env).setdefault("LMNR_TRAJECTORY_PATH", AGENT_TRAJECTORY_PATH)
 
 
 def _trajectory_path(event: "TrialHookEvent") -> Path | None:
