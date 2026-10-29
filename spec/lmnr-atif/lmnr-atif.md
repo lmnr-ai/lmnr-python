@@ -394,6 +394,10 @@ and Harbor's ATIF validator:
 uv run --with harbor==0.25.0 python -m harbor.utils.trajectory_validator spec/lmnr-atif/fixtures/<file>.json
 ```
 
+[`writer-golden/`](./writer-golden) is the conformance suite for writers: the
+spans of a run, and the exact trajectory a writer must produce from them. Its
+README defines the span input format.
+
 ## Changelog
 
 ### 0.1.0

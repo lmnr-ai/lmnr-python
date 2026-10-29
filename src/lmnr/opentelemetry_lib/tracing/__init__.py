@@ -59,6 +59,7 @@ __all__ = [
 
 LOG = get_default_logger(__name__)
 
+
 # Serializes `init_tracing`. The singleton itself lives in `tracing/wrapper.py`.
 _lock = threading.Lock()
 # The providers are built ONCE per process and reused across
@@ -93,9 +94,15 @@ def init_tracing(
     otel_logger_level: int = logging.ERROR,
     session_recording_options: SessionRecordingOptions | None = None,
     release: str | None = None,
+    trajectory_path: str | None = None,
+    export: bool = True,
 ) -> TracerWrapper:
     """Initialize Laminar tracing. Idempotent: a second call returns the
-    existing wrapper and ignores the new arguments."""
+    existing wrapper and ignores the new arguments.
+
+    `trajectory_path` writes an lmnr-atif trajectory file of the run (see
+    `tracing/trajectory.py`). `export=False` keeps spans and logs local.
+    """
     global _tracer_provider, _logger_provider
 
     # Silence some opentelemetry warnings
@@ -125,7 +132,7 @@ def init_tracing(
                 base_url=base_http_url or "https://api.lmnr.ai",
                 project_api_key=project_api_key,
             )
-            if project_api_key
+            if project_api_key and export
             else None
         )
 
@@ -142,6 +149,8 @@ def init_tracing(
             force_http=force_http,
             disable_batch=disable_batch,
             release=release,
+            trajectory_path=trajectory_path,
+            export=export,
         )
 
         if _tracer_provider is None:
@@ -160,22 +169,29 @@ def init_tracing(
         tracer_provider = _tracer_provider
         tracer_provider.add_span_processor(span_processor)
 
-        # Setup LoggerProvider for OTel logs
-        log_exporter = LaminarLogExporter(
-            base_url=base_url,
-            port=http_port if force_http else port,
-            api_key=project_api_key,
-            timeout_seconds=timeout,
-            force_http=force_http,
+        # Setup LoggerProvider for OTel logs. In local-only mode the provider
+        # gets no processor, so logs go nowhere.
+        log_processor = (
+            BatchLogRecordProcessor(
+                LaminarLogExporter(
+                    base_url=base_url,
+                    port=http_port if force_http else port,
+                    api_key=project_api_key,
+                    timeout_seconds=timeout,
+                    force_http=force_http,
+                )
+            )
+            if export
+            else None
         )
-        log_processor = BatchLogRecordProcessor(log_exporter)
         if _logger_provider is None:
             _logger_provider = LoggerProvider(resource=resource)
             # Set global logger provider (follows same flag as tracer provider)
             if set_global_tracer_provider:
                 set_logger_provider(_logger_provider)
         logger_provider = _logger_provider
-        logger_provider.add_log_record_processor(log_processor)
+        if log_processor is not None:
+            logger_provider.add_log_record_processor(log_processor)
 
         wrapper = TracerWrapper(
             resource=resource,

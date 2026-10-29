@@ -1,0 +1,86 @@
+{
+  "options": {},
+  "spans": [
+    {
+      "trace_id": "4f1c2b7e-9a3d-4e5f-8b6a-1c2d3e4f5a6b",
+      "span_id": "00000000-0000-0000-0000-000000000001",
+      "parent_span_id": null,
+      "name": "support-agent",
+      "span_type": "DEFAULT",
+      "start_time": "2026-10-28T09:00:00.000000Z",
+      "end_time": "2026-10-28T09:00:03.850000Z",
+      "attributes": {
+        "lmnr.span.input": "{\"message\": \"Refund my order A-1042\"}"
+      }
+    },
+    {
+      "trace_id": "4f1c2b7e-9a3d-4e5f-8b6a-1c2d3e4f5a6b",
+      "span_id": "00000000-0000-0000-0000-000000000002",
+      "parent_span_id": "00000000-0000-0000-0000-000000000001",
+      "name": "anthropic.chat",
+      "span_type": "LLM",
+      "start_time": "2026-10-28T09:00:00.010000Z",
+      "end_time": "2026-10-28T09:00:01.900000Z",
+      "attributes": {
+        "gen_ai.system": "anthropic",
+        "gen_ai.request.model": "claude-sonnet-4-5",
+        "gen_ai.response.model": "claude-sonnet-4-5-20250929",
+        "gen_ai.request.max_tokens": 4096,
+        "gen_ai.request.temperature": 0,
+        "llm.is_streaming": false,
+        "lmnr.span.release": "1a7f518",
+        "gen_ai.tool.definitions": "[{\"name\": \"get_order\", \"description\": \"Look up an order by id.\", \"input_schema\": {\"type\": \"object\", \"properties\": {\"order_id\": {\"type\": \"string\"}}, \"required\": [\"order_id\"]}, \"cache_control\": {\"type\": \"ephemeral\"}}, {\"name\": \"refund_order\", \"description\": \"Refund an order that hasn't shipped.\", \"input_schema\": {\"type\": \"object\", \"properties\": {\"order_id\": {\"type\": \"string\"}}, \"required\": [\"order_id\"]}}]",
+        "gen_ai.input.messages": "[{\"role\": \"system\", \"content\": \"You are a support agent. Look orders up before answering.\"}, {\"role\": \"user\", \"content\": \"Refund my order A-1042\"}]",
+        "gen_ai.output.messages": "[{\"role\": \"assistant\", \"content\": [{\"type\": \"thinking\", \"thinking\": \"The user wants a refund. I should check whether the order has shipped.\", \"signature\": \"sig\"}, {\"type\": \"tool_use\", \"id\": \"toolu_01\", \"name\": \"get_order\", \"input\": {\"order_id\": \"A-1042\"}}], \"stop_reason\": \"tool_use\"}]",
+        "gen_ai.usage.input_tokens": 1830,
+        "gen_ai.usage.output_tokens": 64,
+        "gen_ai.usage.cache_read_input_tokens": 1500,
+        "gen_ai.usage.cache_creation_input_tokens": 300,
+        "gen_ai.usage.input_cost": 0.00132,
+        "gen_ai.usage.output_cost": 0.00096,
+        "gen_ai.usage.cost": 0.00228,
+        "gen_ai.response.id": "msg_01"
+      }
+    },
+    {
+      "trace_id": "4f1c2b7e-9a3d-4e5f-8b6a-1c2d3e4f5a6b",
+      "span_id": "00000000-0000-0000-0000-000000000003",
+      "parent_span_id": "00000000-0000-0000-0000-000000000001",
+      "name": "get_order",
+      "span_type": "TOOL",
+      "start_time": "2026-10-28T09:00:02.000000Z",
+      "end_time": "2026-10-28T09:00:02.350000Z",
+      "attributes": {
+        "lmnr.span.input": "{\"order_id\": \"A-1042\"}",
+        "lmnr.span.output": "{\"order_id\": \"A-1042\", \"status\": \"shipped\"}"
+      }
+    },
+    {
+      "trace_id": "4f1c2b7e-9a3d-4e5f-8b6a-1c2d3e4f5a6b",
+      "span_id": "00000000-0000-0000-0000-000000000004",
+      "parent_span_id": "00000000-0000-0000-0000-000000000001",
+      "name": "anthropic.chat",
+      "span_type": "LLM",
+      "start_time": "2026-10-28T09:00:02.400000Z",
+      "end_time": "2026-10-28T09:00:03.800000Z",
+      "attributes": {
+        "gen_ai.system": "anthropic",
+        "gen_ai.request.model": "claude-sonnet-4-5",
+        "gen_ai.response.model": "claude-sonnet-4-5-20250929",
+        "gen_ai.request.max_tokens": 4096,
+        "gen_ai.request.temperature": 0,
+        "llm.is_streaming": false,
+        "lmnr.span.release": "1a7f518",
+        "gen_ai.tool.definitions": "[{\"name\": \"get_order\", \"description\": \"Look up an order by id.\", \"input_schema\": {\"type\": \"object\", \"properties\": {\"order_id\": {\"type\": \"string\"}}, \"required\": [\"order_id\"]}, \"cache_control\": {\"type\": \"ephemeral\"}}, {\"name\": \"refund_order\", \"description\": \"Refund an order that hasn't shipped.\", \"input_schema\": {\"type\": \"object\", \"properties\": {\"order_id\": {\"type\": \"string\"}}, \"required\": [\"order_id\"]}}]",
+        "gen_ai.input.messages": "[{\"role\": \"system\", \"content\": \"You are a support agent. Look orders up before answering.\"}, {\"role\": \"user\", \"content\": \"Refund my order A-1042\"}, {\"role\": \"assistant\", \"content\": [{\"type\": \"thinking\", \"thinking\": \"The user wants a refund. I should check whether the order has shipped.\", \"signature\": \"sig\"}, {\"type\": \"tool_use\", \"id\": \"toolu_01\", \"name\": \"get_order\", \"input\": {\"order_id\": \"A-1042\"}}]}, {\"role\": \"user\", \"content\": [{\"type\": \"tool_result\", \"tool_use_id\": \"toolu_01\", \"content\": \"{\\\"order_id\\\": \\\"A-1042\\\", \\\"status\\\": \\\"shipped\\\"}\"}]}]",
+        "gen_ai.output.messages": "[{\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"Your order A-1042 has already shipped, so I can't refund it yet. Once it arrives you can request a return.\"}], \"stop_reason\": \"end_turn\"}]",
+        "gen_ai.usage.input_tokens": 1910,
+        "gen_ai.usage.output_tokens": 41,
+        "gen_ai.usage.cache_read_input_tokens": 1800,
+        "gen_ai.usage.cache_creation_input_tokens": 0,
+        "gen_ai.usage.cost": 0.00117,
+        "gen_ai.response.id": "msg_02"
+      }
+    }
+  ]
+}

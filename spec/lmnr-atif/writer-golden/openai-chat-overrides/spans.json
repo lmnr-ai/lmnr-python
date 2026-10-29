@@ -1,0 +1,150 @@
+{
+  "options": {},
+  "spans": [
+    {
+      "trace_id": "8d0e6a51-3b2c-4d1e-9f7a-0b1c2d3e4f50",
+      "span_id": "00000000-0000-0000-0000-000000000010",
+      "parent_span_id": null,
+      "name": "plan_trip",
+      "span_type": "DEFAULT",
+      "start_time": "2026-10-28T09:00:00.000000Z",
+      "end_time": "2026-10-28T09:00:20.000000Z",
+      "attributes": {}
+    },
+    {
+      "trace_id": "8d0e6a51-3b2c-4d1e-9f7a-0b1c2d3e4f50",
+      "span_id": "00000000-0000-0000-0000-000000000011",
+      "parent_span_id": "00000000-0000-0000-0000-000000000010",
+      "name": "openai.chat",
+      "span_type": "LLM",
+      "start_time": "2026-10-28T09:00:00.000000Z",
+      "end_time": "2026-10-28T09:00:01.200000Z",
+      "attributes": {
+        "gen_ai.system": "openai",
+        "gen_ai.request.model": "gpt-5.5",
+        "gen_ai.response.model": "gpt-5.5-2026-08-01",
+        "gen_ai.request.base_url": "https://api.openai.com/v1/",
+        "gen_ai.request.reasoning_effort": "low",
+        "lmnr.association.properties.session_id": "trip-planner-session-7",
+        "gen_ai.tool.definitions": "[{\"type\": \"function\", \"function\": {\"name\": \"search_flights\", \"description\": \"Search flights to a destination.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"destination\": {\"type\": \"string\"}}, \"required\": [\"destination\"]}, \"strict\": true}}, {\"type\": \"function\", \"function\": {\"name\": \"search_hotels\", \"description\": \"Search hotels near a place.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"near\": {\"type\": \"string\"}}, \"required\": [\"near\"]}}}]",
+        "gen_ai.input.messages": "[{\"role\": \"system\", \"content\": \"You are a travel agent.\"}, {\"role\": \"developer\", \"content\": \"Always quote prices in EUR.\"}, {\"role\": \"user\", \"content\": \"Plan a trip to Lisbon.\"}]",
+        "gen_ai.output.messages": "[{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": null, \"tool_calls\": [{\"id\": \"call_f1\", \"type\": \"function\", \"function\": {\"name\": \"search_flights\", \"arguments\": \"{\\\"destination\\\": \\\"LIS\\\"}\"}}], \"refusal\": null, \"annotations\": []}, \"finish_reason\": \"tool_calls\"}]",
+        "gen_ai.usage.input_tokens": 420,
+        "gen_ai.usage.output_tokens": 18
+      }
+    },
+    {
+      "trace_id": "8d0e6a51-3b2c-4d1e-9f7a-0b1c2d3e4f50",
+      "span_id": "00000000-0000-0000-0000-000000000012",
+      "parent_span_id": "00000000-0000-0000-0000-000000000010",
+      "name": "search_flights",
+      "span_type": "TOOL",
+      "start_time": "2026-10-28T09:00:01.250000Z",
+      "end_time": "2026-10-28T09:00:02.000000Z",
+      "attributes": {
+        "lmnr.span.input": "{\"destination\": \"LIS\"}",
+        "lmnr.span.output": "\"TP1234 \\u20ac180; FR8821 \\u20ac95\""
+      }
+    },
+    {
+      "trace_id": "8d0e6a51-3b2c-4d1e-9f7a-0b1c2d3e4f50",
+      "span_id": "00000000-0000-0000-0000-000000000013",
+      "parent_span_id": "00000000-0000-0000-0000-000000000010",
+      "name": "openai.chat",
+      "span_type": "LLM",
+      "start_time": "2026-10-28T09:00:02.050000Z",
+      "end_time": "2026-10-28T09:00:03.100000Z",
+      "attributes": {
+        "gen_ai.system": "openai",
+        "gen_ai.request.model": "gpt-5.5",
+        "gen_ai.response.model": "gpt-5.5-2026-08-01",
+        "gen_ai.request.base_url": "https://api.openai.com/v1/",
+        "gen_ai.request.reasoning_effort": "low",
+        "lmnr.association.properties.session_id": "trip-planner-session-7",
+        "gen_ai.input.messages": "[{\"role\": \"system\", \"content\": \"You are a travel agent.\\n\\nAlways quote prices in EUR.\\n\\nThe user is a premium member: mention lounge access.\"}, {\"role\": \"user\", \"content\": \"Plan a trip to Lisbon.\"}, {\"role\": \"assistant\", \"content\": null, \"tool_calls\": [{\"id\": \"call_f1\", \"type\": \"function\", \"function\": {\"name\": \"search_flights\", \"arguments\": \"{\\\"destination\\\": \\\"LIS\\\"}\"}}]}, {\"role\": \"tool\", \"tool_call_id\": \"call_f1\", \"content\": \"TP1234 \\u20ac180; FR8821 \\u20ac95\"}]",
+        "gen_ai.output.messages": "[{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"I found TP1234 (\\u20ac180, lounge access included) and FR8821 (\\u20ac95). Which one do you prefer?\", \"refusal\": null, \"annotations\": []}, \"finish_reason\": \"stop\"}]",
+        "gen_ai.usage.input_tokens": 470,
+        "gen_ai.usage.output_tokens": 26
+      }
+    },
+    {
+      "trace_id": "8d0e6a51-3b2c-4d1e-9f7a-0b1c2d3e4f50",
+      "span_id": "00000000-0000-0000-0000-000000000014",
+      "parent_span_id": "00000000-0000-0000-0000-000000000010",
+      "name": "openai.chat",
+      "span_type": "LLM",
+      "start_time": "2026-10-28T09:00:10.000000Z",
+      "end_time": "2026-10-28T09:00:11.000000Z",
+      "attributes": {
+        "gen_ai.system": "openai",
+        "gen_ai.request.model": "gpt-5.5",
+        "gen_ai.response.model": "gpt-5.5-2026-08-01",
+        "gen_ai.request.base_url": "https://api.openai.com/v1/",
+        "gen_ai.request.reasoning_effort": "low",
+        "lmnr.association.properties.session_id": "trip-planner-session-7",
+        "gen_ai.tool.definitions": "[{\"type\": \"function\", \"function\": {\"name\": \"search_hotels\", \"description\": \"Search hotels near a place.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"near\": {\"type\": \"string\"}}, \"required\": [\"near\"]}}}]",
+        "gen_ai.input.messages": "[{\"role\": \"system\", \"content\": \"You are a travel agent.\"}, {\"role\": \"developer\", \"content\": \"Always quote prices in EUR.\"}, {\"role\": \"user\", \"content\": \"Plan a trip to Lisbon.\"}, {\"role\": \"assistant\", \"content\": null, \"tool_calls\": [{\"id\": \"call_f1\", \"type\": \"function\", \"function\": {\"name\": \"search_flights\", \"arguments\": \"{\\\"destination\\\": \\\"LIS\\\"}\"}}]}, {\"role\": \"tool\", \"tool_call_id\": \"call_f1\", \"content\": \"TP1234 \\u20ac180; FR8821 \\u20ac95\"}, {\"role\": \"assistant\", \"content\": \"I found TP1234 (\\u20ac180, lounge access included) and FR8821 (\\u20ac95). Which one do you prefer?\"}, {\"role\": \"user\", \"content\": \"TP1234 please. Then find a hotel near Alfama.\"}]",
+        "gen_ai.output.messages": "[{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": null, \"tool_calls\": [{\"id\": \"call_h1\", \"type\": \"function\", \"function\": {\"name\": \"search_hotels\", \"arguments\": \"{\\\"near\\\": \\\"Alfama\\\"}\"}}, {\"id\": \"call_h2\", \"type\": \"function\", \"function\": {\"name\": \"search_hotels\", \"arguments\": \"{\\\"near\\\": \\\"Baixa\\\"\"}}], \"refusal\": null, \"annotations\": []}, \"finish_reason\": \"tool_calls\"}]",
+        "gen_ai.usage.input_tokens": 530,
+        "gen_ai.usage.output_tokens": 17
+      }
+    },
+    {
+      "trace_id": "8d0e6a51-3b2c-4d1e-9f7a-0b1c2d3e4f50",
+      "span_id": "00000000-0000-0000-0000-000000000015",
+      "parent_span_id": "00000000-0000-0000-0000-000000000010",
+      "name": "search_hotels",
+      "span_type": "TOOL",
+      "start_time": "2026-10-28T09:00:11.050000Z",
+      "end_time": "2026-10-28T09:00:11.800000Z",
+      "attributes": {
+        "lmnr.span.input": "{\"near\": \"Alfama\"}",
+        "lmnr.span.output": "\"Casa Alfama \\u20ac120/night; Memmo Alfama \\u20ac210/night\""
+      }
+    },
+    {
+      "trace_id": "8d0e6a51-3b2c-4d1e-9f7a-0b1c2d3e4f50",
+      "span_id": "00000000-0000-0000-0000-000000000016",
+      "parent_span_id": "00000000-0000-0000-0000-000000000010",
+      "name": "openai.chat",
+      "span_type": "LLM",
+      "start_time": "2026-10-28T09:00:12.000000Z",
+      "end_time": "2026-10-28T09:00:13.400000Z",
+      "attributes": {
+        "gen_ai.system": "openai",
+        "gen_ai.request.model": "gpt-5.5",
+        "gen_ai.response.model": "gpt-5.5-2026-08-01",
+        "gen_ai.request.base_url": "https://api.openai.com/v1/",
+        "gen_ai.request.reasoning_effort": "low",
+        "lmnr.association.properties.session_id": "trip-planner-session-7",
+        "gen_ai.tool.definitions": "[{\"type\": \"function\", \"function\": {\"name\": \"search_hotels\", \"description\": \"Search hotels near a place.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"near\": {\"type\": \"string\"}}, \"required\": [\"near\"]}}}]",
+        "gen_ai.input.messages": "[{\"role\": \"system\", \"content\": \"You are a travel agent.\"}, {\"role\": \"developer\", \"content\": \"Always quote prices in EUR.\"}, {\"role\": \"system\", \"content\": \"Earlier turns were compacted into a summary.\"}, {\"role\": \"user\", \"content\": \"Summary so far: flying TP1234 to Lisbon; hotels near Alfama are Casa Alfama (\\u20ac120/night) and Memmo Alfama (\\u20ac210/night).\"}]",
+        "gen_ai.output.messages": "[{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"I recommend Casa Alfama at \\u20ac120/night.\", \"refusal\": null, \"annotations\": []}, \"finish_reason\": \"stop\"}]",
+        "gen_ai.usage.input_tokens": 160,
+        "gen_ai.usage.output_tokens": 30
+      }
+    },
+    {
+      "trace_id": "8d0e6a51-3b2c-4d1e-9f7a-0b1c2d3e4f50",
+      "span_id": "00000000-0000-0000-0000-000000000017",
+      "parent_span_id": "00000000-0000-0000-0000-000000000010",
+      "name": "openai.chat",
+      "span_type": "LLM",
+      "start_time": "2026-10-28T09:00:15.000000Z",
+      "end_time": "2026-10-28T09:00:16.000000Z",
+      "attributes": {
+        "gen_ai.system": "openai",
+        "gen_ai.request.model": "gpt-5.5",
+        "gen_ai.response.model": "gpt-5.5-2026-08-01",
+        "gen_ai.request.base_url": "https://api.openai.com/v1/",
+        "gen_ai.request.reasoning_effort": "low",
+        "lmnr.association.properties.session_id": "trip-planner-session-7",
+        "gen_ai.tool.definitions": "[{\"type\": \"function\", \"function\": {\"name\": \"search_hotels\", \"description\": \"Search hotels near a place.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"near\": {\"type\": \"string\"}}, \"required\": [\"near\"]}}}]",
+        "gen_ai.input.messages": "[{\"role\": \"system\", \"content\": \"You are a travel agent.\"}, {\"role\": \"developer\", \"content\": \"Always quote prices in EUR.\"}, {\"role\": \"system\", \"content\": \"Earlier turns were compacted into a summary.\"}, {\"role\": \"user\", \"content\": \"Summary so far: flying TP1234 to Lisbon; hotels near Alfama are Casa Alfama (\\u20ac120/night) and Memmo Alfama (\\u20ac210/night).\"}, {\"role\": \"assistant\", \"content\": \"I recommend Casa Alfama at \\u20ac120/night.\"}, {\"role\": \"user\", \"content\": \"Any cheaper one?\"}]",
+        "gen_ai.output.messages": "[{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"Casa Alfama is the cheapest near Alfama.\", \"refusal\": null, \"annotations\": []}, \"finish_reason\": \"stop\"}]",
+        "gen_ai.usage.input_tokens": 190,
+        "gen_ai.usage.output_tokens": 12
+      }
+    }
+  ]
+}

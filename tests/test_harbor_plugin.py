@@ -13,7 +13,7 @@ import uuid
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -23,6 +23,7 @@ from opentelemetry.trace import SpanContext, StatusCode
 
 from lmnr import Laminar
 from lmnr.integrations.harbor import LaminarPlugin
+from lmnr.integrations.harbor.plugin import AGENT_TRAJECTORY_PATH, _request_agent_trajectories
 from lmnr.integrations.harbor.trajectory import (
     ORDER_GAP_NS,
     content_to_text,
@@ -65,6 +66,7 @@ class FakeJob:
                     name="terminus-2",
                     import_path=None,
                     model_name="anthropic/claude-sonnet-4-5",
+                    env={},
                 )
             ],
         )
@@ -1440,3 +1442,86 @@ async def test_initialize_does_not_take_over_global_tracer_provider(client, tmp_
     assert initialize.call_args.kwargs["set_global_tracer_provider"] is False
     assert initialize.call_args.kwargs["instruments"] == set()
     await plugin.on_job_end(SimpleNamespace())
+
+
+@pytest.mark.asyncio
+async def test_agent_trajectory_path_does_not_make_the_plugin_local_only(client, tmp_path: Path):
+    # LMNR_TRAJECTORY_PATH (env or .env) is for the agent; in the Harbor
+    # process it would stop the plugin's own spans from being exported.
+    plugin = LaminarPlugin(project_api_key="test_key")
+    with (
+        patch.object(Laminar, "is_initialized", return_value=False),
+        patch.object(Laminar, "initialize") as initialize,
+    ):
+        await plugin.on_job_start(FakeJob(tmp_path / "job"))
+    assert initialize.call_args.kwargs["write_trajectory"] is False
+    await plugin.on_job_end(SimpleNamespace())
+
+
+# -- agent trajectories (LMNR_TRAJECTORY_PATH) ------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_agents_are_asked_to_write_their_trajectory(client, tmp_path: Path):
+    job = FakeJob(tmp_path / "job")
+    plugin = LaminarPlugin(project_api_key="test_key")
+    await plugin.on_job_start(job)
+    assert job.config.agents[0].env == {"LMNR_TRAJECTORY_PATH": AGENT_TRAJECTORY_PATH}
+    await plugin.on_job_end(SimpleNamespace())
+
+
+@pytest.mark.asyncio
+async def test_agent_trajectory_path_set_by_the_user_wins(client, tmp_path: Path):
+    job = FakeJob(tmp_path / "job")
+    job.config.agents[0].env["LMNR_TRAJECTORY_PATH"] = "/logs/agent/mine.json"
+    plugin = LaminarPlugin(project_api_key="test_key")
+    await plugin.on_job_start(job)
+    assert job.config.agents[0].env["LMNR_TRAJECTORY_PATH"] == "/logs/agent/mine.json"
+    await plugin.on_job_end(SimpleNamespace())
+
+
+@pytest.mark.asyncio
+async def test_no_agent_trajectory_without_trajectory_spans(client, tmp_path: Path):
+    job = FakeJob(tmp_path / "job")
+    plugin = LaminarPlugin(project_api_key="test_key", trajectory_spans="false")
+    await plugin.on_job_start(job)
+    assert job.config.agents[0].env == {}
+    await plugin.on_job_end(SimpleNamespace())
+
+
+@pytest.mark.asyncio
+async def test_no_agent_trajectory_when_the_evaluation_fails_to_start(client, tmp_path: Path):
+    # A local-only agent whose trajectory nobody reads would lose its spans.
+    client.evals.init.side_effect = RuntimeError("down")
+    job = FakeJob(tmp_path / "job")
+    plugin = LaminarPlugin(project_api_key="test_key")
+    await plugin.on_job_start(job)
+    assert job.config.agents[0].env == {}
+
+
+def test_agent_trajectory_reaches_harbor_agents(tmp_path: Path):
+    """Against real Harbor: trial configs are built before `on_job_start` and
+    the agent copies its env when the trial is created, after it."""
+    pytest.importorskip("harbor")
+    import importlib
+    import logging
+
+    def harbor(module: str) -> Any:
+        return importlib.import_module(f"harbor.{module}")
+
+    AgentFactory = harbor("agents.factory").AgentFactory
+    JobPlan = harbor("job_plan").JobPlan
+    JobConfig = harbor("models.job.config").JobConfig
+    trial_config = harbor("models.trial.config")
+    EnvironmentPaths = harbor("models.trial.paths").EnvironmentPaths
+
+    assert AGENT_TRAJECTORY_PATH == str(EnvironmentPaths.agent_dir / "trajectory.json")
+    config = JobConfig(agents=[trial_config.AgentConfig(name="nop")])
+    trial_configs = JobPlan.build_trial_configs(
+        config, [trial_config.TaskConfig(path=tmp_path)], job_id=uuid.uuid4()
+    )
+    _request_agent_trajectories(cast(Any, SimpleNamespace(config=config)))
+    agent = AgentFactory.create_agent_from_config(
+        trial_configs[0].agent, logs_dir=tmp_path / "logs", logger=logging.getLogger(__name__)
+    )
+    assert agent.extra_env["LMNR_TRAJECTORY_PATH"] == AGENT_TRAJECTORY_PATH
