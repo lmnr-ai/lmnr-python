@@ -76,13 +76,15 @@ def test_force_reinit_shuts_down_old_processor_before_reinit_exporter():
     cast(LaminarSpanExporter, processor.exporter).init_instance = tracked_init
 
     # Patch the processor instance's shutdown to track when it's called
-    original_shutdown = processor.instance.shutdown
+    instance = processor.instance
+    assert instance is not None
+    original_shutdown = instance.shutdown
 
     def tracked_shutdown():
         operation_order.append("processor_shutdown")
         return original_shutdown()
 
-    processor.instance.shutdown = tracked_shutdown
+    instance.shutdown = tracked_shutdown
 
     # Call force_reinit
     _success = processor.force_reinit()

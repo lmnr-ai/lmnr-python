@@ -244,6 +244,7 @@ class Laminar:
         force_http: bool = False,
         metadata: dict[str, AttributeValue] | None = None,
         release: str | None = None,
+        write_trajectory: bool = True,
     ):
         """Initialize Laminar context across the application.
         This method must be called before using any other Laminar methods or
@@ -317,8 +318,21 @@ class Laminar:
                 environment variable, common deploy platform variables (Vercel,\
                 Render, Railway, Heroku, Cloud Run, ...), or the checked-out git\
                 commit. Defaults to None.
+            write_trajectory (bool, optional): Whether LMNR_TRAJECTORY_PATH\
+                (see below) applies to this process. Set to False in a process\
+                whose environment is meant for an agent it runs, so its own\
+                spans are still exported. Defaults to True.
+
+        Environment:
+            LMNR_TRAJECTORY_PATH: write the run as an lmnr-atif trajectory\
+                (Harbor's ATIF format with Laminar's extensions) to this file,\
+                and do NOT export spans to Laminar, so no API key is needed.\
+                The path may contain `{trace_id}` (one file per trace) and\
+                `{pid}`. Inline images go to an `images/` directory next to it.
+            LMNR_TRAJECTORY_FORCE_EXPORT: with LMNR_TRAJECTORY_PATH, also\
+                export spans to Laminar as usual.
         Raises:
-            ValueError: If project API key is not set
+            ValueError: If project API key is not set and spans are exported
         """
         if cls.is_initialized():
             cls.__logger.info("Laminar is already initialized. Skipping initialization.")
@@ -326,8 +340,14 @@ class Laminar:
 
         cls.__project_api_key = project_api_key or from_env("LMNR_PROJECT_API_KEY")
 
+        from lmnr.sdk.debug.config import is_truthy
+
+        trajectory_path = (from_env("LMNR_TRAJECTORY_PATH") or None) if write_trajectory else None
+        export = trajectory_path is None or is_truthy(from_env("LMNR_TRAJECTORY_FORCE_EXPORT"))
+
         if (
-            not cls.__project_api_key
+            export
+            and not cls.__project_api_key
             and not get_otel_env_var("ENDPOINT")
             and not get_otel_env_var("HEADERS")
         ):
@@ -338,6 +358,16 @@ class Laminar:
             )
 
         cls._initialize_logger()
+        if trajectory_path is not None:
+            cls.__logger.info(
+                f"Writing the trajectory to {trajectory_path}"
+                + (
+                    "; spans are also exported to Laminar."
+                    if export
+                    else "; spans are not exported to Laminar"
+                    + " (set LMNR_TRAJECTORY_FORCE_EXPORT=true to export them too)."
+                )
+            )
 
         url = base_url or from_env("LMNR_BASE_URL")
         if url:
@@ -395,8 +425,6 @@ class Laminar:
         # (the env-origin gate; a downstream context-armed run inherits the
         # upstream session but configures its own transport). Mirrors the
         # LMNR_DEBUG truthy gate used by _init_debug_runtime / the TS SDK.
-        from lmnr.sdk.debug.config import is_truthy
-
         disable_batch_resolved = disable_batch or is_truthy(os.environ.get("LMNR_DEBUG"))
 
         _tracer_wrapper = init_tracing(
@@ -418,6 +446,8 @@ class Laminar:
             session_recording_options=session_recording_options,
             force_http=force_http,
             release=release,
+            trajectory_path=trajectory_path,
+            export=export,
         )
 
         # A previous initialize()/shutdown() cycle leaves the Langfuse bridge
