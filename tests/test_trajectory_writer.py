@@ -442,10 +442,32 @@ def test_records_keep_only_what_the_builder_reads(harness: Harness):
         ({"gen_ai.tool.call.arguments": "{}"}, "TOOL"),
         ({"gen_ai.system": "openai"}, "LLM"),
         ({}, "DEFAULT"),
+        # An explicit type wins, and an unknown one is DEFAULT, not inferred.
+        ({"lmnr.span.type": "NOPE", "gen_ai.system": "openai"}, "DEFAULT"),
+        # OpenRouter Broadcast types its own non-generation spans.
+        (
+            {"span.type": "span", "trace.metadata.openrouter.x": "1", "gen_ai.system": "x"},
+            "DEFAULT",
+        ),
+        (
+            {"span.type": "generation", "trace.metadata.openrouter.x": "1", "gen_ai.system": "x"},
+            "LLM",
+        ),
+        ({"span.type": "span", "gen_ai.system": "x"}, "LLM"),
+        # `is_ai_sdk_tool_call_span`.
+        ({"ai.toolCall.id": "c1"}, "TOOL"),
+        ({"ai.toolCall.name": "lookup", "lmnr.span.type": "DEFAULT"}, "TOOL"),
+        # A debug-replay hit is still an LLM call (`is_llm_span`).
+        ({"lmnr.span.type": "CACHED", "lmnr.span.original_type": "LLM"}, "LLM"),
+        ({"lmnr.span.type": "CACHED"}, "CACHED"),
     ],
 )
 def test_span_type_matches_app_server_inference(attributes: dict[str, Any], expected: str):
     assert span_type(attributes) == expected
+
+
+def test_an_ai_sdk_tool_call_span_is_a_tool_by_name():
+    assert span_type({}, "ai.toolCall") == "TOOL"
 
 
 # -- Laminar.initialize ---------------------------------------------------------

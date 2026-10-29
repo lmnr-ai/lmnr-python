@@ -1039,3 +1039,33 @@ def test_unmatched_and_implicit_subagent_tool_spans_use_the_tool_name():
     names = [s["tool_calls"][0]["function_name"] for s in trajectory["steps"][2:]]
     assert names == ["search", "research"]
     assert trajectory["subagent_trajectories"][0]["agent"]["name"] == "research"
+
+
+def test_a_failed_call_without_output_does_not_leak_into_the_next_input():
+    """A call with no output (it failed) is still an agent step, and a reader
+    adds its empty assistant message to the next call's input (§6.4). A retry
+    with the same input therefore needs an `input_messages` override."""
+    ask = {"role": "user", "content": "What's the weather in Paris?"}
+    system = {"role": "system", "content": "Use the tools."}
+    error = {"type": "NotFoundError", "message": "404 no such model"}
+    failed = _llm(2, 0, 1, [ask], None)
+    failed.attributes.pop("gen_ai.output.messages")
+    failed.error = error
+    records = [
+        _record(1, None, "agent", "DEFAULT", 0, 5),
+        failed,
+        _llm(3, 2, 3, [system, ask], [{"role": "assistant", "content": "Sunny"}]),
+        _llm(4, 3, 4, [ask], [{"role": "assistant", "content": "Sunny again"}]),
+    ]
+    trajectory = build_trajectory(records)
+    assert trajectory is not None
+    steps = trajectory["steps"]
+    ext = TrajectoryExtension.read(trajectory)
+    assert [s["source"] for s in steps] == ["user", "agent", "agent", "agent"]
+    assert steps[1]["extra"]["lmnr"]["error"] == error
+    for index, record in zip((1, 2, 3), records[1:], strict=True):
+        actual, _output, _reason = normalize_call(
+            json.loads(record.attributes["gen_ai.input.messages"]), None
+        )
+        rebuilt = reader.input_messages(steps, index, ext)
+        assert _comparable(rebuilt) == _comparable(actual), index

@@ -478,7 +478,11 @@ class _Builder:
             if canonical_json(call.tools) != canonical_json(default_tools):
                 overrides[k]["tool_definitions"] = call.tools
 
-            base = conversation + ([call.output] if call.output is not None else [])
+            # A call without output (a failed one) is still a step, and a reader
+            # adds its empty assistant message to the next input (§6.4).
+            base = conversation + [
+                call.output if call.output is not None else {"role": "assistant", "content": ""}
+            ]
             prev_call_ids = [
                 str(c.get("tool_call_id")) for c in dicts((call.output or {}).get("tool_calls"))
             ]
