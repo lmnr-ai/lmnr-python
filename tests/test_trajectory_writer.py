@@ -641,3 +641,23 @@ def _comparable(messages: list[dict[str, Any]]) -> list[Any]:
         ]
         for m in messages
     ]
+
+
+def test_records_keep_the_ai_sdk_tool_call_attributes(harness: Harness):
+    with (
+        harness.span("agent"),
+        harness.span(
+            "ai.tool lookup",
+            **{
+                "lmnr.span.type": "TOOL",
+                "ai.toolCall.id": "c1",
+                "ai.toolCall.name": "lookup",
+                "ai.toolCall.args": "{}",
+            },
+        ),
+    ):
+        pass
+    tool = next(r for r in harness.collector._records.values() if r.span_type == "TOOL")
+    assert tool.attributes["ai.toolCall.id"] == "c1"
+    assert tool.attributes["ai.toolCall.name"] == "lookup"
+    assert "ai.toolCall.args" not in tool.attributes

@@ -38,6 +38,9 @@ _RELEASE = "lmnr.span.release"
 # Legacy indexed prompt attributes: only the system prompt is read (the OpenAI
 # Responses API records `instructions` nowhere else).
 _LEGACY_SYSTEM = ("gen_ai.prompt.0.role", "gen_ai.prompt.0.content")
+# The AI SDK's TOOL span attributes the builder matches tool calls by (the
+# TypeScript SDK records them; kept here so both collectors stay alike).
+_AI_SDK_TOOL_CALL = ("ai.toolCall.id", "ai.toolCall.name")
 
 
 def span_type(attributes: Mapping[str, Any]) -> str:
@@ -73,7 +76,7 @@ def _keep(key: str, attributes: Mapping[str, Any], kind: str) -> bool:
         return not (kind == "LLM" and "gen_ai.input.messages" in attributes)
     if key == SPAN_OUTPUT:
         return not (kind == "LLM" and "gen_ai.output.messages" in attributes)
-    return key in (_SESSION_ID, _RELEASE, SPAN_TYPE)
+    return key in (_SESSION_ID, _RELEASE, SPAN_TYPE, *_AI_SDK_TOOL_CALL)
 
 
 def _value(value: Any) -> Any:

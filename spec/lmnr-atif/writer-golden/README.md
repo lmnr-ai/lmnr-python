@@ -33,7 +33,10 @@ One finished span, with only what the writer needs:
 
 Attribute values are what the instrumentation set on the span: messages, tool
 definitions and span input/output are JSON strings. The cases mirror what the
-Python SDK's instrumentations record for each provider.
+Python SDK's instrumentations record for each provider, except
+`aisdk-v7-agent` and `otel-semconv-parts`, which are recorded from the
+TypeScript SDK (ids, times and release rewritten for readability, attributes
+cut down to the ones a collector keeps).
 
 ## Cases
 
@@ -45,6 +48,8 @@ Python SDK's instrumentations record for each provider.
 | `errors-dispatch-multitrace` | Failed LLM and tool calls, `is_error` tool results, injected text in a user message, a tool span no LLM call issued, two traces in one file |
 | `subagents` | Agent markers, nested LLM spans, same-name markers, implicit subagents, a subagent no tool spawned |
 | `root-agent-collapse` | A lone top-level agent is the root agent |
+| `aisdk-v7-agent` | Vercel AI SDK v7 (TypeScript): `tool-call` / `tool-result` parts, `json` and `error-text` tool outputs, reasoning, TOOL spans matched by `ai.toolCall.id`, a tool spawning a nested agent, a failed tool and a failed LLM call |
+| `otel-semconv-parts` | OpenTelemetry GenAI semantic-convention `parts` (LangChain.js's own LLM spans), `execute_tool <name>` TOOL spans named by `gen_ai.tool.name`, a failed tool and a failed LLM call |
 
 ## Updating
 
