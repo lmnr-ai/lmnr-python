@@ -542,6 +542,8 @@ class _Builder:
             span = self.by_id[child]
             step = self._synthetic_agent_step(span, sub_trajectories[child])
             totals.tool_calls += 1
+            if span.record.error:
+                totals.errors += 1
             entries.append((span.start, after_calls, 2, 0, step))
 
         entries.sort(key=lambda e: e[:4])

@@ -238,6 +238,33 @@ def test_default_producer_is_this_sdk():
     }
 
 
+def test_failed_agent_no_tool_spawned_counts_as_an_error():
+    hi = [{"role": "user", "content": "hi"}]
+    yo = [{"role": "assistant", "content": "yo"}]
+    helper_call = _llm(4, 2, 3, hi, yo)
+    trajectory = build_trajectory(
+        [
+            _record(1, None, "root", "DEFAULT", 0, 5),
+            _llm(2, 0, 1, hi, yo),
+            _record(
+                3,
+                1,
+                "helper",
+                "DEFAULT",
+                2,
+                4,
+                {"gen_ai.agent.name": "helper"},
+                {"type": "RuntimeError", "message": "boom"},
+            ),
+            _record(4, 3, helper_call.name, "LLM", 2, 3, helper_call.attributes),
+        ]
+    )
+    assert trajectory is not None
+    (result,) = trajectory["steps"][-1]["observation"]["results"]
+    assert result["extra"]["lmnr"]["status"] == "error"
+    assert trajectory["final_metrics"]["extra"]["lmnr"]["errors"] == 1
+
+
 def test_concurrent_calls_keep_their_own_inputs():
     """Two calls of one agent started at the same time: each step is followed by
     its own new messages' call, and the second gets the exact input it had."""
