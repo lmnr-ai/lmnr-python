@@ -7,15 +7,10 @@ from collections.abc import Sequence
 from opentelemetry import trace
 from opentelemetry._logs import set_logger_provider
 from opentelemetry.sdk._logs import LoggerProvider
-from opentelemetry.sdk._logs.export import (
-    BatchLogRecordProcessor,
-    LogRecordExporter,
-    LogRecordExportResult,
-)
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SpanExporter
-from typing_extensions import override
 
 from lmnr.opentelemetry_lib.tracing.context import setup_thread_context_inheritance
 from lmnr.opentelemetry_lib.tracing.exporter import LaminarLogExporter
@@ -63,18 +58,6 @@ __all__ = [
 ]
 
 LOG = get_default_logger(__name__)
-
-
-class _DiscardingLogExporter(LogRecordExporter):
-    """Local-only mode: nothing leaves the process."""
-
-    @override
-    def export(self, batch: object) -> LogRecordExportResult:
-        return LogRecordExportResult.SUCCESS
-
-    @override
-    def shutdown(self) -> None:
-        pass
 
 
 # Serializes `init_tracing`. The singleton itself lives in `tracing/wrapper.py`.
@@ -186,26 +169,29 @@ def init_tracing(
         tracer_provider = _tracer_provider
         tracer_provider.add_span_processor(span_processor)
 
-        # Setup LoggerProvider for OTel logs
-        log_exporter = (
-            LaminarLogExporter(
-                base_url=base_url,
-                port=http_port if force_http else port,
-                api_key=project_api_key,
-                timeout_seconds=timeout,
-                force_http=force_http,
+        # Setup LoggerProvider for OTel logs. In local-only mode the provider
+        # gets no processor, so logs go nowhere.
+        log_processor = (
+            BatchLogRecordProcessor(
+                LaminarLogExporter(
+                    base_url=base_url,
+                    port=http_port if force_http else port,
+                    api_key=project_api_key,
+                    timeout_seconds=timeout,
+                    force_http=force_http,
+                )
             )
             if export
-            else _DiscardingLogExporter()
+            else None
         )
-        log_processor = BatchLogRecordProcessor(log_exporter)
         if _logger_provider is None:
             _logger_provider = LoggerProvider(resource=resource)
             # Set global logger provider (follows same flag as tracer provider)
             if set_global_tracer_provider:
                 set_logger_provider(_logger_provider)
         logger_provider = _logger_provider
-        logger_provider.add_log_record_processor(log_processor)
+        if log_processor is not None:
+            logger_provider.add_log_record_processor(log_processor)
 
         wrapper = TracerWrapper(
             resource=resource,

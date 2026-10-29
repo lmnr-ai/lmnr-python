@@ -75,14 +75,15 @@ class TracerWrapper:
         span_processor: SpanProcessor,
         tracer_provider: TracerProvider,
         logger_provider: LoggerProvider,
-        log_processor: BatchLogRecordProcessor,
+        log_processor: BatchLogRecordProcessor | None,
         async_client: AsyncLaminarClient | None,
     ) -> None:
         self.resource: Resource = resource
         self.span_processor: SpanProcessor = span_processor
         self.tracer_provider: TracerProvider = tracer_provider
         self.logger_provider: LoggerProvider = logger_provider
-        self.log_processor: BatchLogRecordProcessor = log_processor
+        # None in local-only mode (`LMNR_TRAJECTORY_PATH`): logs aren't exported.
+        self.log_processor: BatchLogRecordProcessor | None = log_processor
         self.async_client: AsyncLaminarClient | None = async_client
 
     def get_tracer(self) -> trace.Tracer:
@@ -90,7 +91,7 @@ class TracerWrapper:
 
     def flush(self) -> bool:
         span_result = self.span_processor.force_flush()
-        log_result = self.log_processor.force_flush()
+        log_result = self.log_processor.force_flush() if self.log_processor else True
         return span_result and log_result
 
     def shutdown(self) -> None:
@@ -106,9 +107,10 @@ class TracerWrapper:
         provider for the rest of the process.
         """
         _detach_span_processor(self.tracer_provider, self.span_processor)
-        _detach_log_processor(self.logger_provider, self.log_processor)
         self.span_processor.shutdown()
-        self.log_processor.shutdown()
+        if self.log_processor is not None:
+            _detach_log_processor(self.logger_provider, self.log_processor)
+            self.log_processor.shutdown()
 
     def force_reinit_processor(self) -> bool:
         if not isinstance(self.span_processor, LaminarSpanProcessor):
@@ -116,7 +118,7 @@ class TracerWrapper:
             return False
         spans_flush = self.span_processor.force_flush()
         spans_reinit = self.span_processor.force_reinit()
-        logs_flush = self.log_processor.force_flush()
+        logs_flush = self.log_processor.force_flush() if self.log_processor else True
         # Clear the isolated context to prevent subsequent invocations
         # (e.g., in Lambda) from continuing traces from previous invocations
         clear_context()
