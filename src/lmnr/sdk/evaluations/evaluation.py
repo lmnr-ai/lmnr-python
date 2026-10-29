@@ -195,7 +195,7 @@ class Evaluation:
                 to disable auto-instrumentations. If None, only modules passed\
                 as `instruments` will be disabled.
                 Defaults to None.
-            trials (int, optional): How many times to run each datapoint (Task).\
+            trials (int, optional): How many times to run each Task; each run is a Trial.\
                 Each run (Trial) gets its own trace and result row; Trials of\
                 one Task share its task id.
                 Defaults to 1.
@@ -366,7 +366,7 @@ class Evaluation:
         # not retained for the whole run. This is a memory measure only: a
         # failed save is latched on `self._upload_error` and re-raised by
         # `_run` *after* it has drained the remaining upload tasks. Folding it
-        # into the datapoint loop's `first_error` instead would abort
+        # into the Trial loop's `first_error` instead would abort
         # `_evaluate_in_batches` before that drain, so every still-pending save
         # would be abandoned when `_shutdown` closes the client.
         for task in self.upload_tasks:
@@ -379,7 +379,7 @@ class Evaluation:
     async def _evaluate_in_batches(self, eval_id: uuid.UUID) -> dict[str, Numeric]:
         semaphore = asyncio.Semaphore(self.concurrency_limit)
         tasks: list[Task[None]] = []
-        # Aggregate scores incrementally so result datapoints (with their full
+        # Aggregate scores incrementally so Trial results (with their full
         # data/target/output payloads) are not retained for the whole run.
         score_sums: dict[str, Numeric] = {}
         score_counts: dict[str, int] = {}
@@ -391,9 +391,9 @@ class Evaluation:
                 score_sums[key] = score_sums.get(key, 0) + value
                 score_counts[key] = score_counts.get(key, 0) + 1
 
-        async def evaluate_task(datapoint: Datapoint, index: int, task_id: str) -> None:
+        async def run_trial(datapoint: Datapoint, index: int, task_id: str) -> None:
             try:
-                result = await self._evaluate_datapoint(eval_id, datapoint, index, task_id)
+                result = await self._evaluate_trial(eval_id, datapoint, index, task_id)
                 accumulate_scores(result)
                 self.reporter.update(1)
             finally:
@@ -403,13 +403,13 @@ class Evaluation:
         # drops each page once consumed, so a huge dataset is never fully
         # resident. Pulling the next page is a blocking call on the sync
         # client, so the iterator is advanced in a thread pool to keep
-        # in-flight datapoint tasks running while we wait.
+        # in-flight Trials running while we wait.
         loop = asyncio.get_event_loop()
         data = self.data
         data_iter = enumerate(iter(data))
         task_ids = _TaskIdResolver(self._logger)
 
-        def next_datapoint() -> tuple[int, Datapoint, str] | None:
+        def next_task() -> tuple[int, Datapoint, str] | None:
             item = next(data_iter, None)
             if item is None:
                 return None
@@ -420,8 +420,8 @@ class Evaluation:
         first_error: BaseException | None = None
 
         def prune_finished(task_list: list[Task[None]]) -> list[Task[None]]:
-            # Drop references to completed datapoint tasks as we go. A failed
-            # task's exception is recorded, NOT raised here: every datapoint
+            # Drop references to completed Trial tasks as we go. A failed
+            # task's exception is recorded, NOT raised here: every Trial
             # must still be scheduled and run (matching the previous behavior,
             # where all tasks were created before `gather` surfaced errors).
             nonlocal first_error
@@ -435,11 +435,11 @@ class Evaluation:
         # Create tasks only after acquiring the semaphore, so at most
         # `concurrency_limit` Trials are in flight (and referenced) at once.
         # Trials of one Task are scheduled back to back.
-        while (item := await loop.run_in_executor(None, next_datapoint)) is not None:
+        while (item := await loop.run_in_executor(None, next_task)) is not None:
             idx, datapoint, task_id = item
             for _ in range(self.trials):
                 _success = await semaphore.acquire()
-                task = asyncio.create_task(evaluate_task(datapoint, idx, task_id))
+                task = asyncio.create_task(run_trial(datapoint, idx, task_id))
                 tasks.append(task)
                 tasks = prune_finished(tasks)
                 self._prune_upload_tasks()
@@ -473,7 +473,7 @@ class Evaluation:
             created_at=datapoint.created_at,
         )
 
-    async def _evaluate_datapoint(
+    async def _evaluate_trial(
         self, eval_id: uuid.UUID, datapoint: Datapoint, index: int, task_id: str
     ) -> EvaluationResultDatapoint:
         evaluation_id = uuid.uuid4()
@@ -495,7 +495,7 @@ class Evaluation:
                     executor_span_id = uuid.UUID(int=executor_span.get_span_context().span_id)
                     trace_id = uuid.UUID(int=executor_span.get_span_context().trace_id)
 
-                    partial_datapoint = PartialEvaluationDatapoint(
+                    partial_trial = PartialEvaluationDatapoint(
                         id=evaluation_id,
                         data=datapoint.data,
                         target=datapoint.target,
@@ -506,9 +506,9 @@ class Evaluation:
                         metadata=datapoint.metadata,
                         dataset_link=self._dataset_link(datapoint),
                     )
-                    # First, create datapoint with trace_id so that we can show the dp in the UI
+                    # First, create the Trial with trace_id so that the UI can show it while it runs
                     await self.client.evals.save_datapoints(
-                        eval_id, [partial_datapoint], self.group_name
+                        eval_id, [partial_trial], self.group_name
                     )
                     executor_span.set_attribute(SPAN_TYPE, SpanType.EXECUTOR.value)
                     # Run synchronous executors in a thread pool to avoid blocking
@@ -556,7 +556,7 @@ class Evaluation:
             except Exception:
                 self._logger.debug("Failed to detach evaluation trace context", exc_info=True)
 
-        eval_datapoint = EvaluationResultDatapoint(
+        trial_result = EvaluationResultDatapoint(
             id=evaluation_id,
             data=datapoint.data,
             target=target,
@@ -572,8 +572,8 @@ class Evaluation:
 
         # Create background upload task without awaiting it
         upload_task = asyncio.create_task(
-            self.client.evals.save_datapoints(eval_id, [eval_datapoint], self.group_name)
+            self.client.evals.save_datapoints(eval_id, [trial_result], self.group_name)
         )
         self.upload_tasks.append(upload_task)
 
-        return eval_datapoint
+        return trial_result

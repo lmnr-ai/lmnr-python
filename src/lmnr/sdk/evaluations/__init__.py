@@ -101,7 +101,7 @@ def evaluate(
                         Defaults to None.
         trace_export_timeout_seconds (int | None, optional): The timeout for\
                         trace export on OpenTelemetry exporter. Defaults to None.
-        trials (int, optional): How many times to run each datapoint (Task).\
+        trials (int, optional): How many times to run each Task; each run is a Trial.\
                         Each run (Trial) gets its own trace and result row;\
                         Trials of one Task share its task id. Defaults to 1.
     """

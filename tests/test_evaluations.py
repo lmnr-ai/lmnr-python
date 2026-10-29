@@ -446,7 +446,7 @@ async def test_evaluate_streams_laminar_dataset_in_pages(
 @patch("lmnr.sdk.client.synchronous.resources.datasets.Datasets.pull")
 @patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints")
 @patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init")
-async def test_evaluate_runs_datapoints_concurrently(
+async def test_evaluate_runs_trials_concurrently(
     mock_init: MagicMock,
     mock_datapoints: MagicMock,
     mock_dataset_pull: MagicMock,
@@ -455,7 +455,7 @@ async def test_evaluate_runs_datapoints_concurrently(
     mock_dataset_pull_response: MagicMock,
     span_exporter: InMemorySpanExporter,
 ):
-    """The semaphore sliding window keeps up to `concurrency_limit` datapoints
+    """The semaphore sliding window keeps up to `concurrency_limit` Trials
     in flight at once."""
     mock_init.return_value = mock_eval_response
     mock_datapoints.return_value = mock_datapoints_response
@@ -494,7 +494,7 @@ async def test_evaluate_runs_datapoints_concurrently(
 @patch("lmnr.sdk.client.synchronous.resources.datasets.Datasets.pull")
 @patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints")
 @patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init")
-async def test_evaluate_datapoint_failure_does_not_abort_remaining(
+async def test_evaluate_trial_failure_does_not_abort_remaining(
     mock_init: MagicMock,
     mock_datapoints: MagicMock,
     mock_dataset_pull: MagicMock,
@@ -503,7 +503,7 @@ async def test_evaluate_datapoint_failure_does_not_abort_remaining(
     mock_dataset_pull_response: MagicMock,
     span_exporter: InMemorySpanExporter,
 ):
-    """A failing datapoint must not stop the remaining datapoints from being
+    """A failing Trial must not stop the remaining Trials from being
     scheduled and run; its error still propagates once all have finished."""
     mock_init.return_value = mock_eval_response
     mock_datapoints.return_value = mock_datapoints_response
@@ -532,8 +532,8 @@ async def test_evaluate_datapoint_failure_does_not_abort_remaining(
         )
     _flush_success = Laminar.flush()
 
-    # With concurrency_limit=1 the failure on the first datapoint completes
-    # before the second is scheduled — every datapoint must still run.
+    # With concurrency_limit=1 the failure on the first Trial completes
+    # before the second is scheduled — every Trial must still run.
     assert executed == [f"test-{i}" for i in range(6)]
 
 
@@ -550,7 +550,7 @@ async def test_evaluate_upload_failure_does_not_skip_remaining_saves(
     mock_dataset_pull_response: MagicMock,
 ):
     """One failing background upload must not abandon the result saves of the
-    datapoints after it; the upload error still propagates once they finish."""
+    Trials after it; the upload error still propagates once they finish."""
     mock_init.return_value = mock_eval_response
     mock_dataset_pull.return_value = mock_dataset_pull_response
 
@@ -564,12 +564,12 @@ async def test_evaluate_upload_failure_does_not_skip_remaining_saves(
     ) -> MagicMock:
         datapoint = datapoints[0]
         if not isinstance(datapoint, EvaluationResultDatapoint):
-            # The partial save that makes the datapoint visible in the UI.
+            # The partial save that makes the Trial visible in the UI.
             return mock_datapoints_response
         started.append(datapoint.index)
         if datapoint.index == 0:
             raise ValueError("upload boom")
-        # Keep the save in flight past the end of the datapoint loop, so a
+        # Keep the save in flight past the end of the Trial loop, so a
         # result that is only persisted because the run waits for it is
         # distinguishable from one that happened to land early.
         await asyncio.sleep(0.1)
