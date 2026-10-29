@@ -18,7 +18,8 @@ import threading
 import time
 import uuid
 import weakref
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
+from dataclasses import dataclass
 from typing import Any, cast
 
 from opentelemetry.sdk.trace import ReadableSpan, Span
@@ -120,6 +121,13 @@ def span_record(span: ReadableSpan, end_time_ns: int | None = None) -> SpanRecor
     )
 
 
+@dataclass
+class _EndingRun:
+    records: dict[str, SpanRecord]
+    # Ids of its spans that are still open.
+    open: set[int]
+
+
 class TrajectoryCollector:
     """Turns the spans of this process into lmnr-atif trajectory files.
 
@@ -156,6 +164,9 @@ class TrajectoryCollector:
         # Spans still open when a run ended: they belong to that run, so
         # they are dropped when they end instead of joining the next one.
         self._retired: set[int] = set()
+        # The last ended run, kept until its open spans end, so its file can
+        # be rewritten complete.
+        self._ending: _EndingRun | None = None
         self._dirty: bool = False
         self._wake: threading.Event = threading.Event()
         self._stopped: bool = False
@@ -173,37 +184,67 @@ class TrajectoryCollector:
         comes after (`Laminar.force_flush` between Lambda invocations). Write
         the file first: this run's spans are gone afterwards. A span still open
         here (an `@observe` handler that calls `force_flush` before returning)
-        is not recorded when it ends."""
+        stays out of the next run. When the last of them ends, the ended run's
+        file is rewritten complete, unless the next run has recorded spans by
+        then (the file is the next run's now)."""
         with self._lock:
             self._retired.update(self._open)
+            self._ending = _EndingRun(self._records, set(self._open)) if self._open else None
             self._records = {}
             self._open = {}
             self._dirty = False
 
     def forget(self, span: ReadableSpan) -> None:
         """Stop tracking a span that won't be recorded."""
-        if span.context is not None:
-            with self._lock:
-                _ = self._open.pop(span.context.span_id, None)
-                self._retired.discard(span.context.span_id)
+        if span.context is None:
+            return
+        span_id = span.context.span_id
+        ended: list[SpanRecord] | None = None
+        with self._lock:
+            _ = self._open.pop(span_id, None)
+            if span_id in self._retired:
+                self._retired.discard(span_id)
+                ended = self._end_retired(span_id, None)
+        if ended is not None:
+            with self._write_lock:
+                _ = self._write(ended, (), retry=False)
 
     def on_end(self, span: ReadableSpan) -> None:
         record = span_record(span)
+        ended: list[SpanRecord] | None = None
         with self._lock:
-            if span.context is not None:
-                _ = self._open.pop(span.context.span_id, None)
-                if span.context.span_id in self._retired:
-                    self._retired.discard(span.context.span_id)
-                    return
-            if record is None:
-                return
-            self._records[record.span_id] = record
-            self._dirty = True
-            if self._thread is None and not self._stopped and self.snapshot_interval > 0:
-                self._thread = threading.Thread(
-                    target=self._snapshots, name="LmnrTrajectorySnapshot", daemon=True
-                )
-                self._thread.start()
+            span_id = span.context.span_id if span.context is not None else None
+            if span_id is not None:
+                _ = self._open.pop(span_id, None)
+            if span_id is not None and span_id in self._retired:
+                self._retired.discard(span_id)
+                ended = self._end_retired(span_id, record)
+            elif record is not None:
+                self._records[record.span_id] = record
+                self._dirty = True
+                if self._thread is None and not self._stopped and self.snapshot_interval > 0:
+                    self._thread = threading.Thread(
+                        target=self._snapshots, name="LmnrTrajectorySnapshot", daemon=True
+                    )
+                    self._thread.start()
+        # `write` takes `_write_lock` before `_lock`, never the other way round.
+        if ended is not None:
+            with self._write_lock:
+                _ = self._write(ended, (), retry=False)
+
+    def _end_retired(self, span_id: int, record: SpanRecord | None) -> list[SpanRecord] | None:
+        """Record a span of the ended run. Returns that run's records once its
+        last open span has ended and its file is still its own. Holds `_lock`."""
+        ending = self._ending
+        if ending is None or span_id not in ending.open:
+            return None
+        ending.open.discard(span_id)
+        if record is not None:
+            ending.records[record.span_id] = record
+        if ending.open:
+            return None
+        self._ending = None
+        return None if self._records else list(ending.records.values())
 
     def _snapshots(self) -> None:
         while not self._wake.wait(self.snapshot_interval):
@@ -232,21 +273,28 @@ class TrajectoryCollector:
                 for span in open_spans
                 if span.context is not None
             }
-            options = BuildOptions(release=self.release, exported=self.exported)
-            try:
-                _ = write_trajectories(records, self.path, options, open_trace_ids)
-            except Exception as e:
+            return self._write(records, open_trace_ids, retry=True)
+
+    def _write(
+        self, records: list[SpanRecord], open_trace_ids: Collection[str], retry: bool
+    ) -> bool:
+        """Write `records`. Never raises. Holds `_write_lock`."""
+        options = BuildOptions(release=self.release, exported=self.exported)
+        try:
+            _ = write_trajectories(records, self.path, options, open_trace_ids)
+        except Exception as e:
+            if retry:
                 # Retry at the next snapshot even if no other span ends: the
                 # last snapshot is what a killed agent leaves behind.
                 with self._lock:
                     self._dirty = True
-                if not self._warned:
-                    self._warned = True
-                    LOG.warning(f"Could not write the trajectory to {self.path}: {e}")
-                else:
-                    LOG.debug("Could not write the trajectory", exc_info=True)
-                return False
-            return True
+            if not self._warned:
+                self._warned = True
+                LOG.warning(f"Could not write the trajectory to {self.path}: {e}")
+            else:
+                LOG.debug("Could not write the trajectory", exc_info=True)
+            return False
+        return True
 
     def shutdown(self) -> None:
         with self._lock:

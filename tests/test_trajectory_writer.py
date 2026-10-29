@@ -17,6 +17,7 @@ from unittest.mock import patch
 import jsonschema
 import pytest
 from openai import OpenAI
+from opentelemetry import context as otel_context
 from opentelemetry import trace
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
@@ -311,6 +312,35 @@ def test_a_span_open_at_force_reinit_stays_out_of_the_next_run(harness: Harness)
     assert trajectory["agent"]["name"] == "second"
     assert len(trajectory["extra"]["lmnr"]["trace_ids"]) == 1
     assert trajectory["extra"]["lmnr"]["complete"] is True
+
+
+def test_a_run_ended_by_force_reinit_is_rewritten_complete_when_its_handler_returns(
+    harness: Harness,
+):
+    with harness.span("handler"):
+        tool_loop(harness, root="agent")
+        _ = harness.processor.force_flush()
+        assert harness.read()["extra"]["lmnr"]["complete"] is False
+        assert harness.processor.force_reinit()
+    trajectory = harness.read()
+    assert trajectory["agent"]["name"] == "handler"
+    assert trajectory["extra"]["lmnr"]["complete"] is True
+    assert_valid(trajectory)
+
+
+def test_a_run_ended_by_force_reinit_does_not_overwrite_the_next_one(harness: Harness):
+    with harness.span("handler"):
+        tool_loop(harness, root="agent")
+        _ = harness.processor.force_flush()
+        assert harness.processor.force_reinit()
+        # The next run starts (in a fresh context) before the handler returns.
+        token = otel_context.attach(otel_context.Context())
+        try:
+            tool_loop(harness, root="second")
+            _ = harness.processor.force_flush()
+        finally:
+            otel_context.detach(token)
+    assert harness.read()["agent"]["name"] == "second"
 
 
 def test_without_a_placeholder_every_trace_goes_into_one_file(harness: Harness):
