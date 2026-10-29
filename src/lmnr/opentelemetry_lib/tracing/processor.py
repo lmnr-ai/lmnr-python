@@ -306,6 +306,12 @@ class LaminarSpanProcessor(SpanProcessor):
             return self.instance.force_flush(timeout_millis) and written
 
     def force_reinit(self) -> bool:
+        if self.trajectory is not None:
+            # The protocol starts a new run (`force_reinit_processor` has just
+            # flushed, which wrote this run's file), so the next file must not
+            # carry this run's spans. Not in `clear()`: the atexit handler
+            # clears right before its final flush.
+            self.trajectory.new_run()
         if self.instance is None:
             # Nothing to reconnect; just the clean-state part of the protocol.
             self.clear()

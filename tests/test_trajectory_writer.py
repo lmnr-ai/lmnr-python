@@ -282,6 +282,22 @@ def test_a_finished_trace_stays_complete_while_another_runs(tmp_path: Path):
     h.provider.shutdown()
 
 
+def test_force_reinit_starts_a_new_run(harness: Harness):
+    # `Laminar.force_flush` between Lambda invocations: flush, then reinit.
+    tool_loop(harness, root="first")
+    stale = harness.tracer.start_span("never-ended")
+    _ = harness.processor.force_flush()
+    assert harness.read()["agent"]["name"] == "first"
+    assert harness.processor.force_reinit()
+    tool_loop(harness, root="second")
+    _ = harness.processor.force_flush()
+    lmnr = harness.read()["extra"]["lmnr"]
+    assert harness.read()["agent"]["name"] == "second"
+    assert len(lmnr["trace_ids"]) == 1
+    assert lmnr["complete"] is True
+    stale.end()
+
+
 def test_without_a_placeholder_every_trace_goes_into_one_file(harness: Harness):
     tool_loop(harness, root="first")
     tool_loop(harness, root="second")

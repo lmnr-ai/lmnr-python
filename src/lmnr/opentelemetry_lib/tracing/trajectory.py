@@ -165,6 +165,15 @@ class TrajectoryCollector:
         with self._lock:
             self._open[span.context.span_id] = span
 
+    def new_run(self) -> None:
+        """Drop every span, finished or open, so the next file holds only what
+        comes after (`Laminar.force_flush` between Lambda invocations). Write
+        the file first: this run's spans are gone afterwards."""
+        with self._lock:
+            self._records = {}
+            self._open = {}
+            self._dirty = False
+
     def forget(self, span: ReadableSpan) -> None:
         """Stop tracking a span that won't be recorded."""
         if span.context is not None:
