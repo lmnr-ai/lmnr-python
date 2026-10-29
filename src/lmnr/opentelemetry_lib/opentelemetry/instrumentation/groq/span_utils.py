@@ -70,6 +70,7 @@ def set_streaming_response_attributes(
     accumulated_content: Any,
     finish_reason: str | None = None,
     usage: Any = None,  # TODO: set usage on attributes
+    tool_calls: dict[int, dict[str, str]] | None = None,
 ):
     """Set span attributes for accumulated streaming response."""
     if not span.is_recording() or not should_send_prompts():
@@ -80,6 +81,13 @@ def set_streaming_response_attributes(
     set_span_attribute(span, f"{prefix}.content", accumulated_content)
     if finish_reason:
         set_span_attribute(span, f"{prefix}.finish_reason", finish_reason)
+    for i, index in enumerate(sorted(tool_calls or {})):
+        tool_call = (tool_calls or {})[index]
+        set_span_attribute(span, f"{prefix}.tool_calls.{i}.id", tool_call["id"] or None)
+        set_span_attribute(span, f"{prefix}.tool_calls.{i}.name", tool_call["name"] or None)
+        set_span_attribute(
+            span, f"{prefix}.tool_calls.{i}.arguments", tool_call["arguments"] or None
+        )
 
 
 def set_model_streaming_response_attributes(
