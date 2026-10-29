@@ -1,0 +1,95 @@
+{
+  "options": {},
+  "spans": [
+    {
+      "trace_id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+      "span_id": "00000000-0000-0000-0000-000000000020",
+      "parent_span_id": null,
+      "name": "ci-fixer",
+      "span_type": "DEFAULT",
+      "start_time": "2026-10-28T09:00:00.000000Z",
+      "end_time": "2026-10-28T09:01:03.100000Z",
+      "attributes": {}
+    },
+    {
+      "trace_id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+      "span_id": "00000000-0000-0000-0000-000000000021",
+      "parent_span_id": "00000000-0000-0000-0000-000000000020",
+      "name": "anthropic.chat",
+      "span_type": "LLM",
+      "start_time": "2026-10-28T09:00:00.000000Z",
+      "end_time": "2026-10-28T09:00:02.000000Z",
+      "attributes": {
+        "gen_ai.system": "anthropic",
+        "gen_ai.request.model": "claude-opus-4-1",
+        "gen_ai.response.model": "claude-opus-4-1",
+        "gen_ai.input.messages": "[{\"role\": \"user\", \"content\": \"Run the test suite and fix any failures.\"}]",
+        "gen_ai.output.messages": "[{\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"Running the tests and reading the entrypoint.\"}, {\"type\": \"tool_use\", \"id\": \"toolu_t1\", \"name\": \"run_tests\", \"input\": {}}, {\"type\": \"tool_use\", \"id\": \"toolu_t2\", \"name\": \"read_file\", \"input\": {\"path\": \"src/app.py\"}}], \"stop_reason\": \"tool_use\"}]",
+        "gen_ai.usage.input_tokens": 900,
+        "gen_ai.usage.output_tokens": 55
+      }
+    },
+    {
+      "trace_id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+      "span_id": "00000000-0000-0000-0000-000000000022",
+      "parent_span_id": "00000000-0000-0000-0000-000000000020",
+      "name": "run_tests",
+      "span_type": "TOOL",
+      "start_time": "2026-10-28T09:00:02.100000Z",
+      "end_time": "2026-10-28T09:01:02.100000Z",
+      "attributes": {
+        "lmnr.span.input": "{}"
+      },
+      "error": {
+        "type": "TimeoutError",
+        "message": "tests did not finish in 60s",
+        "stacktrace": "Traceback (most recent call last): ..."
+      }
+    },
+    {
+      "trace_id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+      "span_id": "00000000-0000-0000-0000-000000000023",
+      "parent_span_id": "00000000-0000-0000-0000-000000000020",
+      "name": "read_file",
+      "span_type": "TOOL",
+      "start_time": "2026-10-28T09:00:02.100000Z",
+      "end_time": "2026-10-28T09:00:02.110000Z",
+      "attributes": {
+        "lmnr.span.input": "{\"path\": \"src/app.py\"}",
+        "lmnr.span.output": "\"print('hi')\""
+      }
+    },
+    {
+      "trace_id": "6e7f8091-a2b3-4c4d-9e5f-60718293a4b5",
+      "span_id": "00000000-0000-0000-0000-000000000031",
+      "parent_span_id": null,
+      "name": "notify_slack",
+      "span_type": "TOOL",
+      "start_time": "2026-10-28T09:01:02.200000Z",
+      "end_time": "2026-10-28T09:01:02.600000Z",
+      "attributes": {
+        "lmnr.span.input": "{\"channel\": \"#ci\"}",
+        "lmnr.span.output": "\"ok\""
+      }
+    },
+    {
+      "trace_id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+      "span_id": "00000000-0000-0000-0000-000000000024",
+      "parent_span_id": "00000000-0000-0000-0000-000000000020",
+      "name": "anthropic.chat",
+      "span_type": "LLM",
+      "start_time": "2026-10-28T09:01:02.700000Z",
+      "end_time": "2026-10-28T09:01:03.000000Z",
+      "attributes": {
+        "gen_ai.system": "anthropic",
+        "gen_ai.request.model": "claude-opus-4-1",
+        "gen_ai.response.model": "claude-opus-4-1",
+        "gen_ai.input.messages": "[{\"role\": \"user\", \"content\": \"Run the test suite and fix any failures.\"}, {\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"Running the tests and reading the entrypoint.\"}, {\"type\": \"tool_use\", \"id\": \"toolu_t1\", \"name\": \"run_tests\", \"input\": {}}, {\"type\": \"tool_use\", \"id\": \"toolu_t2\", \"name\": \"read_file\", \"input\": {\"path\": \"src/app.py\"}}]}, {\"role\": \"user\", \"content\": [{\"type\": \"tool_result\", \"tool_use_id\": \"toolu_t1\", \"content\": \"TimeoutError: tests did not finish in 60s\", \"is_error\": true}, {\"type\": \"tool_result\", \"tool_use_id\": \"toolu_t2\", \"content\": [{\"type\": \"text\", \"text\": \"print('hi')\"}]}, {\"type\": \"text\", \"text\": \"<system-reminder>The test run timed out.</system-reminder>\"}]}]"
+      },
+      "error": {
+        "type": "RateLimitError",
+        "message": "Error code: 429 - rate_limit_error"
+      }
+    }
+  ]
+}

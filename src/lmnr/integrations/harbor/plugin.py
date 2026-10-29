@@ -50,6 +50,11 @@ logger = get_default_logger(__name__)
 
 DEFAULT_GROUP_NAME = "harbor"
 
+# Where an agent using Laminar's SDK writes its lmnr-atif trajectory: Harbor's
+# `EnvironmentPaths.agent_dir` inside the environment, which is the trial's
+# `agent/` directory that `_trajectory_path` reads.
+AGENT_TRAJECTORY_PATH = "/logs/agent/trajectory.json"
+
 
 def _parse_bool(value: Any) -> bool:
     if isinstance(value, bool):
@@ -158,6 +163,8 @@ class LaminarPlugin:
             self._handle_error("Failed to create Laminar evaluation", e)
             return
 
+        if self.trajectory_spans:
+            _request_agent_trajectories(job)
         job.on_trial_started(self._on_trial_started)
         job.on_agent_started(self._on_agent_started)
         job.on_verification_started(self._on_verification_started)
@@ -230,6 +237,8 @@ class LaminarPlugin:
             # trajectory instead. For the same reason we don't take over the
             # global tracer provider: OTel-instrumented libraries in the Harbor
             # process (e.g. the Daytona SDK) would export a trace per call.
+            # LMNR_TRAJECTORY_PATH (in the env or a .env) is meant for the
+            # agent: here it would make the plugin's own spans local-only.
             Laminar.initialize(
                 project_api_key=self.project_api_key,
                 base_url=self.base_url,
@@ -237,6 +246,7 @@ class LaminarPlugin:
                 grpc_port=self.grpc_port,
                 instruments=set(),
                 set_global_tracer_provider=False,
+                write_trajectory=False,
             )
             client_url, client_port = self.base_url, self.http_port
         self._client = AsyncLaminarClient(
@@ -513,11 +523,13 @@ class LaminarPlugin:
             trajectory_path = _trajectory_path(event)
             if trajectory_path is not None:
                 try:
-                    _span_count = emit_trajectory_spans(
+                    converter = emit_trajectory_spans(
                         trajectory_path,
                         span.get_laminar_span_context(),
                         start_ns=parse_timestamp_ns(timing.started_at),
                     )
+                    if converter.parent_attributes:
+                        span.set_attributes(converter.parent_attributes)
                 except Exception as e:
                     logger.warning(f"Could not convert trajectory {trajectory_path}: {e}")
         span.set_output(self._executor_output(event))
@@ -636,6 +648,22 @@ def _trial_dir(event: "TrialHookEvent") -> Path | None:
         return Path(event.config.trials_dir) / event.config.trial_name
     except Exception:
         return None
+
+
+def _request_agent_trajectories(job: "Job") -> None:
+    """Make agents that use Laminar's SDK write their trajectory where the
+    plugin reads it (`LMNR_TRAJECTORY_PATH`, which also keeps their spans out
+    of Laminar until the plugin replays them under the trial).
+
+    Must run in `on_job_start`: Harbor copies `AgentConfig.env` into the agent
+    when it creates a trial, before any trial hook fires. The trial configs
+    `Job.create` built share these `AgentConfig` objects. A value the user set
+    (`--ae LMNR_TRAJECTORY_PATH=...`) wins.
+    """
+    for agent in getattr(job.config, "agents", None) or []:
+        env = getattr(agent, "env", None)
+        if isinstance(env, dict):
+            _ = cast(dict[str, str], env).setdefault("LMNR_TRAJECTORY_PATH", AGENT_TRAJECTORY_PATH)
 
 
 def _trajectory_path(event: "TrialHookEvent") -> Path | None:

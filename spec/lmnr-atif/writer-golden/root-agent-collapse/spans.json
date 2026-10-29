@@ -1,0 +1,46 @@
+{
+  "options": {},
+  "spans": [
+    {
+      "trace_id": "aa11bb22-cc33-4d44-8e55-ff6677889900",
+      "span_id": "00000000-0000-0000-0000-000000000060",
+      "parent_span_id": null,
+      "name": "triage.workflow",
+      "span_type": "DEFAULT",
+      "start_time": "2026-10-28T09:00:00.000000Z",
+      "end_time": "2026-10-28T09:00:02.000000Z",
+      "attributes": {
+        "gen_ai.operation.name": "invoke_agent",
+        "gen_ai.agent.name": "triage"
+      }
+    },
+    {
+      "trace_id": "aa11bb22-cc33-4d44-8e55-ff6677889900",
+      "span_id": "00000000-0000-0000-0000-000000000061",
+      "parent_span_id": "00000000-0000-0000-0000-000000000060",
+      "name": "execute_task classify",
+      "span_type": "DEFAULT",
+      "start_time": "2026-10-28T09:00:00.100000Z",
+      "end_time": "2026-10-28T09:00:01.900000Z",
+      "attributes": {
+        "gen_ai.operation.name": "execute_task"
+      }
+    },
+    {
+      "trace_id": "aa11bb22-cc33-4d44-8e55-ff6677889900",
+      "span_id": "00000000-0000-0000-0000-000000000062",
+      "parent_span_id": "00000000-0000-0000-0000-000000000061",
+      "name": "openai.chat",
+      "span_type": "LLM",
+      "start_time": "2026-10-28T09:00:00.200000Z",
+      "end_time": "2026-10-28T09:00:01.800000Z",
+      "attributes": {
+        "gen_ai.system": "openai",
+        "gen_ai.request.model": "gpt-5.5-mini",
+        "gen_ai.response.model": "gpt-5.5-mini",
+        "gen_ai.input.messages": "[{\"role\": \"user\", \"content\": \"My card was charged twice.\"}]",
+        "gen_ai.output.messages": "[{\"role\": \"assistant\", \"content\": \"billing\"}]"
+      }
+    }
+  ]
+}

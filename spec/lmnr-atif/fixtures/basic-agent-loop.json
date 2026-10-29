@@ -1,0 +1,204 @@
+{
+  "schema_version": "ATIF-v1.8",
+  "session_id": "4f1c2b7e-9a3d-4e5f-8b6a-1c2d3e4f5a6b",
+  "trajectory_id": "4f1c2b7e-9a3d-4e5f-8b6a-1c2d3e4f5a6b",
+  "agent": {
+    "name": "support-agent",
+    "version": "1a7f518",
+    "model_name": "anthropic/claude-sonnet-4-5-20250929",
+    "tool_definitions": [
+      {
+        "type": "function",
+        "function": {
+          "name": "get_order",
+          "description": "Look up an order by id.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "order_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "order_id"
+            ]
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "refund_order",
+          "description": "Refund an order that hasn't shipped.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "order_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "order_id"
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "source": "system",
+      "message": "You are a support agent. Look orders up before answering.",
+      "timestamp": "2026-10-28T12:00:00.010000Z",
+      "extra": {
+        "lmnr": {
+          "source_span_id": "00000000-0000-0000-0000-000000000002"
+        }
+      }
+    },
+    {
+      "step_id": 2,
+      "source": "user",
+      "message": "Refund my order A-1042",
+      "timestamp": "2026-10-28T12:00:00.010000Z",
+      "extra": {
+        "lmnr": {
+          "source_span_id": "00000000-0000-0000-0000-000000000002"
+        }
+      }
+    },
+    {
+      "step_id": 3,
+      "source": "agent",
+      "timestamp": "2026-10-28T12:00:01.900000Z",
+      "model_name": "claude-sonnet-4-5-20250929",
+      "llm_call_count": 1,
+      "message": "",
+      "reasoning_content": "The user wants a refund. I should check whether the order has shipped.",
+      "tool_calls": [
+        {
+          "tool_call_id": "toolu_01",
+          "function_name": "get_order",
+          "arguments": {
+            "order_id": "A-1042"
+          },
+          "extra": {
+            "lmnr": {
+              "span_id": "00000000-0000-0000-0000-000000000003",
+              "start_time": "2026-10-28T12:00:02.000000Z",
+              "end_time": "2026-10-28T12:00:02.350000Z"
+            }
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "toolu_01",
+            "content": "{\"order_id\": \"A-1042\", \"status\": \"shipped\"}",
+            "extra": {
+              "lmnr": {
+                "status": "ok"
+              }
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 1830,
+        "completion_tokens": 64,
+        "cached_tokens": 1500,
+        "cost_usd": 0.00228,
+        "extra": {
+          "lmnr": {
+            "cache_creation_tokens": 300,
+            "input_cost_usd": 0.00132,
+            "output_cost_usd": 0.00096
+          }
+        }
+      },
+      "extra": {
+        "lmnr": {
+          "span_id": "00000000-0000-0000-0000-000000000002",
+          "start_time": "2026-10-28T12:00:00.010000Z",
+          "end_time": "2026-10-28T12:00:01.900000Z",
+          "provider": "anthropic",
+          "request": {
+            "max_tokens": 4096,
+            "temperature": 0
+          },
+          "finish_reason": "tool_use",
+          "response_id": "msg_01",
+          "status": "ok"
+        }
+      }
+    },
+    {
+      "step_id": 4,
+      "source": "agent",
+      "timestamp": "2026-10-28T12:00:03.800000Z",
+      "model_name": "claude-sonnet-4-5-20250929",
+      "llm_call_count": 1,
+      "message": "Your order A-1042 has already shipped, so I can't refund it yet. Once it arrives you can request a return.",
+      "metrics": {
+        "prompt_tokens": 1910,
+        "completion_tokens": 41,
+        "cached_tokens": 1800,
+        "cost_usd": 0.00117,
+        "extra": {
+          "lmnr": {
+            "cache_creation_tokens": 0,
+            "input_cost_usd": 0.00055,
+            "output_cost_usd": 0.00062
+          }
+        }
+      },
+      "extra": {
+        "lmnr": {
+          "span_id": "00000000-0000-0000-0000-000000000004",
+          "start_time": "2026-10-28T12:00:02.400000Z",
+          "end_time": "2026-10-28T12:00:03.800000Z",
+          "provider": "anthropic",
+          "request": {
+            "max_tokens": 4096,
+            "temperature": 0
+          },
+          "finish_reason": "end_turn",
+          "response_id": "msg_02",
+          "status": "ok"
+        }
+      }
+    }
+  ],
+  "final_metrics": {
+    "total_prompt_tokens": 3740,
+    "total_completion_tokens": 105,
+    "total_cached_tokens": 3300,
+    "total_cost_usd": 0.00345,
+    "total_steps": 4,
+    "extra": {
+      "lmnr": {
+        "duration_ms": 3790,
+        "llm_calls": 2,
+        "tool_calls": 1,
+        "errors": 0
+      }
+    }
+  },
+  "extra": {
+    "lmnr": {
+      "spec_version": "0.1.0",
+      "producer": {
+        "name": "lmnr-python",
+        "version": "0.8.4"
+      },
+      "trace_ids": [
+        "4f1c2b7e-9a3d-4e5f-8b6a-1c2d3e4f5a6b"
+      ],
+      "root_span_id": "00000000-0000-0000-0000-000000000001",
+      "exported": true,
+      "complete": true
+    }
+  }
+}

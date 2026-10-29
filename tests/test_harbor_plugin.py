@@ -13,7 +13,7 @@ import uuid
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -23,6 +23,7 @@ from opentelemetry.trace import SpanContext, StatusCode
 
 from lmnr import Laminar
 from lmnr.integrations.harbor import LaminarPlugin
+from lmnr.integrations.harbor.plugin import AGENT_TRAJECTORY_PATH, _request_agent_trajectories
 from lmnr.integrations.harbor.trajectory import (
     ORDER_GAP_NS,
     content_to_text,
@@ -65,6 +66,7 @@ class FakeJob:
                     name="terminus-2",
                     import_path=None,
                     model_name="anthropic/claude-sonnet-4-5",
+                    env={},
                 )
             ],
         )
@@ -575,6 +577,312 @@ async def test_unattributed_observation_goes_on_last_tool(
     spans = spans_by_name(span_exporter)
     assert "lmnr.span.output" not in spans["first"][0].attributes
     assert json.loads(spans["second"][0].attributes["lmnr.span.output"]) == ("$ ls\nfile.txt")
+
+
+# -- lmnr-atif trajectories (spec/lmnr-atif) -----------------------------------
+
+LMNR_ATIF_FIXTURES = Path(__file__).resolve().parents[1] / "spec" / "lmnr-atif" / "fixtures"
+
+
+def lmnr_atif_fixture(name: str, exported: bool = False) -> dict[str, Any]:
+    """A spec fixture. Not exported by default: an exported file's spans are
+    already in Laminar, so the plugin doesn't rebuild them."""
+    trajectory = json.loads((LMNR_ATIF_FIXTURES / name).read_text())
+    trajectory["extra"]["lmnr"]["exported"] = exported
+    return trajectory
+
+
+async def run_trial_with_trajectory(
+    client: MagicMock, tmp_path: Path, trajectory: dict[str, Any]
+) -> None:
+    job = FakeJob(tmp_path / "job")
+    task_dir = make_task_dir(tmp_path, "t")
+    plugin = LaminarPlugin(project_api_key="test_key")
+    await plugin.on_job_start(job)
+    event = make_event(job, task_dir, "t1", rewards={"reward": 1})
+    write_trajectory(job, "t1", trajectory)
+    await job.emit("start", event)
+    await job.emit("end", event)
+    await plugin.on_job_end(SimpleNamespace())
+
+
+def exception_events(span: ReadableSpan) -> list[dict[str, Any]]:
+    return [dict(e.attributes or {}) for e in span.events if e.name == "exception"]
+
+
+@pytest.mark.asyncio
+async def test_lmnr_atif_trajectory_uses_exact_timings_and_call_details(
+    span_exporter: InMemorySpanExporter, client: MagicMock, tmp_path: Path
+):
+    trajectory = lmnr_atif_fixture("basic-agent-loop.json")
+    await run_trial_with_trajectory(client, tmp_path, trajectory)
+
+    spans = spans_by_name(span_exporter)
+    first, second = sorted(spans["claude-sonnet-4-5-20250929"], key=lambda s: s.start_time or 0)
+    step3, step4 = trajectory["steps"][2], trajectory["steps"][3]
+    # Exact call bounds, not "previous step to this step".
+    assert first.start_time == parse_timestamp_ns(step3["extra"]["lmnr"]["start_time"])
+    assert first.end_time == parse_timestamp_ns(step3["extra"]["lmnr"]["end_time"])
+    assert second.start_time == parse_timestamp_ns(step4["extra"]["lmnr"]["start_time"])
+
+    attrs = first.attributes or {}
+    assert attrs["gen_ai.system"] == "anthropic"
+    assert attrs["gen_ai.request.max_tokens"] == 4096
+    assert attrs["gen_ai.request.temperature"] == 0
+    assert tuple(attrs["gen_ai.response.finish_reasons"]) == ("tool_use",)
+    assert attrs["gen_ai.response.id"] == "msg_01"
+    assert attrs["gen_ai.usage.cache_creation_input_tokens"] == 300
+    assert attrs["gen_ai.usage.input_cost"] == 0.00132
+    assert attrs["gen_ai.usage.output_cost"] == 0.00096
+    assert attrs["lmnr.trajectory.source_span_id"] == step3["extra"]["lmnr"]["span_id"]
+    tools = json.loads(attrs["gen_ai.tool.definitions"])
+    assert [t["function"]["name"] for t in tools] == ["get_order", "refund_order"]
+    assert exception_events(first) == []
+
+    # Tools get their real duration.
+    tool = spans["get_order"][0]
+    tool_lmnr = step3["tool_calls"][0]["extra"]["lmnr"]
+    assert tool.start_time == parse_timestamp_ns(tool_lmnr["start_time"])
+    assert tool.end_time == parse_timestamp_ns(tool_lmnr["end_time"])
+    assert (tool.attributes or {})["lmnr.trajectory.source_span_id"] == tool_lmnr["span_id"]
+
+    agent = (spans["agent"][0].attributes) or {}
+    assert agent["lmnr.trajectory.spec_version"] == "0.1.0"
+    assert tuple(agent["lmnr.trajectory.trace_ids"]) == tuple(
+        trajectory["extra"]["lmnr"]["trace_ids"]
+    )
+    assert agent["lmnr.trajectory.exported"] is False
+    assert agent["lmnr.trajectory.complete"] is True
+    assert agent["lmnr.trajectory.llm_calls"] == 2
+    assert agent["lmnr.trajectory.duration_ms"] == 3790
+
+
+@pytest.mark.asyncio
+async def test_exported_lmnr_atif_trajectory_is_linked_not_rebuilt(
+    span_exporter: InMemorySpanExporter, client: MagicMock, tmp_path: Path
+):
+    """The SDK exported these spans itself (dual mode): rebuilding them would
+    record every call twice, so the agent span only links to the traces."""
+    trajectory = lmnr_atif_fixture("subagents.json", exported=True)
+    await run_trial_with_trajectory(client, tmp_path, trajectory)
+
+    spans = span_exporter.get_finished_spans()
+    assert not [s for s in spans if (s.attributes or {}).get("lmnr.trajectory.source_span_id")]
+    assert not [s for s in spans if (s.attributes or {}).get("lmnr.span.type") in ("LLM", "TOOL")]
+    agent = spans_by_name(span_exporter)["agent"][0].attributes or {}
+    assert agent["lmnr.trajectory.exported"] is True
+    assert tuple(agent["lmnr.trajectory.trace_ids"]) == tuple(
+        trajectory["extra"]["lmnr"]["trace_ids"]
+    )
+    assert (
+        agent["lmnr.trajectory.llm_calls"]
+        == trajectory["final_metrics"]["extra"]["lmnr"]["llm_calls"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_lmnr_atif_overrides_shape_each_call_input(
+    span_exporter: InMemorySpanExporter, client: MagicMock, tmp_path: Path
+):
+    trajectory = lmnr_atif_fixture("overrides.json")
+    await run_trial_with_trajectory(client, tmp_path, trajectory)
+
+    calls = sorted(spans_by_name(span_exporter)["gpt-5.5"], key=lambda s: s.start_time or 0)
+    assert len(calls) == 5
+    inputs = [json.loads((c.attributes or {})["lmnr.span.input"]) for c in calls]
+    default_prompt = [
+        {"role": "system", "content": "You are a travel agent."},
+        {"role": "developer", "content": "Always quote prices in EUR."},
+    ]
+    assert inputs[0] == [*default_prompt, {"role": "user", "content": "Plan a trip to Lisbon."}]
+
+    # Call 2: its own system prompt and no tools.
+    assert inputs[1][0]["role"] == "system"
+    assert "premium member" in inputs[1][0]["content"]
+    assert [m["role"] for m in inputs[1]] == ["system", "user", "assistant", "tool"]
+    assert "gen_ai.tool.definitions" not in (calls[1].attributes or {})
+
+    # Call 3: back to the default prompt, with a narrowed tool set.
+    assert inputs[2][:2] == default_prompt
+    tools = json.loads((calls[2].attributes or {})["gen_ai.tool.definitions"])
+    assert [t["function"]["name"] for t in tools] == ["search_hotels"]
+
+    # Call 4: after compaction, only the compacted conversation.
+    compacted = [
+        *default_prompt,
+        {"role": "system", "content": "Earlier turns were compacted into a summary."},
+        {"role": "user", "content": trajectory["steps"][8]["message"]},
+    ]
+    assert inputs[3] == compacted
+    # Call 5 extends call 4's input rather than the whole history.
+    assert inputs[4] == [
+        *compacted,
+        {"role": "assistant", "content": trajectory["steps"][9]["message"]},
+        {"role": "user", "content": "Any cheaper one?"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_lmnr_atif_errors_and_deterministic_dispatch(
+    span_exporter: InMemorySpanExporter, client: MagicMock, tmp_path: Path
+):
+    trajectory = lmnr_atif_fixture("errors-and-dispatch.json")
+    await run_trial_with_trajectory(client, tmp_path, trajectory)
+
+    spans = spans_by_name(span_exporter)
+    ok_call, failed_call = sorted(spans["claude-opus-4-1"], key=lambda s: s.start_time or 0)
+    assert exception_events(ok_call) == []
+    assert ok_call.status.status_code != StatusCode.ERROR
+    [event] = exception_events(failed_call)
+    assert event["exception.type"] == "RateLimitError"
+    assert event["exception.message"] == "Error code: 429 - rate_limit_error"
+    assert failed_call.status.status_code == StatusCode.ERROR
+    # The dispatch step is not part of what the model saw.
+    failed_input = json.loads((failed_call.attributes or {})["lmnr.span.input"])
+    assert [m["role"] for m in failed_input] == ["user", "assistant", "tool", "tool"]
+    assert failed_input[1]["tool_calls"][1]["function"]["arguments"] == '{"path": "src/app.py"'
+
+    [event] = exception_events(spans["run_tests"][0])
+    assert event["exception.type"] == "TimeoutError"
+    assert spans["run_tests"][0].status.status_code == StatusCode.ERROR
+    # Arguments that weren't a JSON object are shown as the model wrote them.
+    read_file = spans["read_file"][0]
+    assert json.loads((read_file.attributes or {})["lmnr.span.input"]) == '{"path": "src/app.py"'
+    assert exception_events(read_file)[0]["exception.type"] == "JSONDecodeError"
+
+    # The deterministic dispatch is a tool span without an LLM call.
+    notify = spans["notify_slack"][0]
+    assert exception_events(notify) == []
+    assert notify.end_time - notify.start_time == 400_000_000
+
+    agent = spans["agent"][0].attributes or {}
+    assert agent["lmnr.trajectory.complete"] is False
+    assert agent["lmnr.trajectory.errors"] == 3
+    assert len(agent["lmnr.trajectory.trace_ids"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_lmnr_atif_subagents_nest_under_their_tool_calls(
+    span_exporter: InMemorySpanExporter, client: MagicMock, tmp_path: Path
+):
+    await run_trial_with_trajectory(client, tmp_path, lmnr_atif_fixture("subagents.json"))
+
+    spans = spans_by_name(span_exporter)
+    for tool_name, agent_name in (
+        ("delegate_research", "researcher"),
+        ("summarize_sources", "summarize_sources"),
+        ("fact_checker", "fact_checker"),
+    ):
+        tool = next(s for s in spans[tool_name] if (s.attributes or {})["lmnr.span.type"] == "TOOL")
+        subagent = next(
+            s for s in spans[agent_name] if (s.attributes or {})["lmnr.span.type"] != "TOOL"
+        )
+        assert subagent.parent.span_id == tool.context.span_id, agent_name
+        assert "lmnr.trajectory.source_span_id" in (subagent.attributes or {})
+
+    researcher = next(
+        s for s in spans["researcher"] if (s.attributes or {})["lmnr.span.type"] != "TOOL"
+    )
+    researcher_calls = [
+        s for s in spans["gpt-5.5-mini"] if s.parent.span_id == researcher.context.span_id
+    ]
+    assert len(researcher_calls) == 2
+    # The researcher's tool set is a `$ref` into the root trajectory's defs.
+    for call in researcher_calls:
+        tools = json.loads((call.attributes or {})["gen_ai.tool.definitions"])
+        assert [t["function"]["name"] for t in tools] == ["web_search"]
+    # Its first call's input is its own conversation, not the parent's.
+    first_input = json.loads(
+        (min(researcher_calls, key=lambda s: s.start_time or 0).attributes or {})["lmnr.span.input"]
+    )
+    assert first_input == [
+        {"role": "system", "content": "You research databases. Cite sources."},
+        {"role": "user", "content": "Research: ClickHouse"},
+    ]
+    assert len(spans["claude-sonnet-4-5"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_incompatible_lmnr_atif_version_is_read_as_plain_atif(
+    span_exporter: InMemorySpanExporter, client: MagicMock, tmp_path: Path
+):
+    trajectory = lmnr_atif_fixture("basic-agent-loop.json")
+    trajectory["extra"]["lmnr"]["spec_version"] = "0.2.0"
+    await run_trial_with_trajectory(client, tmp_path, trajectory)
+
+    spans = spans_by_name(span_exporter)
+    first, _second = sorted(spans["claude-sonnet-4-5-20250929"], key=lambda s: s.start_time or 0)
+    attrs = first.attributes or {}
+    assert "gen_ai.request.max_tokens" not in attrs
+    assert "lmnr.trajectory.source_span_id" not in attrs
+    # Plain ATIF: the call ends at its step's timestamp; the tool is an instant.
+    assert first.end_time == parse_timestamp_ns(trajectory["steps"][2]["timestamp"])
+    tool = spans["get_order"][0]
+    assert tool.start_time == tool.end_time
+    agent = spans["agent"][0].attributes or {}
+    assert not any(key.startswith("lmnr.trajectory.") for key in agent)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("flag", ["tool_result_is_error", "is_error"])
+async def test_plain_atif_tool_error_flags_mark_tool_spans_failed(
+    span_exporter: InMemorySpanExporter, client: MagicMock, tmp_path: Path, flag: str
+):
+    # Harbor's claude-code adapter writes `tool_result_is_error`; kimi writes `is_error`.
+    trajectory = {
+        "agent": {"name": "claude-code", "model_name": "anthropic/claude-sonnet-4-5"},
+        "steps": [
+            {"step_id": 1, "timestamp": iso(6), "source": "user", "message": "go"},
+            {
+                "step_id": 2,
+                "timestamp": iso(8),
+                "source": "agent",
+                "message": "",
+                "tool_calls": [
+                    {"tool_call_id": "a", "function_name": "Bash", "arguments": {"cmd": "x"}},
+                    {"tool_call_id": "b", "function_name": "Read", "arguments": {"path": "y"}},
+                ],
+                "observation": {
+                    "results": [
+                        {"source_call_id": "a", "content": "not found", "extra": {flag: True}},
+                        {"source_call_id": "b", "content": "ok", "extra": {flag: False}},
+                    ]
+                },
+            },
+        ],
+    }
+    await run_trial_with_trajectory(client, tmp_path, trajectory)
+
+    spans = spans_by_name(span_exporter)
+    [event] = exception_events(spans["Bash"][0])
+    assert event["exception.type"] == "ToolError"
+    assert spans["Bash"][0].status.status_code == StatusCode.ERROR
+    assert exception_events(spans["Read"][0]) == []
+
+
+@pytest.mark.asyncio
+async def test_plain_atif_tool_definitions_and_reasoning_effort_are_recorded(
+    span_exporter: InMemorySpanExporter, client: MagicMock, tmp_path: Path
+):
+    tool = {"type": "function", "function": {"name": "bash", "parameters": {}}}
+    trajectory = {
+        "agent": {"name": "a", "model_name": "openai/gpt-5", "tool_definitions": [tool]},
+        "steps": [
+            {"step_id": 1, "timestamp": iso(6), "source": "user", "message": "go"},
+            {
+                "step_id": 2,
+                "timestamp": iso(8),
+                "source": "agent",
+                "message": "done",
+                "reasoning_effort": "high",
+            },
+        ],
+    }
+    await run_trial_with_trajectory(client, tmp_path, trajectory)
+
+    attrs = spans_by_name(span_exporter)["gpt-5"][0].attributes or {}
+    assert json.loads(attrs["gen_ai.tool.definitions"]) == [tool]
+    assert attrs["gen_ai.request.reasoning_effort"] == "high"
 
 
 @pytest.mark.asyncio
@@ -1134,3 +1442,86 @@ async def test_initialize_does_not_take_over_global_tracer_provider(client, tmp_
     assert initialize.call_args.kwargs["set_global_tracer_provider"] is False
     assert initialize.call_args.kwargs["instruments"] == set()
     await plugin.on_job_end(SimpleNamespace())
+
+
+@pytest.mark.asyncio
+async def test_agent_trajectory_path_does_not_make_the_plugin_local_only(client, tmp_path: Path):
+    # LMNR_TRAJECTORY_PATH (env or .env) is for the agent; in the Harbor
+    # process it would stop the plugin's own spans from being exported.
+    plugin = LaminarPlugin(project_api_key="test_key")
+    with (
+        patch.object(Laminar, "is_initialized", return_value=False),
+        patch.object(Laminar, "initialize") as initialize,
+    ):
+        await plugin.on_job_start(FakeJob(tmp_path / "job"))
+    assert initialize.call_args.kwargs["write_trajectory"] is False
+    await plugin.on_job_end(SimpleNamespace())
+
+
+# -- agent trajectories (LMNR_TRAJECTORY_PATH) ------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_agents_are_asked_to_write_their_trajectory(client, tmp_path: Path):
+    job = FakeJob(tmp_path / "job")
+    plugin = LaminarPlugin(project_api_key="test_key")
+    await plugin.on_job_start(job)
+    assert job.config.agents[0].env == {"LMNR_TRAJECTORY_PATH": AGENT_TRAJECTORY_PATH}
+    await plugin.on_job_end(SimpleNamespace())
+
+
+@pytest.mark.asyncio
+async def test_agent_trajectory_path_set_by_the_user_wins(client, tmp_path: Path):
+    job = FakeJob(tmp_path / "job")
+    job.config.agents[0].env["LMNR_TRAJECTORY_PATH"] = "/logs/agent/mine.json"
+    plugin = LaminarPlugin(project_api_key="test_key")
+    await plugin.on_job_start(job)
+    assert job.config.agents[0].env["LMNR_TRAJECTORY_PATH"] == "/logs/agent/mine.json"
+    await plugin.on_job_end(SimpleNamespace())
+
+
+@pytest.mark.asyncio
+async def test_no_agent_trajectory_without_trajectory_spans(client, tmp_path: Path):
+    job = FakeJob(tmp_path / "job")
+    plugin = LaminarPlugin(project_api_key="test_key", trajectory_spans="false")
+    await plugin.on_job_start(job)
+    assert job.config.agents[0].env == {}
+    await plugin.on_job_end(SimpleNamespace())
+
+
+@pytest.mark.asyncio
+async def test_no_agent_trajectory_when_the_evaluation_fails_to_start(client, tmp_path: Path):
+    # A local-only agent whose trajectory nobody reads would lose its spans.
+    client.evals.init.side_effect = RuntimeError("down")
+    job = FakeJob(tmp_path / "job")
+    plugin = LaminarPlugin(project_api_key="test_key")
+    await plugin.on_job_start(job)
+    assert job.config.agents[0].env == {}
+
+
+def test_agent_trajectory_reaches_harbor_agents(tmp_path: Path):
+    """Against real Harbor: trial configs are built before `on_job_start` and
+    the agent copies its env when the trial is created, after it."""
+    pytest.importorskip("harbor")
+    import importlib
+    import logging
+
+    def harbor(module: str) -> Any:
+        return importlib.import_module(f"harbor.{module}")
+
+    AgentFactory = harbor("agents.factory").AgentFactory
+    JobPlan = harbor("job_plan").JobPlan
+    JobConfig = harbor("models.job.config").JobConfig
+    trial_config = harbor("models.trial.config")
+    EnvironmentPaths = harbor("models.trial.paths").EnvironmentPaths
+
+    assert AGENT_TRAJECTORY_PATH == str(EnvironmentPaths.agent_dir / "trajectory.json")
+    config = JobConfig(agents=[trial_config.AgentConfig(name="nop")])
+    trial_configs = JobPlan.build_trial_configs(
+        config, [trial_config.TaskConfig(path=tmp_path)], job_id=uuid.uuid4()
+    )
+    _request_agent_trajectories(cast(Any, SimpleNamespace(config=config)))
+    agent = AgentFactory.create_agent_from_config(
+        trial_configs[0].agent, logs_dir=tmp_path / "logs", logger=logging.getLogger(__name__)
+    )
+    assert agent.extra_env["LMNR_TRAJECTORY_PATH"] == AGENT_TRAJECTORY_PATH
