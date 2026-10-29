@@ -301,11 +301,14 @@ def _semconv_parts(
                 tool_call(part.get("id"), part.get("name"), part.get("arguments"))
             )
         elif kind == "tool_call_response":
+            # The conventions name the payload `response`; the Cohere
+            # instrumentations (both SDKs) write `result`.
+            response = part.get("response") if "response" in part else part.get("result")
             sink.setdefault("tool_results", []).append(
                 {
                     "role": "tool",
                     "tool_call_id": str(part.get("id") or ""),
-                    "content": _result_content(part.get("response"), media),
+                    "content": _result_content(response, media),
                 }
             )
         elif kind == "blob":

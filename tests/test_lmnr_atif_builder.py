@@ -971,6 +971,20 @@ def test_otel_semconv_parts():
     assert reason == "stop"
 
 
+def test_semconv_tool_results_read_result_too():
+    """The Cohere instrumentations write `result` instead of `response`."""
+    messages, _output, _reason = normalize_call(
+        [
+            {
+                "role": "tool",
+                "parts": [{"type": "tool_call_response", "id": "c1", "result": {"temp": 18}}],
+            }
+        ],
+        None,
+    )
+    assert messages == [{"role": "tool", "tool_call_id": "c1", "content": '{"temp": 18}'}]
+
+
 def test_chat_tool_calls_with_top_level_arguments():
     _messages, output, _reason = normalize_call(
         [],
