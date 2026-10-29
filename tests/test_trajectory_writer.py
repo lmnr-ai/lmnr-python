@@ -298,6 +298,21 @@ def test_force_reinit_starts_a_new_run(harness: Harness):
     stale.end()
 
 
+def test_a_span_open_at_force_reinit_stays_out_of_the_next_run(harness: Harness):
+    # An `@observe` Lambda handler that calls `Laminar.force_flush` before
+    # returning: its span ends after the reinit.
+    with harness.span("first"):
+        tool_loop(harness, root="first-agent")
+        _ = harness.processor.force_flush()
+        assert harness.processor.force_reinit()
+    tool_loop(harness, root="second")
+    _ = harness.processor.force_flush()
+    trajectory = harness.read()
+    assert trajectory["agent"]["name"] == "second"
+    assert len(trajectory["extra"]["lmnr"]["trace_ids"]) == 1
+    assert trajectory["extra"]["lmnr"]["complete"] is True
+
+
 def test_without_a_placeholder_every_trace_goes_into_one_file(harness: Harness):
     tool_loop(harness, root="first")
     tool_loop(harness, root="second")

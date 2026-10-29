@@ -153,6 +153,9 @@ class TrajectoryCollector:
         self._write_lock: threading.Lock = threading.Lock()
         self._records: dict[str, SpanRecord] = {}
         self._open: dict[int, Span] = {}
+        # Spans still open when a run ended: they belong to that run, so
+        # they are dropped when they end instead of joining the next one.
+        self._retired: set[int] = set()
         self._dirty: bool = False
         self._wake: threading.Event = threading.Event()
         self._stopped: bool = False
@@ -168,8 +171,11 @@ class TrajectoryCollector:
     def new_run(self) -> None:
         """Drop every span, finished or open, so the next file holds only what
         comes after (`Laminar.force_flush` between Lambda invocations). Write
-        the file first: this run's spans are gone afterwards."""
+        the file first: this run's spans are gone afterwards. A span still open
+        here (an `@observe` handler that calls `force_flush` before returning)
+        is not recorded when it ends."""
         with self._lock:
+            self._retired.update(self._open)
             self._records = {}
             self._open = {}
             self._dirty = False
@@ -179,12 +185,16 @@ class TrajectoryCollector:
         if span.context is not None:
             with self._lock:
                 _ = self._open.pop(span.context.span_id, None)
+                self._retired.discard(span.context.span_id)
 
     def on_end(self, span: ReadableSpan) -> None:
         record = span_record(span)
         with self._lock:
             if span.context is not None:
                 _ = self._open.pop(span.context.span_id, None)
+                if span.context.span_id in self._retired:
+                    self._retired.discard(span.context.span_id)
+                    return
             if record is None:
                 return
             self._records[record.span_id] = record
