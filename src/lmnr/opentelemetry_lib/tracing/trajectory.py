@@ -208,11 +208,14 @@ class TrajectoryCollector:
                     continue
                 if record is not None and record.span_type != "LLM":
                     records.append(record)
-            options = BuildOptions(
-                release=self.release, exported=self.exported, complete=not open_spans
-            )
+            open_trace_ids = {
+                str(uuid.UUID(int=span.context.trace_id))
+                for span in open_spans
+                if span.context is not None
+            }
+            options = BuildOptions(release=self.release, exported=self.exported)
             try:
-                _ = write_trajectories(records, self.path, options)
+                _ = write_trajectories(records, self.path, options, open_trace_ids)
             except Exception as e:
                 # Retry at the next snapshot even if no other span ends: the
                 # last snapshot is what a killed agent leaves behind.

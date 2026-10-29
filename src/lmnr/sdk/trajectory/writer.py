@@ -14,7 +14,7 @@ import hashlib
 import json
 import os
 import tempfile
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Collection, Iterable
 from pathlib import Path
 from typing import Any
 
@@ -80,13 +80,18 @@ def media_sink(directory: Path) -> Callable[[str, str], str | None]:
 
 
 def write_trajectories(
-    records: Iterable[SpanRecord], template: str, options: BuildOptions
+    records: Iterable[SpanRecord],
+    template: str,
+    options: BuildOptions,
+    open_trace_ids: Collection[str] = (),
 ) -> list[Path]:
     """Build and write the trajectory files for `records`.
 
     With `{trace_id}` in the template, each trace gets its own file; otherwise
-    every trace goes into one. Returns the paths written (none when there were
-    no LLM or tool calls).
+    every trace goes into one. A file is a snapshot (`complete: false`) when a
+    trace it covers is in `open_trace_ids`, so a finished trace's own file stays
+    complete while another trace runs. Returns the paths written (none when
+    there were no LLM or tool calls).
     """
     groups: dict[str | None, list[SpanRecord]] = {}
     per_trace = TRACE_ID in template
@@ -96,8 +101,14 @@ def write_trajectories(
     written: list[Path] = []
     for trace_id, group in groups.items():
         path = render_path(template, trace_id)
+        is_open = trace_id in open_trace_ids if per_trace else bool(open_trace_ids)
         trajectory = build_trajectory(
-            group, dataclasses.replace(options, media=media_sink(path.parent))
+            group,
+            dataclasses.replace(
+                options,
+                media=media_sink(path.parent),
+                complete=options.complete and not is_open,
+            ),
         )
         if trajectory is None:
             continue

@@ -7,6 +7,7 @@ import importlib
 import json
 import os
 import time
+import uuid
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
@@ -264,6 +265,20 @@ def test_one_file_per_trace_with_a_trace_id_placeholder(tmp_path: Path):
         assert (
             file.stem == trajectory["trajectory_id"] == trajectory["extra"]["lmnr"]["trace_ids"][0]
         )
+    h.provider.shutdown()
+
+
+def test_a_finished_trace_stays_complete_while_another_runs(tmp_path: Path):
+    h = Harness(tmp_path / "{trace_id}.json", export=False)
+    h.collector.snapshot_interval = 0
+    tool_loop(h, root="first")
+    with h.span("second") as second:
+        llm_call(h, [{"role": "user", "content": "hi"}], [TOOL_CALL])
+        assert h.collector.write()
+        running = f"{uuid.UUID(int=second.get_span_context().trace_id)}.json"
+        complete = {f.name: h.read(f)["extra"]["lmnr"]["complete"] for f in tmp_path.glob("*")}
+    assert complete.pop(running) is False
+    assert list(complete.values()) == [True]
     h.provider.shutdown()
 
 
