@@ -127,6 +127,7 @@ class Evals(BaseResource):
         metadata: dict[str, Any] | None = None,  # ,
         index: int | None = None,
         trace_id: uuid.UUID | None = None,
+        task_id: str | None = None,
     ) -> uuid.UUID:
         """
         Create a datapoint for an evaluation.
@@ -138,6 +139,8 @@ class Evals(BaseResource):
             metadata (dict[str, Any] | None, optional): Optional metadata.
             index (int | None, optional): Optional index of the datapoint.
             trace_id (uuid.UUID | None, optional): Optional trace ID.
+            task_id (str | None, optional): Optional id of the Task (test case)
+                this datapoint is a Trial of. Trials of one Task share it.
 
         Returns:
             uuid.UUID: The datapoint ID.
@@ -155,6 +158,7 @@ class Evals(BaseResource):
             trace_id=trace_id or uuid.uuid4(),
             executor_span_id=uuid.uuid4(),  # Will be updated when executor runs
             metadata=metadata,
+            task_id=task_id,
         )
 
         self.save_datapoints(eval_id, [partial_datapoint])

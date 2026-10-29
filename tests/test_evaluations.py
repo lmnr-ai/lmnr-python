@@ -13,6 +13,7 @@ from typing_extensions import TypeVar
 from lmnr import Laminar
 from lmnr.sdk.datasets import LaminarDataset
 from lmnr.sdk.evaluations import evaluate
+from lmnr.sdk.evaluations.evaluation import _TaskIdResolver
 from lmnr.sdk.evaluations.models import EvaluationResultDatapoint, EvaluationRunResult
 from lmnr.sdk.types import Datapoint, Dataset
 
@@ -599,3 +600,140 @@ async def test_evaluate_upload_failure_does_not_skip_remaining_saves(
     # Every save after the failing one must have completed before `evaluate`
     # gave up and closed the client.
     assert sorted(completed) == list(range(1, 6))
+
+
+def saved_results(mock_save: MagicMock) -> list[EvaluationResultDatapoint]:
+    return [
+        dp
+        for call in mock_save.call_args_list
+        for dp in call.args[1]
+        if isinstance(dp, EvaluationResultDatapoint)
+    ]
+
+
+@pytest.mark.asyncio
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init")
+async def test_evaluate_trials_share_task_id(
+    mock_init: MagicMock,
+    mock_save: MagicMock,
+    mock_eval_response: MagicMock,
+):
+    """Each Task runs `trials` times; Trials get distinct ids but one task id."""
+    mock_init.return_value = mock_eval_response
+
+    _result = await cast(
+        Awaitable[EvaluationRunResult],
+        evaluate(
+            data=[{"data": "a", "taskId": "alpha"}, {"data": "b"}],
+            executor=lambda d, _t=None: d,
+            evaluators={"one": lambda output, target: 1},
+            trials=3,
+            project_api_key="test",
+        ),
+    )
+    _flush_success = Laminar.flush()
+
+    results = saved_results(mock_save)
+    assert len(results) == 6
+    assert len({r.id for r in results}) == 6
+    assert sorted(r.task_id or "" for r in results) == ["1"] * 3 + ["alpha"] * 3
+    assert all(r.to_dict()["taskId"] == r.task_id for r in results)
+
+
+@pytest.mark.parametrize("bad", [0, -1, 1.5, True, "2"])
+def test_evaluate_rejects_invalid_trials(bad: Any):
+    with pytest.raises(ValueError, match="trials"):
+        _result = evaluate(
+            data=[{"data": "a"}],
+            executor=lambda d, _t=None: d,
+            evaluators={"one": lambda output, target: 1},
+            trials=bad,
+            project_api_key="test",
+        )
+
+
+@pytest.mark.asyncio
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init")
+async def test_evaluate_renames_duplicate_task_ids(
+    mock_init: MagicMock,
+    mock_save: MagicMock,
+    mock_eval_response: MagicMock,
+):
+    """Different datapoints resolving to one task id are renamed `id#2`, ...,
+    including a default (index) id colliding with an explicit one."""
+    mock_init.return_value = mock_eval_response
+
+    _result = await cast(
+        Awaitable[EvaluationRunResult],
+        evaluate(
+            data=[
+                {"data": 0, "task_id": "dup"},
+                {"data": 1, "taskId": "dup"},
+                {"data": 2, "taskId": "dup"},
+                {"data": 3, "taskId": "4"},
+                {"data": 4},
+            ],
+            executor=lambda d, _t=None: d,
+            evaluators={"one": lambda output, target: 1},
+            concurrency_limit=1,
+            project_api_key="test",
+        ),
+    )
+    _flush_success = Laminar.flush()
+
+    by_data = {r.data: r.task_id for r in saved_results(mock_save)}
+    assert by_data == {0: "dup", 1: "dup#2", 2: "dup#3", 3: "4", 4: "4#2"}
+
+
+@pytest.mark.parametrize(
+    ("requested", "expected"),
+    [
+        (["foo", "foo", "foo#2", "foo"], ["foo", "foo#2", "foo#2#2", "foo#3"]),
+        (["foo", "foo#2", "foo"], ["foo", "foo#2", "foo#3"]),
+    ],
+)
+def test_task_id_resolver_skips_used_ids(requested: list[str], expected: list[str]):
+    """A duplicate of base `b` gets the smallest unused `b#n`; generated ids
+    count as used, so a later explicit id equal to one is renamed too."""
+    resolver = _TaskIdResolver(MagicMock())
+    resolved = [
+        resolver.resolve(Datapoint(data=i, task_id=task_id), i)
+        for i, task_id in enumerate(requested)
+    ]
+    assert resolved == expected
+
+
+@pytest.mark.asyncio
+@patch("lmnr.sdk.client.synchronous.resources.datasets.Datasets.pull")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init")
+async def test_evaluate_dataset_link_requires_datapoint_id_and_created_at(
+    mock_init: MagicMock,
+    mock_save: MagicMock,
+    mock_pull: MagicMock,
+    mock_eval_response: MagicMock,
+):
+    mock_init.return_value = mock_eval_response
+    linked = Datapoint(id=uuid.uuid4(), data="linked", createdAt=datetime.now(tz=UTC))
+    mock_pull.return_value = {
+        "items": [linked, Datapoint(data="no-id"), Datapoint(id=uuid.uuid4(), data="no-ts")],
+        "total_count": 3,
+    }
+
+    _result = await cast(
+        Awaitable[EvaluationRunResult],
+        evaluate(
+            data=LaminarDataset(id=uuid.uuid4()),
+            executor=lambda d, _t=None: d,
+            evaluators={"one": lambda output, target: 1},
+            project_api_key="test",
+        ),
+    )
+    _flush_success = Laminar.flush()
+
+    links = {r.data: r.dataset_link for r in saved_results(mock_save)}
+    assert links["linked"] is not None and links["linked"]["datapoint_id"] == linked.id
+    assert links["no-id"] is None
+    assert links["no-ts"] is None

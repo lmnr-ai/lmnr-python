@@ -79,6 +79,14 @@ class EvaluationDataset(ABC):
         """
         return None
 
+    def source_index(self, idx: int) -> int:
+        """Map an index into this dataset to the position of the same datapoint
+        in the underlying source data, before any take/select/shuffle.
+
+        The eval uses it as the default task id, so a datapoint keeps the same
+        task id however the dataset is subsampled."""
+        return idx
+
     # --- chainable, immutable subsampling -------------------------------------
 
     def take(self, n: int) -> "EvaluationDataset":
@@ -160,6 +168,10 @@ class _SubsetDataset(EvaluationDataset):
     @override
     def source_dataset(self) -> "LaminarDataset | None":
         return self._base.source_dataset()
+
+    @override
+    def source_index(self, idx: int) -> int:
+        return self._base.source_index(self._resolve()[idx])
 
 
 class LaminarDataset(EvaluationDataset):
