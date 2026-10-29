@@ -5,7 +5,7 @@ import httpx
 from packaging import version
 from typing_extensions import TypedDict
 
-__version__ = "0.8.3"
+__version__ = "0.8.4"
 PYTHON_VERSION = f"{sys.version_info.major}.{sys.version_info.minor}"
 
 
