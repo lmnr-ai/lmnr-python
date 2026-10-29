@@ -164,6 +164,8 @@ def test_local_only_writes_the_file_and_exports_nothing(harness: Harness):
     trajectory = harness.read()
     assert_valid(trajectory)
     assert harness.exporter.get_finished_spans() == ()
+    assert harness.processor.instance is None
+    assert harness.processor.exporter is None
     lmnr = trajectory["extra"]["lmnr"]
     assert lmnr["exported"] is False
     assert lmnr["complete"] is True
