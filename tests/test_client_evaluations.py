@@ -14,6 +14,7 @@ from lmnr.sdk.evaluations.models import (
     EvaluationResultDatapoint,
     PartialEvaluationDatapoint,
 )
+from lmnr.sdk.types import Datapoint
 
 
 class TestAsyncLaminarClientEvaluations:
@@ -1386,3 +1387,51 @@ class TestAsyncClientRetryLogic:
             # - retry iteration 1: length = 2 // 2 = 1, makes HTTP call
             # - retry iteration 2: length = 1 // 2 = 0, raises error immediately (no HTTP call)
             assert mock_post.call_count == 1
+
+
+class TestTaskIdWire:
+    """`taskId` goes out on eval datapoints and dataset pushes, and is read
+    back (optionally) on dataset pulls."""
+
+    def test_sync_create_datapoint_sends_task_id(self):
+        client = LaminarClient(base_url="http://test-api.com", project_api_key="test-key")
+        response = MagicMock(status_code=200)
+        with patch.object(client.evals._client, "post", return_value=response) as mock_post:
+            _id = client.evals.create_datapoint(uuid.uuid4(), data={}, index=4, task_id="t-1")
+        point = mock_post.call_args[1]["json"]["points"][0]
+        assert point["taskId"] == "t-1"
+        assert point["index"] == 4
+        client.close()
+
+    @pytest.mark.asyncio
+    async def test_async_create_datapoint_sends_task_id(self):
+        client = AsyncLaminarClient(base_url="http://test-api.com", project_api_key="test-key")
+        response = MagicMock(status_code=200)
+        with patch.object(
+            client.evals._client, "post", new_callable=AsyncMock, return_value=response
+        ) as mock_post:
+            _id = await client.evals.create_datapoint(uuid.uuid4(), data={}, task_id="t-1")
+        assert mock_post.call_args[1]["json"]["points"][0]["taskId"] == "t-1"
+        await client.close()
+
+    def test_dataset_push_forwards_task_id_and_pull_reads_it(self):
+        client = LaminarClient(base_url="http://test-api.com", project_api_key="test-key")
+        push_response = MagicMock(status_code=200)
+        push_response.json.return_value = {"datasetId": str(uuid.uuid4())}
+        with patch.object(client.datasets._client, "post", return_value=push_response) as post:
+            _resp = client.datasets.push(
+                [Datapoint(data=1, task_id="a"), Datapoint(data=2)], name="ds"
+            )
+        sent = post.call_args[1]["json"]["datapoints"]
+        assert [p.get("taskId") for p in sent] == ["a", None]
+        assert all("task_id" not in p for p in sent)
+
+        pull_response = MagicMock(status_code=200)
+        pull_response.json.return_value = {
+            "items": [{"data": 1, "taskId": "a"}, {"data": 2}],
+            "totalCount": 2,
+        }
+        with patch.object(client.datasets._client, "get", return_value=pull_response):
+            pulled = client.datasets.pull(name="ds")
+        assert [dp.task_id for dp in pulled["items"]] == ["a", None]
+        client.close()

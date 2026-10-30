@@ -91,6 +91,7 @@ class PartialEvaluationDatapoint(BaseModel):
     executor_span_id: uuid.UUID
     metadata: EvaluationDatapointMetadata = Field(default=None)
     dataset_link: EvaluationDatapointDatasetLink | None = Field(default=None)
+    task_id: str | None = Field(default=None)
 
     # uuid is not serializable by default, so we need to convert it to a string
     def to_dict(self, max_data_length: int = DEFAULT_DATAPOINT_MAX_DATA_LENGTH):
@@ -112,6 +113,7 @@ class PartialEvaluationDatapoint(BaseModel):
                     else serialized_target
                 ),
                 "index": self.index,
+                "taskId": self.task_id,
                 "traceId": str(self.trace_id),
                 "executorSpanId": str(self.executor_span_id),
                 "metadata": (serialize(self.metadata) if self.metadata is not None else {}),
@@ -136,6 +138,7 @@ class EvaluationResultDatapoint(BaseModel):
     executor_span_id: uuid.UUID
     metadata: EvaluationDatapointMetadata = Field(default=None)
     dataset_link: EvaluationDatapointDatasetLink | None = Field(default=None)
+    task_id: str | None = Field(default=None)
 
     # uuid is not serializable by default, so we need to convert it to a string
     def to_dict(self, max_data_length: int = DEFAULT_DATAPOINT_MAX_DATA_LENGTH):
@@ -169,6 +172,7 @@ class EvaluationResultDatapoint(BaseModel):
                 "traceId": str(self.trace_id),
                 "executorSpanId": str(self.executor_span_id),
                 "index": self.index,
+                "taskId": self.task_id,
                 "metadata": (serialize(self.metadata) if self.metadata is not None else {}),
                 "datasetLink": (
                     _dataset_link_to_dict(self.dataset_link)

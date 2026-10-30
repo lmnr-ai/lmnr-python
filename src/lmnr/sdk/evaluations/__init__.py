@@ -34,6 +34,7 @@ def evaluate(
     disabled_instruments: (set[Instruments] | list[Instruments] | tuple[Instruments] | None) = None,
     max_export_batch_size: int | None = MAX_EXPORT_BATCH_SIZE,
     trace_export_timeout_seconds: int | None = None,
+    trials: int = 1,
 ) -> EvaluationRunResult | Coroutine[Any, Any, EvaluationRunResult] | None:
     """
     If added to the file which is called through `lmnr eval` command, then
@@ -100,6 +101,9 @@ def evaluate(
                         Defaults to None.
         trace_export_timeout_seconds (int | None, optional): The timeout for\
                         trace export on OpenTelemetry exporter. Defaults to None.
+        trials (int, optional): How many times to run each Task; each run is a Trial.\
+                        Each run (Trial) gets its own trace and result row;\
+                        Trials of one Task share its task id. Defaults to 1.
     """
     evaluation = Evaluation(
         data=data,
@@ -119,6 +123,7 @@ def evaluate(
         disabled_instruments=disabled_instruments,
         max_export_batch_size=max_export_batch_size,
         trace_export_timeout_seconds=trace_export_timeout_seconds,
+        trials=trials,
     )
 
     if PREPARE_ONLY.get():
