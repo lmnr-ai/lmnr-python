@@ -1,8 +1,8 @@
 # Laminar Python
 
-Python SDK for [Laminar](https://www.lmnr.ai).
+Python SDK for [Laminar](https://www.laminar.sh).
 
-[Laminar](https://www.lmnr.ai) is an open-source platform for engineering LLM products. Trace, evaluate, annotate, and analyze LLM data. Bring LLM applications to production with confidence.
+[Laminar](https://www.laminar.sh) is an open-source platform for engineering LLM products. Trace, evaluate, annotate, and analyze LLM data. Bring LLM applications to production with confidence.
 
 Check our [open-source repo](https://github.com/lmnr-ai/lmnr) and don't forget to star it ⭐
 
@@ -13,18 +13,16 @@ Check our [open-source repo](https://github.com/lmnr-ai/lmnr) and don't forget t
 
 ## Quickstart
 
-First, install the package, specifying the instrumentations you want to use.
-
-For example, to install the package with OpenAI and Anthropic instrumentations:
+First, install the package, specifying the extras you want to use.
 
 ```sh
-pip install 'lmnr[anthropic,openai]'
+uv add lmnr
 ```
 
 To install all possible instrumentations, use the following command:
 
 ```sh
-pip install 'lmnr[all]'
+uv add lmnr --all-extras
 ```
 
 Initialize Laminar in your code:
@@ -202,61 +200,3 @@ Read the [docs](https://docs.lmnr.ai/evaluations/introduction) to learn more abo
 
 Various interactions with Laminar [API](https://docs.lmnr.ai/api-reference/) are available in `LaminarClient`
 and its asynchronous version `AsyncLaminarClient`.
-
-### Agent
-
-To run Laminar agent, you can invoke `client.agent.run`
-
-```python
-from lmnr import LaminarClient
-
-client = LaminarClient(project_api_key="<YOUR_PROJECT_API_KEY>")
-
-response = client.agent.run(prompt="What is the weather in London today?")
-
-print(response.result.content)
-```
-
-#### Streaming
-
-Agent run supports streaming as well.
-
-```python
-from lmnr import LaminarClient
-
-client = LaminarClient(project_api_key="<YOUR_PROJECT_API_KEY>")
-
-for chunk in client.agent.run(prompt="What is the weather in London today?", stream=True):
-    if chunk.chunk_type == "step":
-        print(chunk.summary)
-    elif chunk.chunk_type == "finalOutput":
-        print(chunk.content.result.content)
-```
-
-#### Async mode
-
-```python
-from lmnr import AsyncLaminarClient
-
-client = AsyncLaminarClient(project_api_key="<YOUR_PROJECT_API_KEY>")
-
-response = await client.agent.run(prompt="What is the weather in London today?")
-
-print(response.result.content)
-```
-
-#### Async mode with streaming
-
-```python
-from lmnr import AsyncLaminarClient
-
-client = AsyncLaminarClient(project_api_key="<YOUR_PROJECT_API_KEY>")
-
-# Note that you need to await the operation even though we use `async for` below
-response = await client.agent.run(prompt="What is the weather in London today?", stream=True)
-async for chunk in client.agent.run(prompt="What is the weather in London today?", stream=True):
-    if chunk.chunk_type == "step":
-        print(chunk.summary)
-    elif chunk.chunk_type == "finalOutput":
-        print(chunk.content.result.content)
-```

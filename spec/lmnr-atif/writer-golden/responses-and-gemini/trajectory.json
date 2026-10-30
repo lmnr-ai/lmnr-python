@@ -1,0 +1,280 @@
+{
+  "schema_version": "ATIF-v1.8",
+  "session_id": "2b3c4d5e-6f70-4182-93a4-b5c6d7e8f901",
+  "trajectory_id": "2b3c4d5e-6f70-4182-93a4-b5c6d7e8f901",
+  "agent": {
+    "name": "weather_assistant",
+    "version": "unknown",
+    "model_name": "openai/gpt-5.5",
+    "tool_definitions": [
+      {
+        "type": "function",
+        "function": {
+          "name": "get_weather",
+          "description": "Weather for a city.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "city": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      {
+        "type": "web_search"
+      }
+    ]
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "timestamp": "2026-10-28T09:00:00.100000Z",
+      "source": "system",
+      "message": "You are concise.",
+      "extra": {
+        "lmnr": {
+          "source_span_id": "00000000-0000-0000-0000-000000000021"
+        }
+      }
+    },
+    {
+      "step_id": 2,
+      "timestamp": "2026-10-28T09:00:00.100000Z",
+      "source": "user",
+      "message": "Weather in Paris?",
+      "extra": {
+        "lmnr": {
+          "source_span_id": "00000000-0000-0000-0000-000000000021"
+        }
+      }
+    },
+    {
+      "step_id": 3,
+      "timestamp": "2026-10-28T09:00:01.000000Z",
+      "source": "agent",
+      "model_name": "gpt-5.5",
+      "message": "",
+      "reasoning_content": "Need the weather first.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_w1",
+          "function_name": "get_weather",
+          "arguments": {
+            "city": "Paris"
+          },
+          "extra": {
+            "lmnr": {
+              "span_id": "00000000-0000-0000-0000-000000000022",
+              "start_time": "2026-10-28T09:00:01.100000Z",
+              "end_time": "2026-10-28T09:00:01.300000Z"
+            }
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_w1",
+            "content": "{\"temp_c\": 18}",
+            "extra": {
+              "lmnr": {
+                "status": "ok"
+              }
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "extra": {
+          "lmnr": {
+            "reasoning_tokens": 12
+          }
+        }
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "lmnr": {
+          "span_id": "00000000-0000-0000-0000-000000000021",
+          "start_time": "2026-10-28T09:00:00.100000Z",
+          "end_time": "2026-10-28T09:00:01.000000Z",
+          "provider": "openai",
+          "response_id": "resp_1",
+          "status": "ok"
+        }
+      }
+    },
+    {
+      "step_id": 4,
+      "timestamp": "2026-10-28T09:00:02.000000Z",
+      "source": "agent",
+      "model_name": "gpt-5.5",
+      "message": "It's 18°C in Paris.",
+      "metrics": {
+        "extra": {
+          "lmnr": {
+            "reasoning_tokens": 12
+          }
+        }
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "lmnr": {
+          "span_id": "00000000-0000-0000-0000-000000000023",
+          "start_time": "2026-10-28T09:00:01.400000Z",
+          "end_time": "2026-10-28T09:00:02.000000Z",
+          "provider": "openai",
+          "response_id": "resp_2",
+          "status": "ok"
+        }
+      }
+    },
+    {
+      "step_id": 5,
+      "timestamp": "2026-10-28T09:00:03.000000Z",
+      "source": "user",
+      "message": "And in Fahrenheit?",
+      "extra": {
+        "lmnr": {
+          "source_span_id": "00000000-0000-0000-0000-000000000024"
+        }
+      }
+    },
+    {
+      "step_id": 6,
+      "timestamp": "2026-10-28T09:00:03.800000Z",
+      "source": "agent",
+      "model_name": "gemini-3-pro",
+      "message": "",
+      "reasoning_content": "Thinking about units",
+      "tool_calls": [
+        {
+          "tool_call_id": "convert_1",
+          "function_name": "convert",
+          "arguments": {
+            "celsius": 18
+          },
+          "extra": {
+            "lmnr": {
+              "synthetic_id": true,
+              "span_id": "00000000-0000-0000-0000-000000000025",
+              "start_time": "2026-10-28T09:00:03.900000Z",
+              "end_time": "2026-10-28T09:00:04.000000Z"
+            }
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "convert_1",
+            "content": "64.4F",
+            "extra": {
+              "lmnr": {
+                "status": "ok"
+              }
+            }
+          }
+        ]
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "lmnr": {
+          "span_id": "00000000-0000-0000-0000-000000000024",
+          "start_time": "2026-10-28T09:00:03.000000Z",
+          "end_time": "2026-10-28T09:00:03.800000Z",
+          "provider": "gemini",
+          "finish_reason": "STOP",
+          "status": "ok",
+          "input_messages": [
+            {
+              "role": "user",
+              "content": "And in Fahrenheit?"
+            }
+          ],
+          "system_prompt": {
+            "$ref": "sha256:0871889d9483194865da0bc2f4931a63052c0ac714c997fcd06c60073ae9cd2f"
+          },
+          "tool_definitions": {
+            "$ref": "sha256:7c02ee1f3864f954264ab4ae4fbf6a3f72d03c0b4809399a61d3cc5cd03e5445"
+          }
+        }
+      }
+    },
+    {
+      "step_id": 7,
+      "timestamp": "2026-10-28T09:00:04.900000Z",
+      "source": "agent",
+      "model_name": "gemini-3-pro",
+      "message": "That's 64.4°F.",
+      "llm_call_count": 1,
+      "extra": {
+        "lmnr": {
+          "span_id": "00000000-0000-0000-0000-000000000026",
+          "start_time": "2026-10-28T09:00:04.100000Z",
+          "end_time": "2026-10-28T09:00:04.900000Z",
+          "provider": "gemini",
+          "finish_reason": "STOP",
+          "status": "ok",
+          "system_prompt": {
+            "$ref": "sha256:0871889d9483194865da0bc2f4931a63052c0ac714c997fcd06c60073ae9cd2f"
+          },
+          "tool_definitions": {
+            "$ref": "sha256:7c02ee1f3864f954264ab4ae4fbf6a3f72d03c0b4809399a61d3cc5cd03e5445"
+          }
+        }
+      }
+    }
+  ],
+  "final_metrics": {
+    "total_steps": 7,
+    "extra": {
+      "lmnr": {
+        "duration_ms": 4800.0,
+        "llm_calls": 4,
+        "tool_calls": 2,
+        "errors": 0
+      }
+    }
+  },
+  "extra": {
+    "lmnr": {
+      "spec_version": "0.1.0",
+      "producer": {
+        "name": "lmnr-golden",
+        "version": "0"
+      },
+      "trace_ids": [
+        "2b3c4d5e-6f70-4182-93a4-b5c6d7e8f901"
+      ],
+      "root_span_id": "00000000-0000-0000-0000-000000000020",
+      "exported": false,
+      "complete": true,
+      "defs": {
+        "system_prompts": {
+          "sha256:0871889d9483194865da0bc2f4931a63052c0ac714c997fcd06c60073ae9cd2f": "You convert units."
+        },
+        "tool_definitions": {
+          "sha256:7c02ee1f3864f954264ab4ae4fbf6a3f72d03c0b4809399a61d3cc5cd03e5445": [
+            {
+              "type": "function",
+              "function": {
+                "name": "convert",
+                "description": "Convert units.",
+                "parameters": {
+                  "type": "OBJECT",
+                  "properties": {
+                    "celsius": {
+                      "type": "NUMBER"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

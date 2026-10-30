@@ -1,0 +1,284 @@
+{
+  "options": {},
+  "spans": [
+    {
+      "trace_id": "7c1e5a2b-3d4f-4a6b-9c8d-0e1f2a3b4c5d",
+      "span_id": "00000000-0000-0000-0000-000000000001",
+      "parent_span_id": null,
+      "name": "trip-planner",
+      "span_type": "DEFAULT",
+      "start_time": "2026-10-28T10:00:00.000000Z",
+      "end_time": "2026-10-28T10:02:38.570000Z",
+      "attributes": {
+        "lmnr.span.release": "4f2a9c1",
+        "lmnr.span.input": "{}"
+      }
+    },
+    {
+      "trace_id": "7c1e5a2b-3d4f-4a6b-9c8d-0e1f2a3b4c5d",
+      "span_id": "00000000-0000-0000-0000-000000000002",
+      "parent_span_id": "00000000-0000-0000-0000-000000000001",
+      "name": "ai.generateText",
+      "span_type": "DEFAULT",
+      "start_time": "2026-10-28T10:00:30.000000Z",
+      "end_time": "2026-10-28T10:02:23.279000Z",
+      "attributes": {
+        "lmnr.span.release": "4f2a9c1",
+        "gen_ai.system": "openai",
+        "gen_ai.request.model": "gpt-5.4",
+        "lmnr.span.input": "[{\"role\":\"system\",\"content\":\"You are a travel assistant.\"},{\"role\":\"user\",\"content\":\"Plan a day in Paris, and check the weather in Paris and Atlantis.\"}]",
+        "gen_ai.response.finish_reason": "stop",
+        "lmnr.span.output": "[{\"role\":\"assistant\",\"content\":[{\"type\":\"reasoning\",\"text\":\"I need the weather for both cities.\"},{\"type\":\"text\",\"text\":\"Checking the weather.\"},{\"type\":\"tool-call\",\"toolCallId\":\"call_w1\",\"toolName\":\"get_weather\",\"input\":{\"city\":\"Paris\"}},{\"type\":\"tool-call\",\"toolCallId\":\"call_w2\",\"toolName\":\"get_weather\",\"input\":{\"city\":\"Atlantis\"}},{\"type\":\"tool-result\",\"toolCallId\":\"call_w1\",\"toolName\":\"get_weather\",\"input\":{\"city\":\"Paris\"},\"output\":{\"city\":\"Paris\",\"temp_c\":22,\"sky\":\"sunny\"},\"dynamic\":false},{\"type\":\"tool-error\",\"toolCallId\":\"call_w2\",\"toolName\":\"get_weather\",\"input\":{\"city\":\"Atlantis\"},\"error\":{},\"dynamic\":false},{\"type\":\"tool-call\",\"toolCallId\":\"call_r1\",\"toolName\":\"research\",\"input\":{\"topic\":\"Paris museums\"}},{\"type\":\"tool-result\",\"toolCallId\":\"call_r1\",\"toolName\":\"research\",\"input\":{\"topic\":\"Paris museums\"},\"output\":\"Visit the Louvre and the Musée d'Orsay.\",\"dynamic\":false},{\"type\":\"text\",\"text\":\"Paris: sunny, 22°C. Atlantis isn't a real city. Visit the Louvre and the Musée d'Orsay.\"}]}]"
+      }
+    },
+    {
+      "trace_id": "7c1e5a2b-3d4f-4a6b-9c8d-0e1f2a3b4c5d",
+      "span_id": "00000000-0000-0000-0000-000000000003",
+      "parent_span_id": "00000000-0000-0000-0000-000000000002",
+      "name": "ai.llm openai.chat:gpt-5.4",
+      "span_type": "LLM",
+      "start_time": "2026-10-28T10:00:34.000000Z",
+      "end_time": "2026-10-28T10:00:58.425000Z",
+      "attributes": {
+        "lmnr.span.release": "4f2a9c1",
+        "gen_ai.system": "openai",
+        "gen_ai.request.model": "gpt-5.4",
+        "gen_ai.tool.definitions": "[{\"type\":\"function\",\"name\":\"get_weather\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"]},\"description\":\"Current weather in a city\"},{\"type\":\"function\",\"name\":\"research\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"topic\":{\"type\":\"string\"}},\"required\":[\"topic\"]},\"description\":\"Delegate research to a sub-agent\"}]",
+        "gen_ai.input.messages": "[{\"role\":\"system\",\"content\":\"You are a travel assistant.\"},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Plan a day in Paris, and check the weather in Paris and Atlantis.\"}]}]",
+        "gen_ai.response.model": "gpt-5.4",
+        "gen_ai.response.finish_reason": "tool-calls",
+        "gen_ai.response.id": "resp_gpt-5.4_1",
+        "gen_ai.usage.input_tokens": 120,
+        "gen_ai.usage.output_tokens": 48,
+        "gen_ai.usage.reasoning_tokens": 16,
+        "gen_ai.usage.cache_read_input_tokens": 0,
+        "gen_ai.usage.cache_creation_input_tokens": 0,
+        "gen_ai.output.messages": "[{\"role\":\"assistant\",\"content\":[{\"type\":\"reasoning\",\"text\":\"I need the weather for both cities.\"},{\"type\":\"text\",\"text\":\"Checking the weather.\"},{\"type\":\"tool-call\",\"toolCallId\":\"call_w1\",\"toolName\":\"get_weather\",\"input\":{\"city\":\"Paris\"}},{\"type\":\"tool-call\",\"toolCallId\":\"call_w2\",\"toolName\":\"get_weather\",\"input\":{\"city\":\"Atlantis\"}}]}]"
+      }
+    },
+    {
+      "trace_id": "7c1e5a2b-3d4f-4a6b-9c8d-0e1f2a3b4c5d",
+      "span_id": "00000000-0000-0000-0000-000000000004",
+      "parent_span_id": "00000000-0000-0000-0000-000000000002",
+      "name": "ai.tool get_weather",
+      "span_type": "TOOL",
+      "start_time": "2026-10-28T10:01:00.000000Z",
+      "end_time": "2026-10-28T10:01:03.797000Z",
+      "attributes": {
+        "lmnr.span.release": "4f2a9c1",
+        "ai.toolCall.name": "get_weather",
+        "ai.toolCall.id": "call_w1",
+        "lmnr.span.input": "{\"city\":\"Paris\"}",
+        "lmnr.span.output": "{\"city\":\"Paris\",\"temp_c\":22,\"sky\":\"sunny\"}"
+      }
+    },
+    {
+      "trace_id": "7c1e5a2b-3d4f-4a6b-9c8d-0e1f2a3b4c5d",
+      "span_id": "00000000-0000-0000-0000-000000000005",
+      "parent_span_id": "00000000-0000-0000-0000-000000000002",
+      "name": "ai.tool get_weather",
+      "span_type": "TOOL",
+      "start_time": "2026-10-28T10:01:01.000000Z",
+      "end_time": "2026-10-28T10:01:44.812000Z",
+      "attributes": {
+        "lmnr.span.release": "4f2a9c1",
+        "ai.toolCall.name": "get_weather",
+        "ai.toolCall.id": "call_w2",
+        "lmnr.span.input": "{\"city\":\"Atlantis\"}",
+        "lmnr.span.output": "City not found: Atlantis"
+      },
+      "error": {
+        "type": "Error",
+        "message": "City not found: Atlantis"
+      }
+    },
+    {
+      "trace_id": "7c1e5a2b-3d4f-4a6b-9c8d-0e1f2a3b4c5d",
+      "span_id": "00000000-0000-0000-0000-000000000006",
+      "parent_span_id": "00000000-0000-0000-0000-000000000002",
+      "name": "ai.llm openai.chat:gpt-5.4",
+      "span_type": "LLM",
+      "start_time": "2026-10-28T10:01:48.000000Z",
+      "end_time": "2026-10-28T10:01:56.420000Z",
+      "attributes": {
+        "lmnr.span.release": "4f2a9c1",
+        "gen_ai.system": "openai",
+        "gen_ai.request.model": "gpt-5.4",
+        "gen_ai.tool.definitions": "[{\"type\":\"function\",\"name\":\"get_weather\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"]},\"description\":\"Current weather in a city\"},{\"type\":\"function\",\"name\":\"research\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"topic\":{\"type\":\"string\"}},\"required\":[\"topic\"]},\"description\":\"Delegate research to a sub-agent\"}]",
+        "gen_ai.input.messages": "[{\"role\":\"system\",\"content\":\"You are a travel assistant.\"},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Plan a day in Paris, and check the weather in Paris and Atlantis.\"}]},{\"role\":\"assistant\",\"content\":[{\"type\":\"reasoning\",\"text\":\"I need the weather for both cities.\"},{\"type\":\"text\",\"text\":\"Checking the weather.\"},{\"type\":\"tool-call\",\"toolCallId\":\"call_w1\",\"toolName\":\"get_weather\",\"input\":{\"city\":\"Paris\"}},{\"type\":\"tool-call\",\"toolCallId\":\"call_w2\",\"toolName\":\"get_weather\",\"input\":{\"city\":\"Atlantis\"}}]},{\"role\":\"tool\",\"content\":[{\"type\":\"tool-result\",\"toolCallId\":\"call_w1\",\"toolName\":\"get_weather\",\"output\":{\"type\":\"json\",\"value\":{\"city\":\"Paris\",\"temp_c\":22,\"sky\":\"sunny\"}}},{\"type\":\"tool-result\",\"toolCallId\":\"call_w2\",\"toolName\":\"get_weather\",\"output\":{\"type\":\"error-text\",\"value\":\"Error: City not found: Atlantis\"}}]}]",
+        "gen_ai.response.model": "gpt-5.4",
+        "gen_ai.response.finish_reason": "tool-calls",
+        "gen_ai.response.id": "resp_gpt-5.4_2",
+        "gen_ai.usage.input_tokens": 210,
+        "gen_ai.usage.output_tokens": 20,
+        "gen_ai.usage.reasoning_tokens": 0,
+        "gen_ai.usage.cache_read_input_tokens": 0,
+        "gen_ai.usage.cache_creation_input_tokens": 0,
+        "gen_ai.output.messages": "[{\"role\":\"assistant\",\"content\":[{\"type\":\"tool-call\",\"toolCallId\":\"call_r1\",\"toolName\":\"research\",\"input\":{\"topic\":\"Paris museums\"}}]}]"
+      }
+    },
+    {
+      "trace_id": "7c1e5a2b-3d4f-4a6b-9c8d-0e1f2a3b4c5d",
+      "span_id": "00000000-0000-0000-0000-000000000007",
+      "parent_span_id": "00000000-0000-0000-0000-000000000002",
+      "name": "ai.tool research",
+      "span_type": "TOOL",
+      "start_time": "2026-10-28T10:01:57.000000Z",
+      "end_time": "2026-10-28T10:02:16.620000Z",
+      "attributes": {
+        "lmnr.span.release": "4f2a9c1",
+        "ai.toolCall.name": "research",
+        "ai.toolCall.id": "call_r1",
+        "lmnr.span.input": "{\"topic\":\"Paris museums\"}",
+        "lmnr.span.output": "Visit the Louvre and the Musée d'Orsay."
+      }
+    },
+    {
+      "trace_id": "7c1e5a2b-3d4f-4a6b-9c8d-0e1f2a3b4c5d",
+      "span_id": "00000000-0000-0000-0000-000000000008",
+      "parent_span_id": "00000000-0000-0000-0000-000000000007",
+      "name": "ai.generateText",
+      "span_type": "DEFAULT",
+      "start_time": "2026-10-28T10:01:58.000000Z",
+      "end_time": "2026-10-28T10:02:15.897000Z",
+      "attributes": {
+        "lmnr.span.release": "4f2a9c1",
+        "gen_ai.system": "openai",
+        "gen_ai.request.model": "gpt-5.4-mini",
+        "lmnr.span.input": "[{\"role\":\"system\",\"content\":\"You are a research sub-agent.\"},{\"role\":\"user\",\"content\":\"Research: Paris museums\"}]",
+        "gen_ai.response.finish_reason": "stop",
+        "lmnr.span.output": "[{\"role\":\"assistant\",\"content\":[{\"type\":\"tool-call\",\"toolCallId\":\"call_s1\",\"toolName\":\"search\",\"input\":{\"q\":\"Paris museums\"}},{\"type\":\"tool-result\",\"toolCallId\":\"call_s1\",\"toolName\":\"search\",\"input\":{\"q\":\"Paris museums\"},\"output\":[\"Louvre\",\"Musée d'Orsay\"],\"dynamic\":false},{\"type\":\"text\",\"text\":\"Visit the Louvre and the Musée d'Orsay.\"}]}]"
+      }
+    },
+    {
+      "trace_id": "7c1e5a2b-3d4f-4a6b-9c8d-0e1f2a3b4c5d",
+      "span_id": "00000000-0000-0000-0000-000000000009",
+      "parent_span_id": "00000000-0000-0000-0000-000000000008",
+      "name": "ai.llm openai.chat:gpt-5.4-mini",
+      "span_type": "LLM",
+      "start_time": "2026-10-28T10:01:59.000000Z",
+      "end_time": "2026-10-28T10:02:05.002000Z",
+      "attributes": {
+        "lmnr.span.release": "4f2a9c1",
+        "gen_ai.system": "openai",
+        "gen_ai.request.model": "gpt-5.4-mini",
+        "gen_ai.tool.definitions": "[{\"type\":\"function\",\"name\":\"search\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"q\":{\"type\":\"string\"}},\"required\":[\"q\"]},\"description\":\"Search the web\"}]",
+        "gen_ai.input.messages": "[{\"role\":\"system\",\"content\":\"You are a research sub-agent.\"},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Research: Paris museums\"}]}]",
+        "gen_ai.response.model": "gpt-5.4-mini",
+        "gen_ai.response.finish_reason": "tool-calls",
+        "gen_ai.response.id": "resp_gpt-5.4-mini_1",
+        "gen_ai.usage.input_tokens": 40,
+        "gen_ai.usage.output_tokens": 12,
+        "gen_ai.usage.reasoning_tokens": 0,
+        "gen_ai.usage.cache_read_input_tokens": 0,
+        "gen_ai.usage.cache_creation_input_tokens": 0,
+        "gen_ai.output.messages": "[{\"role\":\"assistant\",\"content\":[{\"type\":\"tool-call\",\"toolCallId\":\"call_s1\",\"toolName\":\"search\",\"input\":{\"q\":\"Paris museums\"}}]}]"
+      }
+    },
+    {
+      "trace_id": "7c1e5a2b-3d4f-4a6b-9c8d-0e1f2a3b4c5d",
+      "span_id": "00000000-0000-0000-0000-00000000000a",
+      "parent_span_id": "00000000-0000-0000-0000-000000000008",
+      "name": "ai.tool search",
+      "span_type": "TOOL",
+      "start_time": "2026-10-28T10:02:05.000000Z",
+      "end_time": "2026-10-28T10:02:07.751000Z",
+      "attributes": {
+        "lmnr.span.release": "4f2a9c1",
+        "ai.toolCall.name": "search",
+        "ai.toolCall.id": "call_s1",
+        "lmnr.span.input": "{\"q\":\"Paris museums\"}",
+        "lmnr.span.output": "[\"Louvre\",\"Musée d'Orsay\"]"
+      }
+    },
+    {
+      "trace_id": "7c1e5a2b-3d4f-4a6b-9c8d-0e1f2a3b4c5d",
+      "span_id": "00000000-0000-0000-0000-00000000000b",
+      "parent_span_id": "00000000-0000-0000-0000-000000000008",
+      "name": "ai.llm openai.chat:gpt-5.4-mini",
+      "span_type": "LLM",
+      "start_time": "2026-10-28T10:02:09.000000Z",
+      "end_time": "2026-10-28T10:02:14.712000Z",
+      "attributes": {
+        "lmnr.span.release": "4f2a9c1",
+        "gen_ai.system": "openai",
+        "gen_ai.request.model": "gpt-5.4-mini",
+        "gen_ai.tool.definitions": "[{\"type\":\"function\",\"name\":\"search\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"q\":{\"type\":\"string\"}},\"required\":[\"q\"]},\"description\":\"Search the web\"}]",
+        "gen_ai.input.messages": "[{\"role\":\"system\",\"content\":\"You are a research sub-agent.\"},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Research: Paris museums\"}]},{\"role\":\"assistant\",\"content\":[{\"type\":\"tool-call\",\"toolCallId\":\"call_s1\",\"toolName\":\"search\",\"input\":{\"q\":\"Paris museums\"}}]},{\"role\":\"tool\",\"content\":[{\"type\":\"tool-result\",\"toolCallId\":\"call_s1\",\"toolName\":\"search\",\"output\":{\"type\":\"json\",\"value\":[\"Louvre\",\"Musée d'Orsay\"]}}]}]",
+        "gen_ai.response.model": "gpt-5.4-mini",
+        "gen_ai.response.finish_reason": "stop",
+        "gen_ai.response.id": "resp_gpt-5.4-mini_2",
+        "gen_ai.usage.input_tokens": 70,
+        "gen_ai.usage.output_tokens": 14,
+        "gen_ai.usage.reasoning_tokens": 0,
+        "gen_ai.usage.cache_read_input_tokens": 0,
+        "gen_ai.usage.cache_creation_input_tokens": 0,
+        "gen_ai.output.messages": "[{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Visit the Louvre and the Musée d'Orsay.\"}]}]"
+      }
+    },
+    {
+      "trace_id": "7c1e5a2b-3d4f-4a6b-9c8d-0e1f2a3b4c5d",
+      "span_id": "00000000-0000-0000-0000-00000000000c",
+      "parent_span_id": "00000000-0000-0000-0000-000000000002",
+      "name": "ai.llm openai.chat:gpt-5.4",
+      "span_type": "LLM",
+      "start_time": "2026-10-28T10:02:17.000000Z",
+      "end_time": "2026-10-28T10:02:22.742000Z",
+      "attributes": {
+        "lmnr.span.release": "4f2a9c1",
+        "gen_ai.system": "openai",
+        "gen_ai.request.model": "gpt-5.4",
+        "gen_ai.tool.definitions": "[{\"type\":\"function\",\"name\":\"get_weather\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"]},\"description\":\"Current weather in a city\"},{\"type\":\"function\",\"name\":\"research\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"topic\":{\"type\":\"string\"}},\"required\":[\"topic\"]},\"description\":\"Delegate research to a sub-agent\"}]",
+        "gen_ai.input.messages": "[{\"role\":\"system\",\"content\":\"You are a travel assistant.\"},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Plan a day in Paris, and check the weather in Paris and Atlantis.\"}]},{\"role\":\"assistant\",\"content\":[{\"type\":\"reasoning\",\"text\":\"I need the weather for both cities.\"},{\"type\":\"text\",\"text\":\"Checking the weather.\"},{\"type\":\"tool-call\",\"toolCallId\":\"call_w1\",\"toolName\":\"get_weather\",\"input\":{\"city\":\"Paris\"}},{\"type\":\"tool-call\",\"toolCallId\":\"call_w2\",\"toolName\":\"get_weather\",\"input\":{\"city\":\"Atlantis\"}}]},{\"role\":\"tool\",\"content\":[{\"type\":\"tool-result\",\"toolCallId\":\"call_w1\",\"toolName\":\"get_weather\",\"output\":{\"type\":\"json\",\"value\":{\"city\":\"Paris\",\"temp_c\":22,\"sky\":\"sunny\"}}},{\"type\":\"tool-result\",\"toolCallId\":\"call_w2\",\"toolName\":\"get_weather\",\"output\":{\"type\":\"error-text\",\"value\":\"Error: City not found: Atlantis\"}}]},{\"role\":\"assistant\",\"content\":[{\"type\":\"tool-call\",\"toolCallId\":\"call_r1\",\"toolName\":\"research\",\"input\":{\"topic\":\"Paris museums\"}}]},{\"role\":\"tool\",\"content\":[{\"type\":\"tool-result\",\"toolCallId\":\"call_r1\",\"toolName\":\"research\",\"output\":{\"type\":\"text\",\"value\":\"Visit the Louvre and the Musée d'Orsay.\"}}]}]",
+        "gen_ai.response.model": "gpt-5.4",
+        "gen_ai.response.finish_reason": "stop",
+        "gen_ai.response.id": "resp_gpt-5.4_3",
+        "gen_ai.usage.input_tokens": 260,
+        "gen_ai.usage.output_tokens": 30,
+        "gen_ai.usage.reasoning_tokens": 0,
+        "gen_ai.usage.cache_read_input_tokens": 0,
+        "gen_ai.usage.cache_creation_input_tokens": 0,
+        "gen_ai.output.messages": "[{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Paris: sunny, 22°C. Atlantis isn't a real city. Visit the Louvre and the Musée d'Orsay.\"}]}]"
+      }
+    },
+    {
+      "trace_id": "7c1e5a2b-3d4f-4a6b-9c8d-0e1f2a3b4c5d",
+      "span_id": "00000000-0000-0000-0000-00000000000d",
+      "parent_span_id": "00000000-0000-0000-0000-00000000000e",
+      "name": "ai.llm openai.chat:gpt-5.4",
+      "span_type": "LLM",
+      "start_time": "2026-10-28T10:02:31.000000Z",
+      "end_time": "2026-10-28T10:02:37.456000Z",
+      "attributes": {
+        "lmnr.span.release": "4f2a9c1",
+        "gen_ai.system": "openai",
+        "gen_ai.request.model": "gpt-5.4",
+        "gen_ai.tool.definitions": "[{\"type\":\"function\",\"name\":\"get_weather\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"city\":{\"type\":\"string\"}},\"required\":[\"city\"]},\"description\":\"Current weather in a city\"},{\"type\":\"function\",\"name\":\"research\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"topic\":{\"type\":\"string\"}},\"required\":[\"topic\"]},\"description\":\"Delegate research to a sub-agent\"}]",
+        "gen_ai.input.messages": "[{\"role\":\"system\",\"content\":\"You are a travel assistant.\"},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Plan a day in Paris, and check the weather in Paris and Atlantis.\"}]},{\"role\":\"assistant\",\"content\":[{\"type\":\"reasoning\",\"text\":\"I need the weather for both cities.\"},{\"type\":\"text\",\"text\":\"Checking the weather.\"},{\"type\":\"tool-call\",\"toolCallId\":\"call_w1\",\"toolName\":\"get_weather\",\"input\":{\"city\":\"Paris\"}},{\"type\":\"tool-call\",\"toolCallId\":\"call_w2\",\"toolName\":\"get_weather\",\"input\":{\"city\":\"Atlantis\"}}]},{\"role\":\"tool\",\"content\":[{\"type\":\"tool-result\",\"toolCallId\":\"call_w1\",\"toolName\":\"get_weather\",\"output\":{\"type\":\"json\",\"value\":{\"city\":\"Paris\",\"temp_c\":22,\"sky\":\"sunny\"}}},{\"type\":\"tool-result\",\"toolCallId\":\"call_w2\",\"toolName\":\"get_weather\",\"output\":{\"type\":\"error-text\",\"value\":\"Error: City not found: Atlantis\"}}]},{\"role\":\"assistant\",\"content\":[{\"type\":\"tool-call\",\"toolCallId\":\"call_r1\",\"toolName\":\"research\",\"input\":{\"topic\":\"Paris museums\"}}]},{\"role\":\"tool\",\"content\":[{\"type\":\"tool-result\",\"toolCallId\":\"call_r1\",\"toolName\":\"research\",\"output\":{\"type\":\"text\",\"value\":\"Visit the Louvre and the Musée d'Orsay.\"}}]},{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Paris: sunny, 22°C. Atlantis isn't a real city. Visit the Louvre and the Musée d'Orsay.\"}]},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"And tomorrow?\"}]}]"
+      },
+      "error": {
+        "type": "APICallError",
+        "message": "Rate limit exceeded"
+      }
+    },
+    {
+      "trace_id": "7c1e5a2b-3d4f-4a6b-9c8d-0e1f2a3b4c5d",
+      "span_id": "00000000-0000-0000-0000-00000000000e",
+      "parent_span_id": "00000000-0000-0000-0000-000000000001",
+      "name": "ai.generateText",
+      "span_type": "DEFAULT",
+      "start_time": "2026-10-28T10:02:31.000000Z",
+      "end_time": "2026-10-28T10:02:37.456000Z",
+      "attributes": {
+        "lmnr.span.release": "4f2a9c1",
+        "gen_ai.system": "openai",
+        "gen_ai.request.model": "gpt-5.4",
+        "lmnr.span.input": "[{\"role\":\"system\",\"content\":\"You are a travel assistant.\"},{\"role\":\"user\",\"content\":\"Plan a day in Paris, and check the weather in Paris and Atlantis.\"},{\"role\":\"assistant\",\"content\":[{\"type\":\"reasoning\",\"text\":\"I need the weather for both cities.\"},{\"type\":\"text\",\"text\":\"Checking the weather.\"},{\"type\":\"tool-call\",\"toolCallId\":\"call_w1\",\"toolName\":\"get_weather\",\"input\":{\"city\":\"Paris\"}},{\"type\":\"tool-call\",\"toolCallId\":\"call_w2\",\"toolName\":\"get_weather\",\"input\":{\"city\":\"Atlantis\"}}]},{\"role\":\"tool\",\"content\":[{\"type\":\"tool-result\",\"toolCallId\":\"call_w1\",\"toolName\":\"get_weather\",\"output\":{\"type\":\"json\",\"value\":{\"city\":\"Paris\",\"temp_c\":22,\"sky\":\"sunny\"}}},{\"type\":\"tool-result\",\"toolCallId\":\"call_w2\",\"toolName\":\"get_weather\",\"output\":{\"type\":\"error-text\",\"value\":\"Error: City not found: Atlantis\"}}]},{\"role\":\"assistant\",\"content\":[{\"type\":\"tool-call\",\"toolCallId\":\"call_r1\",\"toolName\":\"research\",\"input\":{\"topic\":\"Paris museums\"}}]},{\"role\":\"tool\",\"content\":[{\"type\":\"tool-result\",\"toolCallId\":\"call_r1\",\"toolName\":\"research\",\"output\":{\"type\":\"text\",\"value\":\"Visit the Louvre and the Musée d'Orsay.\"}}]},{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Paris: sunny, 22°C. Atlantis isn't a real city. Visit the Louvre and the Musée d'Orsay.\"}]},{\"role\":\"user\",\"content\":\"And tomorrow?\"}]"
+      },
+      "error": {
+        "type": "APICallError",
+        "message": "Rate limit exceeded"
+      }
+    }
+  ]
+}

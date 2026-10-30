@@ -1,0 +1,455 @@
+{
+  "schema_version": "ATIF-v1.8",
+  "session_id": "7c1e5a2b-3d4f-4a6b-9c8d-0e1f2a3b4c5d",
+  "trajectory_id": "7c1e5a2b-3d4f-4a6b-9c8d-0e1f2a3b4c5d",
+  "agent": {
+    "name": "trip-planner",
+    "version": "4f2a9c1",
+    "model_name": "openai/gpt-5.4",
+    "tool_definitions": [
+      {
+        "type": "function",
+        "function": {
+          "name": "get_weather",
+          "description": "Current weather in a city",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "city": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "city"
+            ]
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "research",
+          "description": "Delegate research to a sub-agent",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "topic": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "topic"
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "timestamp": "2026-10-28T10:00:34.000000Z",
+      "source": "system",
+      "message": "You are a travel assistant.",
+      "extra": {
+        "lmnr": {
+          "source_span_id": "00000000-0000-0000-0000-000000000003"
+        }
+      }
+    },
+    {
+      "step_id": 2,
+      "timestamp": "2026-10-28T10:00:34.000000Z",
+      "source": "user",
+      "message": "Plan a day in Paris, and check the weather in Paris and Atlantis.",
+      "extra": {
+        "lmnr": {
+          "source_span_id": "00000000-0000-0000-0000-000000000003"
+        }
+      }
+    },
+    {
+      "step_id": 3,
+      "timestamp": "2026-10-28T10:00:58.425000Z",
+      "source": "agent",
+      "model_name": "gpt-5.4",
+      "message": "Checking the weather.",
+      "reasoning_content": "I need the weather for both cities.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_w1",
+          "function_name": "get_weather",
+          "arguments": {
+            "city": "Paris"
+          },
+          "extra": {
+            "lmnr": {
+              "span_id": "00000000-0000-0000-0000-000000000004",
+              "start_time": "2026-10-28T10:01:00.000000Z",
+              "end_time": "2026-10-28T10:01:03.797000Z"
+            }
+          }
+        },
+        {
+          "tool_call_id": "call_w2",
+          "function_name": "get_weather",
+          "arguments": {
+            "city": "Atlantis"
+          },
+          "extra": {
+            "lmnr": {
+              "span_id": "00000000-0000-0000-0000-000000000005",
+              "start_time": "2026-10-28T10:01:01.000000Z",
+              "end_time": "2026-10-28T10:01:44.812000Z"
+            }
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_w1",
+            "content": "{\"city\": \"Paris\", \"temp_c\": 22, \"sky\": \"sunny\"}",
+            "extra": {
+              "lmnr": {
+                "status": "ok"
+              }
+            }
+          },
+          {
+            "source_call_id": "call_w2",
+            "content": "Error: City not found: Atlantis",
+            "extra": {
+              "lmnr": {
+                "status": "error",
+                "error": {
+                  "type": "Error",
+                  "message": "City not found: Atlantis"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 120,
+        "completion_tokens": 48,
+        "cached_tokens": 0,
+        "extra": {
+          "lmnr": {
+            "reasoning_tokens": 16
+          }
+        }
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "lmnr": {
+          "span_id": "00000000-0000-0000-0000-000000000003",
+          "start_time": "2026-10-28T10:00:34.000000Z",
+          "end_time": "2026-10-28T10:00:58.425000Z",
+          "provider": "openai",
+          "response_id": "resp_gpt-5.4_1",
+          "status": "ok"
+        }
+      }
+    },
+    {
+      "step_id": 4,
+      "timestamp": "2026-10-28T10:01:56.420000Z",
+      "source": "agent",
+      "model_name": "gpt-5.4",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_r1",
+          "function_name": "research",
+          "arguments": {
+            "topic": "Paris museums"
+          },
+          "extra": {
+            "lmnr": {
+              "span_id": "00000000-0000-0000-0000-000000000007",
+              "start_time": "2026-10-28T10:01:57.000000Z",
+              "end_time": "2026-10-28T10:02:16.620000Z"
+            }
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_r1",
+            "content": "Visit the Louvre and the Musée d'Orsay.",
+            "subagent_trajectory_ref": [
+              {
+                "trajectory_id": "lmnr-00000000-0000-0000-0000-000000000007",
+                "extra": {
+                  "lmnr": {
+                    "span_id": "00000000-0000-0000-0000-000000000007"
+                  }
+                }
+              }
+            ],
+            "extra": {
+              "lmnr": {
+                "status": "ok"
+              }
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 210,
+        "completion_tokens": 20,
+        "cached_tokens": 0
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "lmnr": {
+          "span_id": "00000000-0000-0000-0000-000000000006",
+          "start_time": "2026-10-28T10:01:48.000000Z",
+          "end_time": "2026-10-28T10:01:56.420000Z",
+          "provider": "openai",
+          "response_id": "resp_gpt-5.4_2",
+          "status": "ok"
+        }
+      }
+    },
+    {
+      "step_id": 5,
+      "timestamp": "2026-10-28T10:02:22.742000Z",
+      "source": "agent",
+      "model_name": "gpt-5.4",
+      "message": "Paris: sunny, 22°C. Atlantis isn't a real city. Visit the Louvre and the Musée d'Orsay.",
+      "metrics": {
+        "prompt_tokens": 260,
+        "completion_tokens": 30,
+        "cached_tokens": 0
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "lmnr": {
+          "span_id": "00000000-0000-0000-0000-00000000000c",
+          "start_time": "2026-10-28T10:02:17.000000Z",
+          "end_time": "2026-10-28T10:02:22.742000Z",
+          "provider": "openai",
+          "response_id": "resp_gpt-5.4_3",
+          "status": "ok"
+        }
+      }
+    },
+    {
+      "step_id": 6,
+      "timestamp": "2026-10-28T10:02:31.000000Z",
+      "source": "user",
+      "message": "And tomorrow?",
+      "extra": {
+        "lmnr": {
+          "source_span_id": "00000000-0000-0000-0000-00000000000d"
+        }
+      }
+    },
+    {
+      "step_id": 7,
+      "timestamp": "2026-10-28T10:02:37.456000Z",
+      "source": "agent",
+      "model_name": "gpt-5.4",
+      "message": "",
+      "llm_call_count": 1,
+      "extra": {
+        "lmnr": {
+          "span_id": "00000000-0000-0000-0000-00000000000d",
+          "start_time": "2026-10-28T10:02:31.000000Z",
+          "end_time": "2026-10-28T10:02:37.456000Z",
+          "provider": "openai",
+          "status": "error",
+          "error": {
+            "type": "APICallError",
+            "message": "Rate limit exceeded"
+          }
+        }
+      }
+    }
+  ],
+  "final_metrics": {
+    "total_prompt_tokens": 590,
+    "total_completion_tokens": 98,
+    "total_cached_tokens": 0,
+    "total_steps": 7,
+    "extra": {
+      "lmnr": {
+        "duration_ms": 123456.0,
+        "llm_calls": 6,
+        "tool_calls": 4,
+        "errors": 2
+      }
+    }
+  },
+  "extra": {
+    "lmnr": {
+      "spec_version": "0.1.0",
+      "producer": {
+        "name": "lmnr-golden",
+        "version": "0"
+      },
+      "trace_ids": [
+        "7c1e5a2b-3d4f-4a6b-9c8d-0e1f2a3b4c5d"
+      ],
+      "root_span_id": "00000000-0000-0000-0000-000000000001",
+      "exported": false,
+      "complete": true
+    }
+  },
+  "subagent_trajectories": [
+    {
+      "schema_version": "ATIF-v1.8",
+      "session_id": "7c1e5a2b-3d4f-4a6b-9c8d-0e1f2a3b4c5d",
+      "trajectory_id": "lmnr-00000000-0000-0000-0000-000000000007",
+      "agent": {
+        "name": "research",
+        "version": "4f2a9c1",
+        "model_name": "openai/gpt-5.4-mini",
+        "tool_definitions": [
+          {
+            "type": "function",
+            "function": {
+              "name": "search",
+              "description": "Search the web",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "q": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "q"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "step_id": 1,
+          "timestamp": "2026-10-28T10:01:59.000000Z",
+          "source": "system",
+          "message": "You are a research sub-agent.",
+          "extra": {
+            "lmnr": {
+              "source_span_id": "00000000-0000-0000-0000-000000000009"
+            }
+          }
+        },
+        {
+          "step_id": 2,
+          "timestamp": "2026-10-28T10:01:59.000000Z",
+          "source": "user",
+          "message": "Research: Paris museums",
+          "extra": {
+            "lmnr": {
+              "source_span_id": "00000000-0000-0000-0000-000000000009"
+            }
+          }
+        },
+        {
+          "step_id": 3,
+          "timestamp": "2026-10-28T10:02:05.002000Z",
+          "source": "agent",
+          "model_name": "gpt-5.4-mini",
+          "message": "",
+          "tool_calls": [
+            {
+              "tool_call_id": "call_s1",
+              "function_name": "search",
+              "arguments": {
+                "q": "Paris museums"
+              },
+              "extra": {
+                "lmnr": {
+                  "span_id": "00000000-0000-0000-0000-00000000000a",
+                  "start_time": "2026-10-28T10:02:05.000000Z",
+                  "end_time": "2026-10-28T10:02:07.751000Z"
+                }
+              }
+            }
+          ],
+          "observation": {
+            "results": [
+              {
+                "source_call_id": "call_s1",
+                "content": "[\"Louvre\", \"Musée d'Orsay\"]",
+                "extra": {
+                  "lmnr": {
+                    "status": "ok"
+                  }
+                }
+              }
+            ]
+          },
+          "metrics": {
+            "prompt_tokens": 40,
+            "completion_tokens": 12,
+            "cached_tokens": 0
+          },
+          "llm_call_count": 1,
+          "extra": {
+            "lmnr": {
+              "span_id": "00000000-0000-0000-0000-000000000009",
+              "start_time": "2026-10-28T10:01:59.000000Z",
+              "end_time": "2026-10-28T10:02:05.002000Z",
+              "provider": "openai",
+              "response_id": "resp_gpt-5.4-mini_1",
+              "status": "ok"
+            }
+          }
+        },
+        {
+          "step_id": 4,
+          "timestamp": "2026-10-28T10:02:14.712000Z",
+          "source": "agent",
+          "model_name": "gpt-5.4-mini",
+          "message": "Visit the Louvre and the Musée d'Orsay.",
+          "metrics": {
+            "prompt_tokens": 70,
+            "completion_tokens": 14,
+            "cached_tokens": 0
+          },
+          "llm_call_count": 1,
+          "extra": {
+            "lmnr": {
+              "span_id": "00000000-0000-0000-0000-00000000000b",
+              "start_time": "2026-10-28T10:02:09.000000Z",
+              "end_time": "2026-10-28T10:02:14.712000Z",
+              "provider": "openai",
+              "response_id": "resp_gpt-5.4-mini_2",
+              "status": "ok"
+            }
+          }
+        }
+      ],
+      "final_metrics": {
+        "total_prompt_tokens": 110,
+        "total_completion_tokens": 26,
+        "total_cached_tokens": 0,
+        "total_steps": 4,
+        "extra": {
+          "lmnr": {
+            "duration_ms": 15712.0,
+            "llm_calls": 2,
+            "tool_calls": 1,
+            "errors": 0
+          }
+        }
+      },
+      "extra": {
+        "lmnr": {
+          "spec_version": "0.1.0",
+          "agent_span_id": "00000000-0000-0000-0000-000000000007",
+          "implicit_subagent": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,117 @@
+{
+  "options": {},
+  "spans": [
+    {
+      "trace_id": "2b3c4d5e-6f70-4182-93a4-b5c6d7e8f901",
+      "span_id": "00000000-0000-0000-0000-000000000020",
+      "parent_span_id": null,
+      "name": "weather_assistant",
+      "span_type": "DEFAULT",
+      "start_time": "2026-10-28T09:00:00.000000Z",
+      "end_time": "2026-10-28T09:00:10.000000Z",
+      "attributes": {}
+    },
+    {
+      "trace_id": "2b3c4d5e-6f70-4182-93a4-b5c6d7e8f901",
+      "span_id": "00000000-0000-0000-0000-000000000021",
+      "parent_span_id": "00000000-0000-0000-0000-000000000020",
+      "name": "openai.response",
+      "span_type": "LLM",
+      "start_time": "2026-10-28T09:00:00.100000Z",
+      "end_time": "2026-10-28T09:00:01.000000Z",
+      "attributes": {
+        "gen_ai.system": "openai",
+        "gen_ai.request.model": "gpt-5.5",
+        "gen_ai.response.model": "gpt-5.5",
+        "gen_ai.prompt.0.role": "system",
+        "gen_ai.prompt.0.content": "You are concise.",
+        "gen_ai.tool.definitions": "[{\"type\": \"function\", \"name\": \"get_weather\", \"description\": \"Weather for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}}, \"strict\": true}, {\"type\": \"web_search\"}]",
+        "gen_ai.usage.reasoning_tokens": 12,
+        "gen_ai.input.messages": "[{\"role\": \"user\", \"content\": \"Weather in Paris?\"}]",
+        "gen_ai.output.messages": "[{\"type\": \"reasoning\", \"id\": \"rs_1\", \"summary\": [{\"type\": \"summary_text\", \"text\": \"Need the weather first.\"}]}, {\"type\": \"function_call\", \"call_id\": \"call_w1\", \"name\": \"get_weather\", \"arguments\": \"{\\\"city\\\": \\\"Paris\\\"}\", \"id\": \"fc_1\", \"status\": \"completed\"}]",
+        "gen_ai.response.id": "resp_1"
+      }
+    },
+    {
+      "trace_id": "2b3c4d5e-6f70-4182-93a4-b5c6d7e8f901",
+      "span_id": "00000000-0000-0000-0000-000000000022",
+      "parent_span_id": "00000000-0000-0000-0000-000000000020",
+      "name": "get_weather",
+      "span_type": "TOOL",
+      "start_time": "2026-10-28T09:00:01.100000Z",
+      "end_time": "2026-10-28T09:00:01.300000Z",
+      "attributes": {
+        "lmnr.span.input": "{\"city\": \"Paris\"}",
+        "lmnr.span.output": "{\"temp_c\": 18}"
+      }
+    },
+    {
+      "trace_id": "2b3c4d5e-6f70-4182-93a4-b5c6d7e8f901",
+      "span_id": "00000000-0000-0000-0000-000000000023",
+      "parent_span_id": "00000000-0000-0000-0000-000000000020",
+      "name": "openai.response",
+      "span_type": "LLM",
+      "start_time": "2026-10-28T09:00:01.400000Z",
+      "end_time": "2026-10-28T09:00:02.000000Z",
+      "attributes": {
+        "gen_ai.system": "openai",
+        "gen_ai.request.model": "gpt-5.5",
+        "gen_ai.response.model": "gpt-5.5",
+        "gen_ai.prompt.0.role": "system",
+        "gen_ai.prompt.0.content": "You are concise.",
+        "gen_ai.tool.definitions": "[{\"type\": \"function\", \"name\": \"get_weather\", \"description\": \"Weather for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}}, \"strict\": true}, {\"type\": \"web_search\"}]",
+        "gen_ai.usage.reasoning_tokens": 12,
+        "gen_ai.input.messages": "[{\"role\": \"user\", \"content\": \"Weather in Paris?\"}, {\"type\": \"reasoning\", \"id\": \"rs_1\", \"summary\": [{\"type\": \"summary_text\", \"text\": \"Need the weather first.\"}]}, {\"type\": \"function_call\", \"call_id\": \"call_w1\", \"name\": \"get_weather\", \"arguments\": \"{\\\"city\\\": \\\"Paris\\\"}\", \"id\": \"fc_1\", \"status\": \"completed\"}, {\"type\": \"function_call_output\", \"call_id\": \"call_w1\", \"output\": \"{\\\"temp_c\\\": 18}\"}]",
+        "gen_ai.output.messages": "[{\"type\": \"message\", \"id\": \"msg_1\", \"role\": \"assistant\", \"status\": \"completed\", \"content\": [{\"type\": \"output_text\", \"text\": \"It's 18\\u00b0C in Paris.\", \"annotations\": []}]}]",
+        "gen_ai.response.id": "resp_2"
+      }
+    },
+    {
+      "trace_id": "2b3c4d5e-6f70-4182-93a4-b5c6d7e8f901",
+      "span_id": "00000000-0000-0000-0000-000000000024",
+      "parent_span_id": "00000000-0000-0000-0000-000000000020",
+      "name": "gemini.generate_content",
+      "span_type": "LLM",
+      "start_time": "2026-10-28T09:00:03.000000Z",
+      "end_time": "2026-10-28T09:00:03.800000Z",
+      "attributes": {
+        "gen_ai.system": "gemini",
+        "gen_ai.request.model": "gemini-3-pro",
+        "gen_ai.response.model": "gemini-3-pro",
+        "gen_ai.tool.definitions": "[{\"name\": \"convert\", \"description\": \"Convert units.\", \"parameters\": {\"type\": \"OBJECT\", \"properties\": {\"celsius\": {\"type\": \"NUMBER\"}}}}]",
+        "gen_ai.input.messages": "[{\"role\": \"system\", \"parts\": [{\"text\": \"You convert units.\"}]}, {\"role\": \"user\", \"parts\": [{\"text\": \"And in Fahrenheit?\"}]}]",
+        "gen_ai.output.messages": "[{\"content\": {\"role\": \"model\", \"parts\": [{\"text\": \"Thinking about units\", \"thought\": true}, {\"function_call\": {\"name\": \"convert\", \"args\": {\"celsius\": 18}}}]}, \"finish_reason\": \"STOP\"}]"
+      }
+    },
+    {
+      "trace_id": "2b3c4d5e-6f70-4182-93a4-b5c6d7e8f901",
+      "span_id": "00000000-0000-0000-0000-000000000025",
+      "parent_span_id": "00000000-0000-0000-0000-000000000020",
+      "name": "convert",
+      "span_type": "TOOL",
+      "start_time": "2026-10-28T09:00:03.900000Z",
+      "end_time": "2026-10-28T09:00:04.000000Z",
+      "attributes": {
+        "lmnr.span.input": "{\"celsius\": 18}",
+        "lmnr.span.output": "\"64.4F\""
+      }
+    },
+    {
+      "trace_id": "2b3c4d5e-6f70-4182-93a4-b5c6d7e8f901",
+      "span_id": "00000000-0000-0000-0000-000000000026",
+      "parent_span_id": "00000000-0000-0000-0000-000000000020",
+      "name": "gemini.generate_content",
+      "span_type": "LLM",
+      "start_time": "2026-10-28T09:00:04.100000Z",
+      "end_time": "2026-10-28T09:00:04.900000Z",
+      "attributes": {
+        "gen_ai.system": "gemini",
+        "gen_ai.request.model": "gemini-3-pro",
+        "gen_ai.response.model": "gemini-3-pro",
+        "gen_ai.tool.definitions": "[{\"name\": \"convert\", \"description\": \"Convert units.\", \"parameters\": {\"type\": \"OBJECT\", \"properties\": {\"celsius\": {\"type\": \"NUMBER\"}}}}]",
+        "gen_ai.input.messages": "[{\"role\": \"system\", \"parts\": [{\"text\": \"You convert units.\"}]}, {\"role\": \"user\", \"parts\": [{\"text\": \"And in Fahrenheit?\"}]}, {\"role\": \"model\", \"parts\": [{\"text\": \"Thinking about units\", \"thought\": true}, {\"function_call\": {\"name\": \"convert\", \"args\": {\"celsius\": 18}}}]}, {\"role\": \"user\", \"parts\": [{\"function_response\": {\"name\": \"convert\", \"response\": {\"output\": \"64.4F\"}}}]}]",
+        "gen_ai.output.messages": "[{\"content\": {\"role\": \"model\", \"parts\": [{\"text\": \"That's 64.4\\u00b0F.\"}]}, \"finish_reason\": \"STOP\"}]"
+      }
+    }
+  ]
+}

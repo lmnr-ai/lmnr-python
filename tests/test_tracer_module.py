@@ -173,3 +173,30 @@ def test_shutdown_detaches_the_retired_processors(isolated_tracing: Any):
         assert current not in attached()
 
     assert len(attached()) == baseline
+
+
+def test_local_only_mode_attaches_no_log_processor(isolated_tracing: Any, tmp_path: Any):
+    """`LMNR_TRAJECTORY_PATH` without force-export: no log exporter at all
+    (subclassing OTel's `LogRecordExporter` breaks across SDK versions), and
+    flush / force-reinit / shutdown still work."""
+    exporter = InMemorySpanExporter()
+    _ = init_tracing(
+        disable_batch=True,
+        exporter=exporter,
+        instruments=set(),
+        trajectory_path=str(tmp_path / "trajectory.json"),
+        export=False,
+    )
+    wrapper = get_tracer_wrapper()
+    assert wrapper is not None
+    assert wrapper.log_processor is None
+    multi = wrapper.logger_provider._multi_log_record_processor
+    before = len(multi._log_record_processors)
+
+    with wrapper.get_tracer().start_as_current_span("work"):
+        pass
+    assert wrapper.flush()
+    assert wrapper.force_reinit_processor()
+    assert exporter.get_finished_spans() == ()
+    shutdown_tracing()
+    assert len(multi._log_record_processors) == before

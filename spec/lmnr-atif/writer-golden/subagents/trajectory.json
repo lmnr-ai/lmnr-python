@@ -1,0 +1,519 @@
+{
+  "schema_version": "ATIF-v1.8",
+  "session_id": "c0ffee00-1234-4567-89ab-cdef01234567",
+  "trajectory_id": "c0ffee00-1234-4567-89ab-cdef01234567",
+  "agent": {
+    "name": "research_pipeline",
+    "version": "unknown",
+    "model_name": "anthropic/claude-sonnet-4-5",
+    "tool_definitions": [
+      {
+        "type": "function",
+        "function": {
+          "name": "delegate_research",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "topic": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "summarize_sources",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "urls": {
+                "type": "array"
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "timestamp": "2026-10-28T09:00:00.000000Z",
+      "source": "system",
+      "message": "You coordinate research. Delegate, then compare.",
+      "extra": {
+        "lmnr": {
+          "source_span_id": "00000000-0000-0000-0000-000000000041"
+        }
+      }
+    },
+    {
+      "step_id": 2,
+      "timestamp": "2026-10-28T09:00:00.000000Z",
+      "source": "user",
+      "message": "Compare Postgres and ClickHouse for analytics.",
+      "extra": {
+        "lmnr": {
+          "source_span_id": "00000000-0000-0000-0000-000000000041"
+        }
+      }
+    },
+    {
+      "step_id": 3,
+      "timestamp": "2026-10-28T09:00:01.500000Z",
+      "source": "agent",
+      "model_name": "claude-sonnet-4-5",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "toolu_d1",
+          "function_name": "delegate_research",
+          "arguments": {
+            "topic": "ClickHouse"
+          },
+          "extra": {
+            "lmnr": {
+              "span_id": "00000000-0000-0000-0000-000000000042",
+              "start_time": "2026-10-28T09:00:01.550000Z",
+              "end_time": "2026-10-28T09:00:04.700000Z"
+            }
+          }
+        },
+        {
+          "tool_call_id": "toolu_s1",
+          "function_name": "summarize_sources",
+          "arguments": {
+            "urls": [
+              "https://clickhouse.com/docs"
+            ]
+          },
+          "extra": {
+            "lmnr": {
+              "span_id": "00000000-0000-0000-0000-000000000044",
+              "start_time": "2026-10-28T09:00:01.560000Z",
+              "end_time": "2026-10-28T09:00:03.000000Z"
+            }
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "toolu_d1",
+            "content": "ClickHouse is a columnar database built for analytical queries.",
+            "subagent_trajectory_ref": [
+              {
+                "trajectory_id": "lmnr-00000000-0000-0000-0000-000000000043",
+                "extra": {
+                  "lmnr": {
+                    "span_id": "00000000-0000-0000-0000-000000000043"
+                  }
+                }
+              }
+            ],
+            "extra": {
+              "lmnr": {
+                "status": "ok"
+              }
+            }
+          },
+          {
+            "source_call_id": "toolu_s1",
+            "content": "ClickHouse targets analytics.",
+            "subagent_trajectory_ref": [
+              {
+                "trajectory_id": "lmnr-00000000-0000-0000-0000-000000000044",
+                "extra": {
+                  "lmnr": {
+                    "span_id": "00000000-0000-0000-0000-000000000044"
+                  }
+                }
+              }
+            ],
+            "extra": {
+              "lmnr": {
+                "status": "ok"
+              }
+            }
+          }
+        ]
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "lmnr": {
+          "span_id": "00000000-0000-0000-0000-000000000041",
+          "start_time": "2026-10-28T09:00:00.000000Z",
+          "end_time": "2026-10-28T09:00:01.500000Z",
+          "provider": "anthropic",
+          "finish_reason": "tool_use",
+          "status": "ok"
+        }
+      }
+    },
+    {
+      "step_id": 4,
+      "timestamp": "2026-10-28T09:00:05.800000Z",
+      "source": "agent",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "lmnr-00000000-0000-0000-0000-000000000050",
+          "function_name": "fact_checker",
+          "arguments": {
+            "claims": [
+              "ClickHouse is columnar."
+            ]
+          },
+          "extra": {
+            "lmnr": {
+              "synthetic_id": true,
+              "span_id": "00000000-0000-0000-0000-000000000050",
+              "start_time": "2026-10-28T09:00:04.900000Z",
+              "end_time": "2026-10-28T09:00:05.800000Z"
+            }
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "lmnr-00000000-0000-0000-0000-000000000050",
+            "content": "All claims verified.",
+            "subagent_trajectory_ref": [
+              {
+                "trajectory_id": "lmnr-00000000-0000-0000-0000-000000000050",
+                "extra": {
+                  "lmnr": {
+                    "span_id": "00000000-0000-0000-0000-000000000050"
+                  }
+                }
+              }
+            ],
+            "extra": {
+              "lmnr": {
+                "status": "ok"
+              }
+            }
+          }
+        ]
+      },
+      "llm_call_count": 0,
+      "extra": {
+        "lmnr": {
+          "synthetic": true,
+          "span_id": "00000000-0000-0000-0000-000000000050",
+          "start_time": "2026-10-28T09:00:04.900000Z",
+          "end_time": "2026-10-28T09:00:05.800000Z"
+        }
+      }
+    },
+    {
+      "step_id": 5,
+      "timestamp": "2026-10-28T09:00:05.900000Z",
+      "source": "user",
+      "message": "Fact check: All claims verified.",
+      "extra": {
+        "lmnr": {
+          "source_span_id": "00000000-0000-0000-0000-000000000052"
+        }
+      }
+    },
+    {
+      "step_id": 6,
+      "timestamp": "2026-10-28T09:00:07.200000Z",
+      "source": "agent",
+      "model_name": "claude-sonnet-4-5",
+      "message": "ClickHouse is the better fit for analytics.",
+      "llm_call_count": 1,
+      "extra": {
+        "lmnr": {
+          "span_id": "00000000-0000-0000-0000-000000000052",
+          "start_time": "2026-10-28T09:00:05.900000Z",
+          "end_time": "2026-10-28T09:00:07.200000Z",
+          "provider": "anthropic",
+          "finish_reason": "end_turn",
+          "status": "ok"
+        }
+      }
+    }
+  ],
+  "final_metrics": {
+    "total_steps": 6,
+    "extra": {
+      "lmnr": {
+        "duration_ms": 7200.0,
+        "llm_calls": 6,
+        "tool_calls": 4,
+        "errors": 0
+      }
+    }
+  },
+  "extra": {
+    "lmnr": {
+      "spec_version": "0.1.0",
+      "producer": {
+        "name": "lmnr-golden",
+        "version": "0"
+      },
+      "trace_ids": [
+        "c0ffee00-1234-4567-89ab-cdef01234567"
+      ],
+      "root_span_id": "00000000-0000-0000-0000-000000000040",
+      "exported": false,
+      "complete": true
+    }
+  },
+  "subagent_trajectories": [
+    {
+      "schema_version": "ATIF-v1.8",
+      "session_id": "c0ffee00-1234-4567-89ab-cdef01234567",
+      "trajectory_id": "lmnr-00000000-0000-0000-0000-000000000043",
+      "agent": {
+        "name": "researcher",
+        "version": "unknown",
+        "model_name": "openai/gpt-5.5-mini",
+        "tool_definitions": [
+          {
+            "type": "function",
+            "function": {
+              "name": "web_search",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "step_id": 1,
+          "timestamp": "2026-10-28T09:00:01.610000Z",
+          "source": "system",
+          "message": "You research databases. Cite sources.",
+          "extra": {
+            "lmnr": {
+              "source_span_id": "00000000-0000-0000-0000-000000000045"
+            }
+          }
+        },
+        {
+          "step_id": 2,
+          "timestamp": "2026-10-28T09:00:01.610000Z",
+          "source": "user",
+          "message": "Research: ClickHouse",
+          "extra": {
+            "lmnr": {
+              "source_span_id": "00000000-0000-0000-0000-000000000045"
+            }
+          }
+        },
+        {
+          "step_id": 3,
+          "timestamp": "2026-10-28T09:00:02.500000Z",
+          "source": "agent",
+          "model_name": "gpt-5.5-mini",
+          "message": "",
+          "tool_calls": [
+            {
+              "tool_call_id": "call_w1",
+              "function_name": "web_search",
+              "arguments": {
+                "query": "ClickHouse analytics benchmarks"
+              },
+              "extra": {
+                "lmnr": {
+                  "span_id": "00000000-0000-0000-0000-000000000046",
+                  "start_time": "2026-10-28T09:00:02.550000Z",
+                  "end_time": "2026-10-28T09:00:03.400000Z"
+                }
+              }
+            }
+          ],
+          "observation": {
+            "results": [
+              {
+                "source_call_id": "call_w1",
+                "content": "ClickBench results: ClickHouse leads on most queries.",
+                "extra": {
+                  "lmnr": {
+                    "status": "ok"
+                  }
+                }
+              }
+            ]
+          },
+          "llm_call_count": 1,
+          "extra": {
+            "lmnr": {
+              "span_id": "00000000-0000-0000-0000-000000000045",
+              "start_time": "2026-10-28T09:00:01.610000Z",
+              "end_time": "2026-10-28T09:00:02.500000Z",
+              "provider": "openai",
+              "finish_reason": "tool_calls",
+              "status": "ok"
+            }
+          }
+        },
+        {
+          "step_id": 4,
+          "timestamp": "2026-10-28T09:00:04.600000Z",
+          "source": "agent",
+          "model_name": "gpt-5.5-mini",
+          "message": "ClickHouse is a columnar database built for analytical queries.",
+          "llm_call_count": 1,
+          "extra": {
+            "lmnr": {
+              "span_id": "00000000-0000-0000-0000-000000000047",
+              "start_time": "2026-10-28T09:00:03.450000Z",
+              "end_time": "2026-10-28T09:00:04.600000Z",
+              "provider": "openai",
+              "finish_reason": "stop",
+              "status": "ok"
+            }
+          }
+        }
+      ],
+      "final_metrics": {
+        "total_steps": 4,
+        "extra": {
+          "lmnr": {
+            "duration_ms": 2990.0,
+            "llm_calls": 2,
+            "tool_calls": 1,
+            "errors": 0
+          }
+        }
+      },
+      "extra": {
+        "lmnr": {
+          "spec_version": "0.1.0",
+          "agent_span_id": "00000000-0000-0000-0000-000000000043"
+        }
+      }
+    },
+    {
+      "schema_version": "ATIF-v1.8",
+      "session_id": "c0ffee00-1234-4567-89ab-cdef01234567",
+      "trajectory_id": "lmnr-00000000-0000-0000-0000-000000000044",
+      "agent": {
+        "name": "summarize_sources",
+        "version": "unknown",
+        "model_name": "openai/gpt-5.5-mini"
+      },
+      "steps": [
+        {
+          "step_id": 1,
+          "timestamp": "2026-10-28T09:00:01.700000Z",
+          "source": "user",
+          "message": "Summarize: https://clickhouse.com/docs",
+          "extra": {
+            "lmnr": {
+              "source_span_id": "00000000-0000-0000-0000-000000000048"
+            }
+          }
+        },
+        {
+          "step_id": 2,
+          "timestamp": "2026-10-28T09:00:02.900000Z",
+          "source": "agent",
+          "model_name": "gpt-5.5-mini",
+          "message": "ClickHouse targets analytics.",
+          "llm_call_count": 1,
+          "extra": {
+            "lmnr": {
+              "span_id": "00000000-0000-0000-0000-000000000048",
+              "start_time": "2026-10-28T09:00:01.700000Z",
+              "end_time": "2026-10-28T09:00:02.900000Z",
+              "provider": "openai",
+              "finish_reason": "stop",
+              "status": "ok"
+            }
+          }
+        }
+      ],
+      "final_metrics": {
+        "total_steps": 2,
+        "extra": {
+          "lmnr": {
+            "duration_ms": 1200.0,
+            "llm_calls": 1,
+            "tool_calls": 0,
+            "errors": 0
+          }
+        }
+      },
+      "extra": {
+        "lmnr": {
+          "spec_version": "0.1.0",
+          "agent_span_id": "00000000-0000-0000-0000-000000000044",
+          "implicit_subagent": true
+        }
+      }
+    },
+    {
+      "schema_version": "ATIF-v1.8",
+      "session_id": "c0ffee00-1234-4567-89ab-cdef01234567",
+      "trajectory_id": "lmnr-00000000-0000-0000-0000-000000000050",
+      "agent": {
+        "name": "fact_checker",
+        "version": "unknown",
+        "model_name": "openai/gpt-5.5-mini"
+      },
+      "steps": [
+        {
+          "step_id": 1,
+          "timestamp": "2026-10-28T09:00:05.000000Z",
+          "source": "user",
+          "message": "Check: ClickHouse is columnar.",
+          "extra": {
+            "lmnr": {
+              "source_span_id": "00000000-0000-0000-0000-000000000051"
+            }
+          }
+        },
+        {
+          "step_id": 2,
+          "timestamp": "2026-10-28T09:00:05.800000Z",
+          "source": "agent",
+          "model_name": "gpt-5.5-mini",
+          "message": "All claims verified.",
+          "llm_call_count": 1,
+          "extra": {
+            "lmnr": {
+              "span_id": "00000000-0000-0000-0000-000000000051",
+              "start_time": "2026-10-28T09:00:05.000000Z",
+              "end_time": "2026-10-28T09:00:05.800000Z",
+              "provider": "openai",
+              "finish_reason": "stop",
+              "status": "ok"
+            }
+          }
+        }
+      ],
+      "final_metrics": {
+        "total_steps": 2,
+        "extra": {
+          "lmnr": {
+            "duration_ms": 800.0,
+            "llm_calls": 1,
+            "tool_calls": 0,
+            "errors": 0
+          }
+        }
+      },
+      "extra": {
+        "lmnr": {
+          "spec_version": "0.1.0",
+          "agent_span_id": "00000000-0000-0000-0000-000000000050"
+        }
+      }
+    }
+  ]
+}

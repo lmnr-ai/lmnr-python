@@ -1,0 +1,491 @@
+{
+  "schema_version": "ATIF-v1.8",
+  "session_id": "c0ffee00-1234-4567-89ab-cdef01234567",
+  "trajectory_id": "c0ffee00-1234-4567-89ab-cdef01234567",
+  "agent": {
+    "name": "orchestrator",
+    "version": "unknown",
+    "model_name": "anthropic/claude-sonnet-4-5",
+    "tool_definitions": [
+      {
+        "type": "function",
+        "function": {
+          "name": "delegate_research",
+          "description": "Ask the researcher subagent about a topic.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "topic": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "topic"
+            ]
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "summarize_sources",
+          "description": "Summarize a list of sources.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "urls": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "urls"
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "source": "system",
+      "message": "You coordinate research. Delegate, then compare.",
+      "timestamp": "2026-10-28T12:00:00.000000Z"
+    },
+    {
+      "step_id": 2,
+      "source": "user",
+      "message": "Compare Postgres and ClickHouse for analytics.",
+      "timestamp": "2026-10-28T12:00:00.000000Z",
+      "extra": {
+        "lmnr": {
+          "source_span_id": "00000000-0000-0000-0000-000000000041"
+        }
+      }
+    },
+    {
+      "step_id": 3,
+      "source": "agent",
+      "timestamp": "2026-10-28T12:00:01.500000Z",
+      "model_name": "claude-sonnet-4-5",
+      "llm_call_count": 1,
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "toolu_d1",
+          "function_name": "delegate_research",
+          "arguments": {
+            "topic": "ClickHouse"
+          },
+          "extra": {
+            "lmnr": {
+              "span_id": "00000000-0000-0000-0000-000000000042",
+              "start_time": "2026-10-28T12:00:01.550000Z",
+              "end_time": "2026-10-28T12:00:04.700000Z"
+            }
+          }
+        },
+        {
+          "tool_call_id": "toolu_s1",
+          "function_name": "summarize_sources",
+          "arguments": {
+            "urls": [
+              "https://clickhouse.com/docs",
+              "https://www.postgresql.org/docs/"
+            ]
+          },
+          "extra": {
+            "lmnr": {
+              "span_id": "00000000-0000-0000-0000-000000000044",
+              "start_time": "2026-10-28T12:00:01.560000Z",
+              "end_time": "2026-10-28T12:00:03.000000Z"
+            }
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "toolu_d1",
+            "content": "ClickHouse is a columnar database built for analytical queries over large tables.",
+            "subagent_trajectory_ref": [
+              {
+                "trajectory_id": "lmnr-00000000-0000-0000-0000-000000000043",
+                "extra": {
+                  "lmnr": {
+                    "span_id": "00000000-0000-0000-0000-000000000043"
+                  }
+                }
+              }
+            ],
+            "extra": {
+              "lmnr": {
+                "status": "ok"
+              }
+            }
+          },
+          {
+            "source_call_id": "toolu_s1",
+            "content": "Both are mature; ClickHouse targets analytics, Postgres targets transactions.",
+            "subagent_trajectory_ref": [
+              {
+                "trajectory_id": "lmnr-00000000-0000-0000-0000-000000000044",
+                "extra": {
+                  "lmnr": {
+                    "span_id": "00000000-0000-0000-0000-000000000044"
+                  }
+                }
+              }
+            ],
+            "extra": {
+              "lmnr": {
+                "status": "ok"
+              }
+            }
+          }
+        ]
+      },
+      "extra": {
+        "lmnr": {
+          "span_id": "00000000-0000-0000-0000-000000000041",
+          "start_time": "2026-10-28T12:00:00.000000Z",
+          "end_time": "2026-10-28T12:00:01.500000Z",
+          "provider": "anthropic",
+          "status": "ok"
+        }
+      }
+    },
+    {
+      "step_id": 4,
+      "source": "agent",
+      "timestamp": "2026-10-28T12:00:05.800000Z",
+      "llm_call_count": 0,
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "lmnr-00000000-0000-0000-0000-000000000050",
+          "function_name": "fact_checker",
+          "arguments": {},
+          "extra": {
+            "lmnr": {
+              "span_id": "00000000-0000-0000-0000-000000000050",
+              "start_time": "2026-10-28T12:00:04.900000Z",
+              "end_time": "2026-10-28T12:00:05.800000Z",
+              "synthetic_id": true
+            }
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "lmnr-00000000-0000-0000-0000-000000000050",
+            "content": "All claims verified.",
+            "subagent_trajectory_ref": [
+              {
+                "trajectory_id": "lmnr-00000000-0000-0000-0000-000000000050",
+                "extra": {
+                  "lmnr": {
+                    "span_id": "00000000-0000-0000-0000-000000000050"
+                  }
+                }
+              }
+            ],
+            "extra": {
+              "lmnr": {
+                "status": "ok"
+              }
+            }
+          }
+        ]
+      },
+      "extra": {
+        "lmnr": {
+          "synthetic": true,
+          "span_id": "00000000-0000-0000-0000-000000000050",
+          "start_time": "2026-10-28T12:00:04.900000Z",
+          "end_time": "2026-10-28T12:00:05.800000Z"
+        }
+      }
+    },
+    {
+      "step_id": 5,
+      "source": "agent",
+      "timestamp": "2026-10-28T12:00:07.200000Z",
+      "model_name": "claude-sonnet-4-5",
+      "llm_call_count": 1,
+      "message": "For analytics, ClickHouse is the better fit: it is columnar and leads ClickBench. Postgres is better for transactional workloads.",
+      "extra": {
+        "lmnr": {
+          "span_id": "00000000-0000-0000-0000-000000000052",
+          "start_time": "2026-10-28T12:00:05.900000Z",
+          "end_time": "2026-10-28T12:00:07.200000Z",
+          "provider": "anthropic",
+          "status": "ok"
+        }
+      }
+    }
+  ],
+  "final_metrics": {
+    "total_steps": 5,
+    "extra": {
+      "lmnr": {
+        "duration_ms": 7200,
+        "llm_calls": 6,
+        "tool_calls": 4,
+        "errors": 0
+      }
+    }
+  },
+  "extra": {
+    "lmnr": {
+      "spec_version": "0.1.0",
+      "producer": {
+        "name": "lmnr-python",
+        "version": "0.8.4"
+      },
+      "trace_ids": [
+        "c0ffee00-1234-4567-89ab-cdef01234567"
+      ],
+      "root_span_id": "00000000-0000-0000-0000-000000000040",
+      "exported": true,
+      "defs": {
+        "tool_definitions": {
+          "sha256:01cd2dbfe5b5e13c3ee929508e577fca7360e6cac996954407af462a4737ddbc": [
+            {
+              "type": "function",
+              "function": {
+                "name": "web_search",
+                "description": "Search the web.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "query": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "query"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "subagent_trajectories": [
+    {
+      "schema_version": "ATIF-v1.8",
+      "session_id": "c0ffee00-1234-4567-89ab-cdef01234567",
+      "trajectory_id": "lmnr-00000000-0000-0000-0000-000000000043",
+      "agent": {
+        "name": "researcher",
+        "version": "unknown",
+        "model_name": "openai/gpt-5.5-mini"
+      },
+      "steps": [
+        {
+          "step_id": 1,
+          "source": "system",
+          "message": "You research databases. Cite sources.",
+          "timestamp": "2026-10-28T12:00:01.600000Z"
+        },
+        {
+          "step_id": 2,
+          "source": "user",
+          "message": "Research: ClickHouse",
+          "timestamp": "2026-10-28T12:00:01.600000Z",
+          "extra": {
+            "lmnr": {
+              "source_span_id": "00000000-0000-0000-0000-000000000045"
+            }
+          }
+        },
+        {
+          "step_id": 3,
+          "source": "agent",
+          "timestamp": "2026-10-28T12:00:02.500000Z",
+          "model_name": "gpt-5.5-mini",
+          "llm_call_count": 1,
+          "message": "",
+          "tool_calls": [
+            {
+              "tool_call_id": "call_w1",
+              "function_name": "web_search",
+              "arguments": {
+                "query": "ClickHouse analytics benchmarks"
+              },
+              "extra": {
+                "lmnr": {
+                  "span_id": "00000000-0000-0000-0000-000000000046",
+                  "start_time": "2026-10-28T12:00:02.550000Z",
+                  "end_time": "2026-10-28T12:00:03.400000Z"
+                }
+              }
+            }
+          ],
+          "observation": {
+            "results": [
+              {
+                "source_call_id": "call_w1",
+                "content": "ClickBench results: ClickHouse leads on most queries.",
+                "extra": {
+                  "lmnr": {
+                    "status": "ok"
+                  }
+                }
+              }
+            ]
+          },
+          "extra": {
+            "lmnr": {
+              "span_id": "00000000-0000-0000-0000-000000000045",
+              "start_time": "2026-10-28T12:00:01.600000Z",
+              "end_time": "2026-10-28T12:00:02.500000Z",
+              "provider": "openai",
+              "status": "ok",
+              "tool_definitions": {
+                "$ref": "sha256:01cd2dbfe5b5e13c3ee929508e577fca7360e6cac996954407af462a4737ddbc"
+              }
+            }
+          }
+        },
+        {
+          "step_id": 4,
+          "source": "agent",
+          "timestamp": "2026-10-28T12:00:04.600000Z",
+          "model_name": "gpt-5.5-mini",
+          "llm_call_count": 1,
+          "message": "ClickHouse is a columnar database built for analytical queries over large tables.",
+          "extra": {
+            "lmnr": {
+              "span_id": "00000000-0000-0000-0000-000000000047",
+              "start_time": "2026-10-28T12:00:03.450000Z",
+              "end_time": "2026-10-28T12:00:04.600000Z",
+              "provider": "openai",
+              "status": "ok",
+              "tool_definitions": {
+                "$ref": "sha256:01cd2dbfe5b5e13c3ee929508e577fca7360e6cac996954407af462a4737ddbc"
+              }
+            }
+          }
+        }
+      ],
+      "final_metrics": {
+        "total_steps": 4,
+        "extra": {
+          "lmnr": {
+            "duration_ms": 3000,
+            "llm_calls": 2,
+            "tool_calls": 1,
+            "errors": 0
+          }
+        }
+      },
+      "extra": {
+        "lmnr": {
+          "spec_version": "0.1.0",
+          "agent_span_id": "00000000-0000-0000-0000-000000000043"
+        }
+      }
+    },
+    {
+      "schema_version": "ATIF-v1.8",
+      "session_id": "c0ffee00-1234-4567-89ab-cdef01234567",
+      "trajectory_id": "lmnr-00000000-0000-0000-0000-000000000044",
+      "agent": {
+        "name": "summarize_sources",
+        "version": "unknown",
+        "model_name": "openai/gpt-5.5-mini"
+      },
+      "steps": [
+        {
+          "step_id": 1,
+          "source": "user",
+          "message": "Summarize these sources: https://clickhouse.com/docs, https://www.postgresql.org/docs/",
+          "timestamp": "2026-10-28T12:00:01.700000Z",
+          "extra": {
+            "lmnr": {
+              "source_span_id": "00000000-0000-0000-0000-000000000048"
+            }
+          }
+        },
+        {
+          "step_id": 2,
+          "source": "agent",
+          "timestamp": "2026-10-28T12:00:02.900000Z",
+          "model_name": "gpt-5.5-mini",
+          "llm_call_count": 1,
+          "message": "Both are mature; ClickHouse targets analytics, Postgres targets transactions.",
+          "extra": {
+            "lmnr": {
+              "span_id": "00000000-0000-0000-0000-000000000048",
+              "start_time": "2026-10-28T12:00:01.700000Z",
+              "end_time": "2026-10-28T12:00:02.900000Z",
+              "provider": "openai",
+              "status": "ok"
+            }
+          }
+        }
+      ],
+      "extra": {
+        "lmnr": {
+          "spec_version": "0.1.0",
+          "agent_span_id": "00000000-0000-0000-0000-000000000044",
+          "implicit_subagent": true
+        }
+      }
+    },
+    {
+      "schema_version": "ATIF-v1.8",
+      "session_id": "c0ffee00-1234-4567-89ab-cdef01234567",
+      "trajectory_id": "lmnr-00000000-0000-0000-0000-000000000050",
+      "agent": {
+        "name": "fact_checker",
+        "version": "unknown",
+        "model_name": "openai/gpt-5.5-mini"
+      },
+      "steps": [
+        {
+          "step_id": 1,
+          "source": "user",
+          "message": "Check: ClickHouse is columnar. Postgres is row-oriented.",
+          "timestamp": "2026-10-28T12:00:05.000000Z",
+          "extra": {
+            "lmnr": {
+              "source_span_id": "00000000-0000-0000-0000-000000000051"
+            }
+          }
+        },
+        {
+          "step_id": 2,
+          "source": "agent",
+          "timestamp": "2026-10-28T12:00:05.800000Z",
+          "model_name": "gpt-5.5-mini",
+          "llm_call_count": 1,
+          "message": "All claims verified.",
+          "extra": {
+            "lmnr": {
+              "span_id": "00000000-0000-0000-0000-000000000051",
+              "start_time": "2026-10-28T12:00:05.000000Z",
+              "end_time": "2026-10-28T12:00:05.800000Z",
+              "provider": "openai",
+              "status": "ok"
+            }
+          }
+        }
+      ],
+      "extra": {
+        "lmnr": {
+          "spec_version": "0.1.0",
+          "agent_span_id": "00000000-0000-0000-0000-000000000050"
+        }
+      }
+    }
+  ]
+}

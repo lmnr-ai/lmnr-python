@@ -6,7 +6,7 @@
 
 [project]
 name = "lmnr"
-version = "0.8.3"
+version = "0.8.5"
 description = "Python SDK for Laminar"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -128,6 +128,7 @@ dev = [
   "google-cloud-aiplatform==2.6.0",
   "google-genai==2.19.0",
   "groq==1.1.2",
+  "jsonschema==4.26.0",
   "kernel==0.44.0",
   "langchain==1.4.4",
   "langchain-core==1.6.9",
