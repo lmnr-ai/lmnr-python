@@ -29,12 +29,10 @@ from lmnr.sdk.log import get_default_logger
 # double-coverage cost if they explicitly opt into LANGFUSE alongside them).
 LANGFUSE_OVERLAP_PROVIDERS = {
     Instruments.ANTHROPIC,
-    Instruments.BEDROCK,
     Instruments.COHERE,
     Instruments.GOOGLE_GENAI,
     Instruments.GROQ,
     Instruments.LANGCHAIN,
-    Instruments.MISTRAL,
     Instruments.OPENAI,
 }
 
