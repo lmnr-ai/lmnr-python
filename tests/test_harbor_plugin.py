@@ -255,6 +255,7 @@ async def test_job_reports_trials_as_evaluation(
     assert partial.id == full.id
     assert partial.trace_id == full.trace_id
     assert full.index == 0
+    assert partial.task_id == full.task_id == "hello-world"
     assert full.data == {
         "task_name": "hello-world",
         "instruction": "Solve hello-world.",
@@ -616,6 +617,8 @@ async def test_failed_and_retried_trials(
     # A retry overwrites the same datapoint with a new trace.
     assert retried_dp.id == failed_dp.id
     assert retried_dp.index == failed_dp.index == 1
+    # Different trials of one Harbor task are Trials of one Laminar Task.
+    assert ok_dp.task_id == failed_dp.task_id == retried_dp.task_id == "t"
     assert retried_dp.trace_id != failed_dp.trace_id
     assert retried_dp.scores == {"reward": 0.5}
 
