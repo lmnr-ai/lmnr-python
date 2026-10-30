@@ -6,7 +6,7 @@
 
 [project]
 name = "lmnr"
-version = "0.8.6"
+version = "0.9.0"
 description = "Python SDK for Laminar"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -31,7 +31,6 @@ dependencies = [
   "opentelemetry-instrumentation (>=0.54b0, <1.0.0)",
   "opentelemetry-instrumentation-threading (>=0.54b0, <1.0.0)",
   "opentelemetry-semantic-conventions (>=0.62b1, <1.0.0)",
-  "opentelemetry-semantic-conventions-ai (==0.5.1)",
   "orjson (>=3.0.0,<4.0.0)",
   "packaging (>=22.0,<27.0)",
   "pydantic (>=2.0.3,<3.0.0)",
@@ -57,63 +56,6 @@ lmnr = "lmnr.cli:cli"
 [project.entry-points."harbor.plugins"]
 laminar = "lmnr.integrations.harbor:LaminarPlugin"
 
-[project.optional-dependencies]
-# List of all possible extras. You can specify one or more of these extras
-# when installing the package, using any of the following examples:
-# `pip install 'lmnr[bedrock,langchain]'`
-# `uv pip install 'lmnr[bedrock,langchain]'`
-# `uv add lmnr --extra bedrock --extra langchain`
-# `poetry add 'lmnr[bedrock,langchain]'`
-
-alephalpha=["opentelemetry-instrumentation-alephalpha==0.62.4"]
-bedrock=["opentelemetry-instrumentation-bedrock==0.62.4"]
-chromadb=["opentelemetry-instrumentation-chromadb==0.62.4"]
-# no-op: cohere is instrumented natively now; kept so `lmnr[cohere]` still resolves
-cohere=[]
-crewai=["opentelemetry-instrumentation-crewai==0.62.4"]
-haystack=["opentelemetry-instrumentation-haystack==0.62.4"]
-lancedb=["opentelemetry-instrumentation-lancedb==0.62.4"]
-# LangChain is instrumented natively; kept so `lmnr[langchain]` still resolves
-langchain=[]
-llamaindex=["opentelemetry-instrumentation-llamaindex==0.62.4"]
-marqo=["opentelemetry-instrumentation-marqo==0.62.4"]
-# no-op: mcp is instrumented natively now; kept so `lmnr[mcp]` still resolves
-mcp=[]
-mistralai=["opentelemetry-instrumentation-mistralai==0.62.4"]
-ollama=["opentelemetry-instrumentation-ollama==0.62.4"]
-qdrant=["opentelemetry-instrumentation-qdrant==0.62.4"]
-replicate=["opentelemetry-instrumentation-replicate==0.62.4"]
-sagemaker=["opentelemetry-instrumentation-sagemaker==0.62.4"]
-together=["opentelemetry-instrumentation-together==0.62.4"]
-transformers=["opentelemetry-instrumentation-transformers==0.62.4"]
-# no-op: vertexai is instrumented natively now; kept so `lmnr[vertexai]` still resolves
-vertexai=[]
-watsonx=["opentelemetry-instrumentation-watsonx==0.62.4"]
-weaviate=["opentelemetry-instrumentation-weaviate==0.62.4"]
-# `all` is the group added for convenience, if you want to install all
-# the instrumentations.
-# we suggest using package-manager-specific commands instead,
-# like `uv add lmnr --all-extras`
-all = [
-  "opentelemetry-instrumentation-alephalpha==0.62.4",
-  "opentelemetry-instrumentation-bedrock==0.62.4",
-  "opentelemetry-instrumentation-chromadb==0.62.4",
-  "opentelemetry-instrumentation-crewai==0.62.4",
-  "opentelemetry-instrumentation-haystack==0.62.4",
-  "opentelemetry-instrumentation-lancedb==0.62.4",
-  "opentelemetry-instrumentation-llamaindex==0.62.4",
-  "opentelemetry-instrumentation-marqo==0.62.4",
-  "opentelemetry-instrumentation-mistralai==0.62.4",
-  "opentelemetry-instrumentation-ollama==0.62.4",
-  "opentelemetry-instrumentation-qdrant==0.62.4",
-  "opentelemetry-instrumentation-replicate==0.62.4",
-  "opentelemetry-instrumentation-sagemaker==0.62.4",
-  "opentelemetry-instrumentation-together==0.62.4",
-  "opentelemetry-instrumentation-transformers==0.62.4",
-  "opentelemetry-instrumentation-watsonx==0.62.4",
-  "opentelemetry-instrumentation-weaviate==0.62.4"
-]
-
 [dependency-groups]
 dev = [
   "anthropic[bedrock]==2.3.0",
@@ -123,17 +65,17 @@ dev = [
   "cdp-use==1.4.5",
   "claude-agent-sdk==0.2.168",
   "cohere==7.3.0",
-  "google-adk==2.11.0",
   "daytona==0.225.0",
+  "google-adk==2.13.0",
   "google-cloud-aiplatform==2.6.0",
-  "google-genai==2.19.0",
+  "google-genai==2.33.0",
   "groq==1.1.2",
   "jsonschema==4.26.0",
   "kernel==0.44.0",
   "langchain==1.4.4",
   "langchain-core==1.6.9",
   "langchain-openai==1.7.0",
-  "langfuse==4.8.1",
+  "langfuse==4.15.0",
   "langgraph==1.2.14",
   "litellm==1.103.4",
   "mcp==2.3.0",
@@ -155,7 +97,7 @@ dev = [
 ]
 
 [build-system]
-requires = ["uv_build>=0.13.1,<0.14"]
+requires = ["uv_build>=0.13.4,<0.14"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]

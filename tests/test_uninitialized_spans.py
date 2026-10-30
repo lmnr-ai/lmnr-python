@@ -4,6 +4,7 @@ from typing import Any, cast
 import pytest
 from opentelemetry.sdk.trace import Span as SDKSpan
 from opentelemetry.trace import Span
+from typing_extensions import override
 
 from lmnr import Laminar
 from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
@@ -68,23 +69,33 @@ def test_use_span_forwards_writes_to_a_foreign_span(uninitialized: None):
             self.attrs: dict[str, Any] = {}
             self.ctx: SpanContext = SpanContext(1, 2, False)
 
+        @override
         def get_span_context(self) -> SpanContext:
             return self.ctx
 
+        @override
         def set_attribute(self, key: str, value: Any):
             self.attrs[key] = value
 
+        @override
         def set_attributes(self, attributes: Mapping[str, Any]):
             self.attrs.update(attributes)
 
+        @override
         def add_event(self, *a: Any, **k: Any): ...
+        @override
         def add_link(self, *a: Any, **k: Any): ...
+        @override
         def update_name(self, name: str): ...
+        @override
         def is_recording(self) -> bool:
             return True
 
+        @override
         def end(self, end_time: int | None = None): ...
+        @override
         def set_status(self, *a: Any, **k: Any): ...
+        @override
         def record_exception(self, *a: Any, **k: Any): ...
 
     foreign = Foreign()

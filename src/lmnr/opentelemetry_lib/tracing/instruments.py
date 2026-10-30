@@ -24,16 +24,12 @@ module_logger = logging.getLogger(__name__)
 class Instruments(Enum):
     # The list of libraries which will be autoinstrumented
     # if no specific instruments are provided to initialize()
-    ALEPHALPHA = "alephalpha"
     ANTHROPIC = "anthropic"
-    BEDROCK = "bedrock"
     BROWSER_USE = "browser_use"
     BROWSER_USE_SESSION = "browser_use_session"
     BUBUS = "bubus"
-    CHROMA = "chroma"
     CLAUDE_AGENT = "claude_agent"
     COHERE = "cohere"
-    CREWAI = "crewai"
     CUA_AGENT = "cua_agent"
     CUA_COMPUTER = "cua_computer"
     DAYTONA_SDK = "daytona_sdk"
@@ -49,9 +45,7 @@ class Instruments(Enum):
     GOOGLE_AIPLATFORM = "google_aiplatform"
     GOOGLE_GENAI = "google_genai"
     GROQ = "groq"
-    HAYSTACK = "haystack"
     KERNEL = "kernel"
-    LANCEDB = "lancedb"
     LANGCHAIN = "langchain"
     # Opt-in only — NOT auto-enabled merely because `langfuse` is installed.
     # Langfuse's own SDK is built on OpenTelemetry; this instrumentor
@@ -65,12 +59,8 @@ class Instruments(Enum):
     LANGFUSE = "langfuse"
     LANGGRAPH = "langgraph"
     LITELLM = "litellm"
-    LLAMA_INDEX = "llama_index"
-    MARQO = "marqo"
     MCP = "mcp"
     MICROSOFT_AGENT_FRAMEWORK = "microsoft_agent_framework"
-    MISTRAL = "mistral"
-    OLLAMA = "ollama"
     OPENAI = "openai"
     OPENAI_AGENTS = "openai_agents"
     OPENROUTER = "openrouter"
@@ -89,19 +79,12 @@ class Instruments(Enum):
     # providers alongside pydantic_ai should pass an explicit `instruments`
     # set to `Laminar.initialize`.
     PYDANTIC_AI = "pydantic_ai"
-    QDRANT = "qdrant"
-    REPLICATE = "replicate"
-    SAGEMAKER = "sagemaker"
     SKYVERN = "skyvern"
     TEMPORAL = "temporal"
-    TOGETHER = "together"
-    TRANSFORMERS = "transformers"
     TYPESAFE = "typesafe"
     # Legacy name for GOOGLE_AIPLATFORM, kept so existing `instruments=` /
     # `disabled_instruments=` sets keep working. Same value => enum alias.
     VERTEXAI = "google_aiplatform"  # noqa: PIE796
-    WATSONX = "watsonx"
-    WEAVIATE = "weaviate"
 
 
 #: `Instruments` -> initializer. Populated by `register_initializers` (the
@@ -123,11 +106,9 @@ def register_initializers(
 #: from the default set so the same model call isn't traced twice.
 _PYDANTIC_AI_PROVIDER_CONFLICTS: set[Instruments] = {
     Instruments.ANTHROPIC,
-    Instruments.BEDROCK,
     Instruments.COHERE,
     Instruments.GOOGLE_GENAI,
     Instruments.GROQ,
-    Instruments.MISTRAL,
     Instruments.OPENAI,
 }
 
