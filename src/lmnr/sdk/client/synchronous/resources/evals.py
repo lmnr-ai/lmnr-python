@@ -127,38 +127,42 @@ class Evals(BaseResource):
         metadata: dict[str, Any] | None = None,  # ,
         index: int | None = None,
         trace_id: uuid.UUID | None = None,
+        task_id: str | None = None,
     ) -> uuid.UUID:
         """
-        Create a datapoint for an evaluation.
+        Create a Trial (one execution of a Task) in an evaluation.
 
         Parameters:
             eval_id (uuid.UUID): The evaluation ID.
             data: The input data for the executor.
             target: The target/expected output for evaluators.
             metadata (dict[str, Any] | None, optional): Optional metadata.
-            index (int | None, optional): Optional index of the datapoint.
+            index (int | None, optional): Optional index of the Task in the run.
             trace_id (uuid.UUID | None, optional): Optional trace ID.
+            task_id (str | None, optional): Optional id of the Task (test case)
+                this Trial runs. All Trials of one Task share it.
 
         Returns:
-            uuid.UUID: The datapoint ID.
+            uuid.UUID: The Trial ID.
         """
         from lmnr.sdk.evaluations.models import PartialEvaluationDatapoint
 
-        datapoint_id = uuid.uuid4()
+        trial_id = uuid.uuid4()
 
-        # Create a minimal datapoint first
-        partial_datapoint = PartialEvaluationDatapoint(
-            id=datapoint_id,
+        # Create a minimal Trial first
+        partial_trial = PartialEvaluationDatapoint(
+            id=trial_id,
             data=data,
             target=target,
             index=index or 0,
             trace_id=trace_id or uuid.uuid4(),
             executor_span_id=uuid.uuid4(),  # Will be updated when executor runs
             metadata=metadata,
+            task_id=task_id,
         )
 
-        self.save_datapoints(eval_id, [partial_datapoint])
-        return datapoint_id
+        self.save_datapoints(eval_id, [partial_trial])
+        return trial_id
 
     def save_datapoints(
         self,
@@ -166,15 +170,15 @@ class Evals(BaseResource):
         datapoints: Sequence[EvaluationResultDatapoint | PartialEvaluationDatapoint],
         group_name: str | None = None,
     ):
-        """Save evaluation datapoints.
+        """Save evaluation Trials.
 
         Args:
             eval_id (uuid.UUID): The evaluation ID.
-            datapoints (list[EvaluationResultDatapoint | PartialEvaluationDatapoint]): The datapoints to save.
-            group_name (str | None, optional): Group name for the datapoints. Defaults to None.
+            datapoints (list[EvaluationResultDatapoint | PartialEvaluationDatapoint]): The Trials to save.
+            group_name (str | None, optional): Group name for the Trials. Defaults to None.
 
         Raises:
-            ValueError: If there's an error saving the datapoints.
+            ValueError: If there's an error saving the Trials.
         """
         length = INITIAL_EVALUATION_DATAPOINT_MAX_DATA_LENGTH
         points = [datapoint.to_dict(max_data_length=length) for datapoint in datapoints]
@@ -201,14 +205,14 @@ class Evals(BaseResource):
         executor_output: Any | None = None,
         trace_id: uuid.UUID | None = None,
     ) -> None:
-        """Update a datapoint with evaluation results.
+        """Update a Trial with evaluation results.
 
         Args:
             eval_id (uuid.UUID): The evaluation ID.
-            datapoint_id (uuid.UUID): The datapoint ID.
+            datapoint_id (uuid.UUID): The Trial ID.
             scores (dict[str, float | int]): The scores.
             executor_output (Any | None, optional): The executor output. Defaults to None.
-            trace_id (uuid.UUID | None, optional): If provided, updates the trace ID associated with the datapoint. Defaults to None.
+            trace_id (uuid.UUID | None, optional): If provided, updates the trace ID associated with the Trial. Defaults to None.
         """
 
         response = self._client.post(

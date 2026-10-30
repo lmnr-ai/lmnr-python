@@ -11,11 +11,11 @@ from lmnr.sdk.types import (
     Dataset,
     GetDatapointsResponse,
     PushDatapointsResponse,
+    datapoint_to_push_dict,
     parse_dataset,
     parse_get_datapoints_response,
     parse_push_datapoints_response,
 )
-from lmnr.sdk.utils import serialize
 
 logger = get_default_logger(__name__)
 
@@ -77,7 +77,7 @@ class AsyncDatasets(BaseAsyncResource):
                 f"{self._base_url}/v1/datasets/datapoints",
                 json={
                     **identifier,
-                    "datapoints": [serialize(point) for point in batch],
+                    "datapoints": [datapoint_to_push_dict(point) for point in batch],
                     "createDataset": create_dataset,
                 },
                 headers=self._headers(),

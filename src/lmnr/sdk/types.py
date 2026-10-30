@@ -6,13 +6,15 @@ import logging
 import uuid
 from collections.abc import Sequence
 from enum import Enum
-from typing import Any, Literal, cast
+from typing import Any, ClassVar, Literal, cast
 
 from opentelemetry.trace import SpanContext, TraceFlags
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+from pydantic.alias_generators import to_camel
 from typing_extensions import TypedDict, override  # compatibility with python < 3.12
 
 from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.utils import serialize
 
 
 def parse_iso_datetime(value: str) -> datetime.datetime:
@@ -39,13 +41,31 @@ LaminarSpanType = Literal["DEFAULT", "LLM", "TOOL", "EVALUATION", "EXECUTOR", "E
 
 # EvaluationDatapoint is a single data point in the evaluation
 class Datapoint(BaseModel):
+    # The API sends camelCase (`taskId`, `createdAt`); Python callers use snake_case.
+    # A per-field `alias` would make type checkers accept only the camelCase keyword.
+    model_config: ClassVar[ConfigDict] = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
     # input to the executor function.
     data: EvaluationDatapointData
     # input to the evaluator function (alongside the executor output).
     target: EvaluationDatapointTarget = Field(default_factory=dict)
     metadata: EvaluationDatapointMetadata = Field(default_factory=dict)
+    # The dataset datapoint UUID, set on datapoints pulled from a dataset.
     id: uuid.UUID | None = Field(default=None)
-    created_at: datetime.datetime | None = Field(default=None, alias="createdAt")
+    created_at: datetime.datetime | None = Field(default=None)
+    # Stable identifier of the Task (test case) this datapoint represents.
+    # Every Trial (execution) of the Task in an eval run shares it.
+    task_id: str | None = Field(default=None)
+
+
+def datapoint_to_push_dict(point: Datapoint | dict[str, Any]) -> dict[str, Any]:
+    """Serialize a datapoint for `POST /v1/datasets/datapoints`, sending the
+    task id as camelCase `taskId` whichever spelling the caller used."""
+    serialized = cast(dict[str, Any], serialize(point))
+    task_id = serialized.pop("task_id", None)
+    if serialized.get("taskId") is None and task_id is not None:
+        serialized["taskId"] = task_id
+    return serialized
 
 
 class Dataset(TypedDict):

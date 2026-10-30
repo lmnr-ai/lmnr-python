@@ -13,7 +13,7 @@ from lmnr import Laminar
 from lmnr.sdk.datasets import EvaluationDataset, LaminarDataset
 from lmnr.sdk.datasets.seeded_perm import seeded_perm
 from lmnr.sdk.evaluations import evaluate
-from lmnr.sdk.evaluations.models import EvaluationRunResult
+from lmnr.sdk.evaluations.models import EvaluationResultDatapoint, EvaluationRunResult
 from lmnr.sdk.types import Datapoint
 
 FIXTURE = Path(__file__).parent / "data" / "dataset" / "seeded_perm_cases.json"
@@ -24,7 +24,7 @@ def make_dp(i: int) -> Datapoint:
         id=uuid.uuid4(),
         data=i,
         target=i,
-        createdAt=datetime.now(tz=UTC),
+        created_at=datetime.now(tz=UTC),
     )
 
 
@@ -331,6 +331,19 @@ def test_iter_over_subsampled_dataset():
     assert [dp.data for dp in chained] == [all_items[i].data for i in perm]
 
 
+# --- source_index -----------------------------------------------------------
+
+
+def test_source_index_composes_through_chains():
+    ds = InMemoryDataset([make_dp(i) for i in range(10)])
+    chained = ds.shuffle(seed=3).select([4, 1, 4]).take(2)
+    # make_dp(i).data == i, so the source position is the datapoint's data.
+    assert [chained.source_index(i) for i in range(len(chained))] == [
+        chained[i].data for i in range(len(chained))
+    ]
+    assert ds.source_index(7) == 7
+
+
 # --- parity fixture ---------------------------------------------------------
 
 
@@ -406,3 +419,43 @@ async def test_eval_over_chained_dataset_has_dataset_link(
     # shuffle(seed=1).take(2) over 5 datapoints -> 2 processed datapoints,
     # each saved twice (partial + final).
     assert processed == 4
+
+
+@pytest.mark.asyncio
+@patch("lmnr.sdk.client.synchronous.resources.datasets.Datasets.pull")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init")
+async def test_eval_task_ids_follow_source_index_and_pulled_task_id(
+    mock_init: MagicMock,
+    mock_save_datapoints: MagicMock,
+    mock_pull: MagicMock,
+):
+    """Default task id is the SOURCE position (not the subset position); a
+    pulled `taskId` wins; the same source datapoint selected twice is two
+    Trials of one Task, not renamed."""
+    all_items = [make_dp(i) for i in range(5)]
+    all_items[3].task_id = "pulled"
+    mock_init.return_value = {
+        "id": "00000000-0000-0000-0000-000000000000",
+        "projectId": "mock-project-id",
+    }
+    mock_pull.return_value = {"items": all_items, "total_count": len(all_items)}
+
+    _result = await cast(
+        Awaitable[EvaluationRunResult],
+        evaluate(
+            data=LaminarDataset(id=uuid.uuid4()).select([2, 3, 2]),
+            executor=lambda d, _t=None: d,
+            evaluators={"test": lambda output, target: 1},
+            project_api_key="test",
+        ),
+    )
+    _flushed = Laminar.flush()
+
+    task_ids = sorted(
+        dp.task_id or ""
+        for call in mock_save_datapoints.call_args_list
+        for dp in call.args[1]
+        if isinstance(dp, EvaluationResultDatapoint)
+    )
+    assert task_ids == ["2", "2", "pulled"]

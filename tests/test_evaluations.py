@@ -13,6 +13,7 @@ from typing_extensions import TypeVar
 from lmnr import Laminar
 from lmnr.sdk.datasets import LaminarDataset
 from lmnr.sdk.evaluations import evaluate
+from lmnr.sdk.evaluations.evaluation import _TaskIdResolver
 from lmnr.sdk.evaluations.models import EvaluationResultDatapoint, EvaluationRunResult
 from lmnr.sdk.types import Datapoint, Dataset
 
@@ -50,7 +51,7 @@ def mock_dataset_pull_response() -> dict[str, list[Datapoint] | int]:
                 id=uuid.uuid4(),
                 data="test",
                 target="test",
-                createdAt=datetime.now(tz=UTC),
+                created_at=datetime.now(tz=UTC),
             )
         ],
         "total_count": 1,
@@ -64,7 +65,7 @@ def paged_pull(total: int, fetch_size: int) -> Callable[..., dict[str, list[Data
             id=uuid.uuid4(),
             data=f"test-{i}",
             target=f"test-{i}",
-            createdAt=datetime.now(tz=UTC),
+            created_at=datetime.now(tz=UTC),
         )
         for i in range(total)
     ]
@@ -445,7 +446,7 @@ async def test_evaluate_streams_laminar_dataset_in_pages(
 @patch("lmnr.sdk.client.synchronous.resources.datasets.Datasets.pull")
 @patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints")
 @patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init")
-async def test_evaluate_runs_datapoints_concurrently(
+async def test_evaluate_runs_trials_concurrently(
     mock_init: MagicMock,
     mock_datapoints: MagicMock,
     mock_dataset_pull: MagicMock,
@@ -454,7 +455,7 @@ async def test_evaluate_runs_datapoints_concurrently(
     mock_dataset_pull_response: MagicMock,
     span_exporter: InMemorySpanExporter,
 ):
-    """The semaphore sliding window keeps up to `concurrency_limit` datapoints
+    """The semaphore sliding window keeps up to `concurrency_limit` Trials
     in flight at once."""
     mock_init.return_value = mock_eval_response
     mock_datapoints.return_value = mock_datapoints_response
@@ -493,7 +494,7 @@ async def test_evaluate_runs_datapoints_concurrently(
 @patch("lmnr.sdk.client.synchronous.resources.datasets.Datasets.pull")
 @patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints")
 @patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init")
-async def test_evaluate_datapoint_failure_does_not_abort_remaining(
+async def test_evaluate_trial_failure_does_not_abort_remaining(
     mock_init: MagicMock,
     mock_datapoints: MagicMock,
     mock_dataset_pull: MagicMock,
@@ -502,7 +503,7 @@ async def test_evaluate_datapoint_failure_does_not_abort_remaining(
     mock_dataset_pull_response: MagicMock,
     span_exporter: InMemorySpanExporter,
 ):
-    """A failing datapoint must not stop the remaining datapoints from being
+    """A failing Trial must not stop the remaining Trials from being
     scheduled and run; its error still propagates once all have finished."""
     mock_init.return_value = mock_eval_response
     mock_datapoints.return_value = mock_datapoints_response
@@ -531,8 +532,8 @@ async def test_evaluate_datapoint_failure_does_not_abort_remaining(
         )
     _flush_success = Laminar.flush()
 
-    # With concurrency_limit=1 the failure on the first datapoint completes
-    # before the second is scheduled — every datapoint must still run.
+    # With concurrency_limit=1 the failure on the first Trial completes
+    # before the second is scheduled — every Trial must still run.
     assert executed == [f"test-{i}" for i in range(6)]
 
 
@@ -549,7 +550,7 @@ async def test_evaluate_upload_failure_does_not_skip_remaining_saves(
     mock_dataset_pull_response: MagicMock,
 ):
     """One failing background upload must not abandon the result saves of the
-    datapoints after it; the upload error still propagates once they finish."""
+    Trials after it; the upload error still propagates once they finish."""
     mock_init.return_value = mock_eval_response
     mock_dataset_pull.return_value = mock_dataset_pull_response
 
@@ -563,12 +564,12 @@ async def test_evaluate_upload_failure_does_not_skip_remaining_saves(
     ) -> MagicMock:
         datapoint = datapoints[0]
         if not isinstance(datapoint, EvaluationResultDatapoint):
-            # The partial save that makes the datapoint visible in the UI.
+            # The partial save that makes the Trial visible in the UI.
             return mock_datapoints_response
         started.append(datapoint.index)
         if datapoint.index == 0:
             raise ValueError("upload boom")
-        # Keep the save in flight past the end of the datapoint loop, so a
+        # Keep the save in flight past the end of the Trial loop, so a
         # result that is only persisted because the run waits for it is
         # distinguishable from one that happened to land early.
         await asyncio.sleep(0.1)
@@ -599,3 +600,140 @@ async def test_evaluate_upload_failure_does_not_skip_remaining_saves(
     # Every save after the failing one must have completed before `evaluate`
     # gave up and closed the client.
     assert sorted(completed) == list(range(1, 6))
+
+
+def saved_results(mock_save: MagicMock) -> list[EvaluationResultDatapoint]:
+    return [
+        dp
+        for call in mock_save.call_args_list
+        for dp in call.args[1]
+        if isinstance(dp, EvaluationResultDatapoint)
+    ]
+
+
+@pytest.mark.asyncio
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init")
+async def test_evaluate_trials_share_task_id(
+    mock_init: MagicMock,
+    mock_save: MagicMock,
+    mock_eval_response: MagicMock,
+):
+    """Each Task runs `trials` times; Trials get distinct ids but one task id."""
+    mock_init.return_value = mock_eval_response
+
+    _result = await cast(
+        Awaitable[EvaluationRunResult],
+        evaluate(
+            data=[{"data": "a", "taskId": "alpha"}, {"data": "b"}],
+            executor=lambda d, _t=None: d,
+            evaluators={"one": lambda output, target: 1},
+            trials=3,
+            project_api_key="test",
+        ),
+    )
+    _flush_success = Laminar.flush()
+
+    results = saved_results(mock_save)
+    assert len(results) == 6
+    assert len({r.id for r in results}) == 6
+    assert sorted(r.task_id or "" for r in results) == ["1"] * 3 + ["alpha"] * 3
+    assert all(r.to_dict()["taskId"] == r.task_id for r in results)
+
+
+@pytest.mark.parametrize("bad", [0, -1, 1.5, True, "2"])
+def test_evaluate_rejects_invalid_trials(bad: Any):
+    with pytest.raises(ValueError, match="trials"):
+        _result = evaluate(
+            data=[{"data": "a"}],
+            executor=lambda d, _t=None: d,
+            evaluators={"one": lambda output, target: 1},
+            trials=bad,
+            project_api_key="test",
+        )
+
+
+@pytest.mark.asyncio
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init")
+async def test_evaluate_renames_duplicate_task_ids(
+    mock_init: MagicMock,
+    mock_save: MagicMock,
+    mock_eval_response: MagicMock,
+):
+    """Different datapoints resolving to one task id are renamed `id#2`, ...,
+    including a default (index) id colliding with an explicit one."""
+    mock_init.return_value = mock_eval_response
+
+    _result = await cast(
+        Awaitable[EvaluationRunResult],
+        evaluate(
+            data=[
+                {"data": 0, "task_id": "dup"},
+                {"data": 1, "taskId": "dup"},
+                {"data": 2, "taskId": "dup"},
+                {"data": 3, "taskId": "4"},
+                {"data": 4},
+            ],
+            executor=lambda d, _t=None: d,
+            evaluators={"one": lambda output, target: 1},
+            concurrency_limit=1,
+            project_api_key="test",
+        ),
+    )
+    _flush_success = Laminar.flush()
+
+    by_data = {r.data: r.task_id for r in saved_results(mock_save)}
+    assert by_data == {0: "dup", 1: "dup#2", 2: "dup#3", 3: "4", 4: "4#2"}
+
+
+@pytest.mark.parametrize(
+    ("requested", "expected"),
+    [
+        (["foo", "foo", "foo#2", "foo"], ["foo", "foo#2", "foo#2#2", "foo#3"]),
+        (["foo", "foo#2", "foo"], ["foo", "foo#2", "foo#3"]),
+    ],
+)
+def test_task_id_resolver_skips_used_ids(requested: list[str], expected: list[str]):
+    """A duplicate of base `b` gets the smallest unused `b#n`; generated ids
+    count as used, so a later explicit id equal to one is renamed too."""
+    resolver = _TaskIdResolver(MagicMock())
+    resolved = [
+        resolver.resolve(Datapoint(data=i, task_id=task_id), i)
+        for i, task_id in enumerate(requested)
+    ]
+    assert resolved == expected
+
+
+@pytest.mark.asyncio
+@patch("lmnr.sdk.client.synchronous.resources.datasets.Datasets.pull")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init")
+async def test_evaluate_dataset_link_requires_datapoint_id_and_created_at(
+    mock_init: MagicMock,
+    mock_save: MagicMock,
+    mock_pull: MagicMock,
+    mock_eval_response: MagicMock,
+):
+    mock_init.return_value = mock_eval_response
+    linked = Datapoint(id=uuid.uuid4(), data="linked", created_at=datetime.now(tz=UTC))
+    mock_pull.return_value = {
+        "items": [linked, Datapoint(data="no-id"), Datapoint(id=uuid.uuid4(), data="no-ts")],
+        "total_count": 3,
+    }
+
+    _result = await cast(
+        Awaitable[EvaluationRunResult],
+        evaluate(
+            data=LaminarDataset(id=uuid.uuid4()),
+            executor=lambda d, _t=None: d,
+            evaluators={"one": lambda output, target: 1},
+            project_api_key="test",
+        ),
+    )
+    _flush_success = Laminar.flush()
+
+    links = {r.data: r.dataset_link for r in saved_results(mock_save)}
+    assert links["linked"] is not None and links["linked"]["datapoint_id"] == linked.id
+    assert links["no-id"] is None
+    assert links["no-ts"] is None

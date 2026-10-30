@@ -3,7 +3,6 @@ import re
 import uuid
 from asyncio.tasks import Task
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
 from logging import Logger
 from typing import Any, cast
 
@@ -73,6 +72,43 @@ def _with_debugger_session_metadata(
     return {**(metadata or {}), SESSION_METADATA_KEY: session_id}
 
 
+class _TaskIdResolver:
+    """Assigns each datapoint its task id for one eval run.
+
+    The task id is the datapoint's own `task_id` if set (explicit, or pulled
+    from a dataset), else its position in the source data. Two DIFFERENT
+    source datapoints resolving to the same id would merge two Tasks, so later
+    ones are renamed `id#2`, `id#3`, ...; the same source datapoint seen again
+    (e.g. `select([0, 0])`) keeps its id, since those are Trials of one Task.
+    """
+
+    def __init__(self, logger: Logger):
+        self._by_source_index: dict[int, str] = {}
+        self._claimed: set[str] = set()
+        self._warned: bool = False
+        self._logger: Logger = logger
+
+    def resolve(self, datapoint: Datapoint, source_index: int) -> str:
+        existing = self._by_source_index.get(source_index)
+        if existing is not None:
+            return existing
+        base = datapoint.task_id or str(source_index)
+        task_id = base
+        suffix = 2
+        while task_id in self._claimed:
+            task_id = f"{base}#{suffix}"
+            suffix += 1
+        if task_id != base and not self._warned:
+            self._warned = True
+            self._logger.warning(
+                f'Duplicate task id "{base}" on different datapoints; renamed to '
+                + f'"{task_id}". Further duplicates are renamed the same way.'
+            )
+        self._claimed.add(task_id)
+        self._by_source_index[source_index] = task_id
+        return task_id
+
+
 class Evaluation:
     def __init__(
         self,
@@ -95,6 +131,7 @@ class Evaluation:
         ) = None,
         max_export_batch_size: int | None = MAX_EXPORT_BATCH_SIZE,
         trace_export_timeout_seconds: int | None = None,
+        trials: int = 1,
     ):
         """
         Initializes an instance of the Evaluation class.
@@ -158,10 +195,16 @@ class Evaluation:
                 to disable auto-instrumentations. If None, only modules passed\
                 as `instruments` will be disabled.
                 Defaults to None.
+            trials (int, optional): How many times to run each Task; each run is a Trial.\
+                Each run (Trial) gets its own trace and result row; Trials of\
+                one Task share its task id.
+                Defaults to 1.
         """
 
         if not evaluators:
             raise ValueError("No evaluators provided")
+        if isinstance(trials, bool) or not isinstance(trials, int) or trials < 1:
+            raise ValueError(f"trials must be an integer >= 1, got {trials!r}")
 
         evaluator_name_regex = re.compile(r"^[\w\s-]+$")
         for evaluator_name in evaluators:
@@ -195,6 +238,7 @@ class Evaluation:
         self.name: str | None = name
         self.metadata: dict[str, Any] | None = metadata
         self.concurrency_limit: int = concurrency_limit
+        self.trials: int = trials
         self.batch_size: int = concurrency_limit
         self._logger: Logger = get_default_logger(self.__class__.__name__)
         self.upload_tasks: list[Task[None]] = []
@@ -277,7 +321,7 @@ class Evaluation:
 
             print(f"Check the results at {url}")
 
-            self.reporter.start(len(self.data))
+            self.reporter.start(len(self.data) * self.trials)
             average_scores = await self._evaluate_in_batches(evaluation["id"])
             # Wait for all background upload tasks to complete. Failures are
             # collected instead of raised eagerly: a plain `gather` returns as
@@ -322,7 +366,7 @@ class Evaluation:
         # not retained for the whole run. This is a memory measure only: a
         # failed save is latched on `self._upload_error` and re-raised by
         # `_run` *after* it has drained the remaining upload tasks. Folding it
-        # into the datapoint loop's `first_error` instead would abort
+        # into the Trial loop's `first_error` instead would abort
         # `_evaluate_in_batches` before that drain, so every still-pending save
         # would be abandoned when `_shutdown` closes the client.
         for task in self.upload_tasks:
@@ -335,7 +379,7 @@ class Evaluation:
     async def _evaluate_in_batches(self, eval_id: uuid.UUID) -> dict[str, Numeric]:
         semaphore = asyncio.Semaphore(self.concurrency_limit)
         tasks: list[Task[None]] = []
-        # Aggregate scores incrementally so result datapoints (with their full
+        # Aggregate scores incrementally so Trial results (with their full
         # data/target/output payloads) are not retained for the whole run.
         score_sums: dict[str, Numeric] = {}
         score_counts: dict[str, int] = {}
@@ -347,9 +391,9 @@ class Evaluation:
                 score_sums[key] = score_sums.get(key, 0) + value
                 score_counts[key] = score_counts.get(key, 0) + 1
 
-        async def evaluate_task(datapoint: Datapoint, index: int) -> None:
+        async def run_trial(datapoint: Datapoint, index: int, task_id: str) -> None:
             try:
-                result = await self._evaluate_datapoint(eval_id, datapoint, index)
+                result = await self._evaluate_trial(eval_id, datapoint, index, task_id)
                 accumulate_scores(result)
                 self.reporter.update(1)
             finally:
@@ -359,18 +403,25 @@ class Evaluation:
         # drops each page once consumed, so a huge dataset is never fully
         # resident. Pulling the next page is a blocking call on the sync
         # client, so the iterator is advanced in a thread pool to keep
-        # in-flight datapoint tasks running while we wait.
+        # in-flight Trials running while we wait.
         loop = asyncio.get_event_loop()
-        data_iter = enumerate(iter(self.data))
+        data = self.data
+        data_iter = enumerate(iter(data))
+        task_ids = _TaskIdResolver(self._logger)
 
-        def next_datapoint() -> tuple[int, Datapoint] | None:
-            return next(data_iter, None)
+        def next_task() -> tuple[int, Datapoint, str] | None:
+            item = next(data_iter, None)
+            if item is None:
+                return None
+            idx, datapoint = item
+            source_index = data.source_index(idx) if isinstance(data, EvaluationDataset) else idx
+            return idx, datapoint, task_ids.resolve(datapoint, source_index)
 
         first_error: BaseException | None = None
 
         def prune_finished(task_list: list[Task[None]]) -> list[Task[None]]:
-            # Drop references to completed datapoint tasks as we go. A failed
-            # task's exception is recorded, NOT raised here: every datapoint
+            # Drop references to completed Trial tasks as we go. A failed
+            # task's exception is recorded, NOT raised here: every Trial
             # must still be scheduled and run (matching the previous behavior,
             # where all tasks were created before `gather` surfaced errors).
             nonlocal first_error
@@ -382,14 +433,16 @@ class Evaluation:
             return [task for task in task_list if not task.done()]
 
         # Create tasks only after acquiring the semaphore, so at most
-        # `concurrency_limit` datapoints are in flight (and referenced) at once
-        while (item := await loop.run_in_executor(None, next_datapoint)) is not None:
-            idx, datapoint = item
-            _success = await semaphore.acquire()
-            task = asyncio.create_task(evaluate_task(datapoint, idx))
-            tasks.append(task)
-            tasks = prune_finished(tasks)
-            self._prune_upload_tasks()
+        # `concurrency_limit` Trials are in flight (and referenced) at once.
+        # Trials of one Task are scheduled back to back.
+        while (item := await loop.run_in_executor(None, next_task)) is not None:
+            idx, datapoint, task_id = item
+            for _ in range(self.trials):
+                _success = await semaphore.acquire()
+                task = asyncio.create_task(run_trial(datapoint, idx, task_id))
+                tasks.append(task)
+                tasks = prune_finished(tasks)
+                self._prune_upload_tasks()
 
         # Wait for the remaining in-flight tasks to complete
         if tasks:
@@ -405,8 +458,23 @@ class Evaluation:
             key: score_sums[key] / score_counts[key] for key in score_sums if score_counts[key] > 0
         }
 
-    async def _evaluate_datapoint(
-        self, eval_id: uuid.UUID, datapoint: Datapoint, index: int
+    def _dataset_link(self, datapoint: Datapoint) -> EvaluationDatapointDatasetLink | None:
+        source = self._source_dataset
+        if (
+            source is None
+            or source.id is None
+            or datapoint.id is None
+            or datapoint.created_at is None
+        ):
+            return None
+        return EvaluationDatapointDatasetLink(
+            dataset_id=source.id,
+            datapoint_id=datapoint.id,
+            created_at=datapoint.created_at,
+        )
+
+    async def _evaluate_trial(
+        self, eval_id: uuid.UUID, datapoint: Datapoint, index: int, task_id: str
     ) -> EvaluationResultDatapoint:
         evaluation_id = uuid.uuid4()
 
@@ -427,24 +495,20 @@ class Evaluation:
                     executor_span_id = uuid.UUID(int=executor_span.get_span_context().span_id)
                     trace_id = uuid.UUID(int=executor_span.get_span_context().trace_id)
 
-                    partial_datapoint = PartialEvaluationDatapoint(
+                    partial_trial = PartialEvaluationDatapoint(
                         id=evaluation_id,
                         data=datapoint.data,
                         target=datapoint.target,
                         index=index,
+                        task_id=task_id,
                         trace_id=trace_id,
                         executor_span_id=executor_span_id,
                         metadata=datapoint.metadata,
+                        dataset_link=self._dataset_link(datapoint),
                     )
-                    if self._source_dataset is not None and self._source_dataset.id is not None:
-                        partial_datapoint.dataset_link = EvaluationDatapointDatasetLink(
-                            dataset_id=self._source_dataset.id,
-                            datapoint_id=datapoint.id or uuid.UUID(int=0),
-                            created_at=datapoint.created_at or datetime.now(UTC),
-                        )
-                    # First, create datapoint with trace_id so that we can show the dp in the UI
+                    # First, create the Trial with trace_id so that the UI can show it while it runs
                     await self.client.evals.save_datapoints(
-                        eval_id, [partial_datapoint], self.group_name
+                        eval_id, [partial_trial], self.group_name
                     )
                     executor_span.set_attribute(SPAN_TYPE, SpanType.EXECUTOR.value)
                     # Run synchronous executors in a thread pool to avoid blocking
@@ -492,7 +556,7 @@ class Evaluation:
             except Exception:
                 self._logger.debug("Failed to detach evaluation trace context", exc_info=True)
 
-        eval_datapoint = EvaluationResultDatapoint(
+        trial_result = EvaluationResultDatapoint(
             id=evaluation_id,
             data=datapoint.data,
             target=target,
@@ -501,19 +565,15 @@ class Evaluation:
             trace_id=trace_id,
             executor_span_id=executor_span_id,
             index=index,
+            task_id=task_id,
             metadata=datapoint.metadata,
+            dataset_link=self._dataset_link(datapoint),
         )
-        if self._source_dataset is not None and self._source_dataset.id is not None:
-            eval_datapoint.dataset_link = EvaluationDatapointDatasetLink(
-                dataset_id=self._source_dataset.id,
-                datapoint_id=datapoint.id or uuid.UUID(int=0),
-                created_at=datapoint.created_at or datetime.now(UTC),
-            )
 
         # Create background upload task without awaiting it
         upload_task = asyncio.create_task(
-            self.client.evals.save_datapoints(eval_id, [eval_datapoint], self.group_name)
+            self.client.evals.save_datapoints(eval_id, [trial_result], self.group_name)
         )
         self.upload_tasks.append(upload_task)
 
-        return eval_datapoint
+        return trial_result

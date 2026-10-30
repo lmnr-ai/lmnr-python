@@ -5,8 +5,8 @@ Usage:
     harbor run --dataset terminal-bench@2.0 --agent claude-code \\
         --model anthropic/claude-sonnet-4-5 --plugin laminar
 
-Each Harbor job becomes one Laminar evaluation. Each trial becomes a datapoint
-whose trace contains the trial phases (environment setup, agent setup, agent,
+Each Harbor job becomes one Laminar evaluation. Each Harbor task becomes a
+Laminar Task, and each of its trials a Trial, whose trace contains the trial phases (environment setup, agent setup, agent,
 verifier) and, when the agent writes an ATIF trajectory, one LLM / TOOL span per
 recorded step. Verifier rewards become evaluation scores.
 """
@@ -74,6 +74,8 @@ class _TrialState:
 
     datapoint_id: uuid.UUID
     index: int
+    # Harbor's task name: every attempt of a task (`-k`) is a Trial of one Laminar Task.
+    task_id: str
     data: dict[str, Any]
     metadata: dict[str, Any]
     root_span: Any = None
@@ -325,6 +327,7 @@ class LaminarPlugin:
             state = _TrialState(
                 datapoint_id=uuid.uuid4(),
                 index=self._next_index,
+                task_id=event.task_name,
                 data=data,
                 metadata={
                     "trial_name": event.trial_name,
@@ -373,6 +376,7 @@ class LaminarPlugin:
             data=state.data,
             target={},
             index=state.index,
+            task_id=state.task_id,
             trace_id=state.trace_id,
             executor_span_id=_uuid(span_context.span_id),
             metadata=state.metadata,
@@ -488,6 +492,7 @@ class LaminarPlugin:
         datapoint = EvaluationResultDatapoint(
             id=state.datapoint_id,
             index=state.index,
+            task_id=state.task_id,
             data=state.data,
             target={},
             executor_output=self._executor_output(event),
