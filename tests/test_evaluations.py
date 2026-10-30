@@ -51,7 +51,7 @@ def mock_dataset_pull_response() -> dict[str, list[Datapoint] | int]:
                 id=uuid.uuid4(),
                 data="test",
                 target="test",
-                createdAt=datetime.now(tz=UTC),
+                created_at=datetime.now(tz=UTC),
             )
         ],
         "total_count": 1,
@@ -65,7 +65,7 @@ def paged_pull(total: int, fetch_size: int) -> Callable[..., dict[str, list[Data
             id=uuid.uuid4(),
             data=f"test-{i}",
             target=f"test-{i}",
-            createdAt=datetime.now(tz=UTC),
+            created_at=datetime.now(tz=UTC),
         )
         for i in range(total)
     ]
@@ -716,7 +716,7 @@ async def test_evaluate_dataset_link_requires_datapoint_id_and_created_at(
     mock_eval_response: MagicMock,
 ):
     mock_init.return_value = mock_eval_response
-    linked = Datapoint(id=uuid.uuid4(), data="linked", createdAt=datetime.now(tz=UTC))
+    linked = Datapoint(id=uuid.uuid4(), data="linked", created_at=datetime.now(tz=UTC))
     mock_pull.return_value = {
         "items": [linked, Datapoint(data="no-id"), Datapoint(id=uuid.uuid4(), data="no-ts")],
         "total_count": 3,

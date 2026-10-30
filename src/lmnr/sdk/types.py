@@ -10,6 +10,7 @@ from typing import Any, ClassVar, Literal, cast
 
 from opentelemetry.trace import SpanContext, TraceFlags
 from pydantic import BaseModel, ConfigDict, Field
+from pydantic.alias_generators import to_camel
 from typing_extensions import TypedDict, override  # compatibility with python < 3.12
 
 from lmnr.sdk.log import get_default_logger
@@ -40,8 +41,9 @@ LaminarSpanType = Literal["DEFAULT", "LLM", "TOOL", "EVALUATION", "EXECUTOR", "E
 
 # EvaluationDatapoint is a single data point in the evaluation
 class Datapoint(BaseModel):
-    # Accept both `task_id` and `taskId` (and `created_at` / `createdAt`).
-    model_config: ClassVar[ConfigDict] = ConfigDict(populate_by_name=True)
+    # The API sends camelCase (`taskId`, `createdAt`); Python callers use snake_case.
+    # A per-field `alias` would make type checkers accept only the camelCase keyword.
+    model_config: ClassVar[ConfigDict] = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     # input to the executor function.
     data: EvaluationDatapointData
@@ -50,10 +52,10 @@ class Datapoint(BaseModel):
     metadata: EvaluationDatapointMetadata = Field(default_factory=dict)
     # The dataset datapoint UUID, set on datapoints pulled from a dataset.
     id: uuid.UUID | None = Field(default=None)
-    created_at: datetime.datetime | None = Field(default=None, alias="createdAt")
+    created_at: datetime.datetime | None = Field(default=None)
     # Stable identifier of the Task (test case) this datapoint represents.
     # Every Trial (execution) of the Task in an eval run shares it.
-    task_id: str | None = Field(default=None, alias="taskId")
+    task_id: str | None = Field(default=None)
 
 
 def datapoint_to_push_dict(point: Datapoint | dict[str, Any]) -> dict[str, Any]:

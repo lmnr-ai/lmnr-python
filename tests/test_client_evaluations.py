@@ -1420,7 +1420,7 @@ class TestTaskIdWire:
         push_response.json.return_value = {"datasetId": str(uuid.uuid4())}
         with patch.object(client.datasets._client, "post", return_value=push_response) as post:
             _resp = client.datasets.push(
-                [Datapoint(data=1, taskId="a"), Datapoint(data=2)], name="ds"
+                [Datapoint(data=1, task_id="a"), Datapoint(data=2)], name="ds"
             )
         sent = post.call_args[1]["json"]["datapoints"]
         assert [p.get("taskId") for p in sent] == ["a", None]

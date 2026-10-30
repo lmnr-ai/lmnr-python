@@ -24,7 +24,7 @@ def make_dp(i: int) -> Datapoint:
         id=uuid.uuid4(),
         data=i,
         target=i,
-        createdAt=datetime.now(tz=UTC),
+        created_at=datetime.now(tz=UTC),
     )
 
 
