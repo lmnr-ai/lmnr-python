@@ -6,7 +6,7 @@
 
 [project]
 name = "lmnr"
-version = "0.8.5"
+version = "0.9.0"
 description = "Python SDK for Laminar"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -65,17 +65,17 @@ dev = [
   "cdp-use==1.4.5",
   "claude-agent-sdk==0.2.168",
   "cohere==7.3.0",
-  "google-adk==2.11.0",
   "daytona==0.225.0",
+  "google-adk==2.13.0",
   "google-cloud-aiplatform==2.6.0",
-  "google-genai==2.19.0",
+  "google-genai==2.33.0",
   "groq==1.1.2",
   "jsonschema==4.26.0",
   "kernel==0.44.0",
   "langchain==1.4.4",
   "langchain-core==1.6.9",
   "langchain-openai==1.7.0",
-  "langfuse==4.8.1",
+  "langfuse==4.15.0",
   "langgraph==1.2.14",
   "litellm==1.103.4",
   "mcp==2.3.0",
@@ -97,7 +97,7 @@ dev = [
 ]
 
 [build-system]
-requires = ["uv_build>=0.13.1,<0.14"]
+requires = ["uv_build>=0.13.4,<0.14"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]

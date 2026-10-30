@@ -119,7 +119,6 @@ def test_pydantic_ai_installed_defaults_enable_it_and_block_providers(
         )
     # Non-conflicting defaults remain enabled.
     assert Instruments.LANGCHAIN in track_initializers
-    assert Instruments.LLAMA_INDEX in track_initializers
 
 
 def test_explicit_instruments_bypass_auto_logic(

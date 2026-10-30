@@ -50,7 +50,10 @@ def _find_spans_by_attr(
 
 
 @pytest.mark.vcr(record_mode="once")
-def test_simple_agent(instrument_openai_agents: MagicMock, span_exporter: InMemorySpanExporter):
+@pytest.mark.asyncio
+async def test_simple_agent(
+    instrument_openai_agents: MagicMock, span_exporter: InMemorySpanExporter
+):
     """Run a simple agent and verify span structure and attributes."""
     agent = Agent(
         name="Assistant",
@@ -58,7 +61,7 @@ def test_simple_agent(instrument_openai_agents: MagicMock, span_exporter: InMemo
         model="gpt-4o-mini",
     )
 
-    result = Runner.run_sync(agent, "What is 2+2?")
+    result = await Runner.run(agent, "What is 2+2?")
     assert "4" in result.final_output
 
     spans = _get_spans(span_exporter)
@@ -100,7 +103,10 @@ def test_simple_agent(instrument_openai_agents: MagicMock, span_exporter: InMemo
 
 
 @pytest.mark.vcr(record_mode="once")
-def test_agent_with_tool(instrument_openai_agents: MagicMock, span_exporter: InMemorySpanExporter):
+@pytest.mark.asyncio
+async def test_agent_with_tool(
+    instrument_openai_agents: MagicMock, span_exporter: InMemorySpanExporter
+):
     """Run an agent that calls a tool and verify tool + LLM spans."""
 
     @function_tool
@@ -115,7 +121,7 @@ def test_agent_with_tool(instrument_openai_agents: MagicMock, span_exporter: InM
         tools=[get_weather],
     )
 
-    result = Runner.run_sync(agent, "What is the weather in NYC?")
+    result = await Runner.run(agent, "What is the weather in NYC?")
     assert "72" in result.final_output
 
     spans = _get_spans(span_exporter)
