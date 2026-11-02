@@ -27,6 +27,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langchain.span_utils i
     set_completion_request,
     set_request_attributes,
     set_response_attributes,
+    without_messages,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langchain.vendor_detection import (
     detect_vendor_from_class,
@@ -436,7 +437,7 @@ class LaminarCallbackHandler(BaseCallbackHandler):
             run_id, parent_run_id, _run_name(serialized, kwargs), tags, metadata, kwargs
         )
         if span is not None and should_send_prompts():
-            set_span_attribute(span, SPAN_INPUT, json_dumps(inputs))
+            set_span_attribute(span, SPAN_INPUT, json_dumps(without_messages(inputs)))
 
     @dont_throw
     def on_chain_end(
@@ -448,7 +449,7 @@ class LaminarCallbackHandler(BaseCallbackHandler):
         **kwargs: Any,
     ) -> None:
         try:
-            self._set_output(run_id, outputs)
+            self._set_output(run_id, without_messages(outputs))
         finally:
             self._end_run(run_id)
 
