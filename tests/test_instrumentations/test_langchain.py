@@ -116,23 +116,9 @@ def _assert_graph_spans(span_exporter: InMemorySpanExporter) -> None:
     assert workflow_attrs["gen_ai.agent.name"] == "LangGraph"
     assert workflow_attrs["lmnr.span.instrumentation_scope.name"] == "langchain"
     assert workflow_attrs["lmnr.span.path"] == ("LangGraph.workflow",)
-    assert json.loads(cast(str, workflow_attrs["lmnr.span.input"])) == {
-        "messages": [
-            {
-                "content": "What is the weather in Tokyo?",
-                "additional_kwargs": {},
-                "response_metadata": {},
-                "type": "human",
-                "name": None,
-                "id": None,
-            }
-        ]
-    }
-    output = json.loads(cast(str, workflow_attrs["lmnr.span.output"]))
-    assert [m["content"] for m in output["messages"]] == [
-        "What is the weather in Tokyo?",
-        "Hello, how can I help you?",
-    ]
+    # The graph state's messages are dropped: they are already on the LLM spans
+    assert json.loads(cast(str, workflow_attrs["lmnr.span.input"])) == {}
+    assert json.loads(cast(str, workflow_attrs["lmnr.span.output"])) == {}
     assert json.loads(cast(str, workflow_attrs[NODES_KEY])) == EXPECTED_NODES
     workflow_edges = json.loads(cast(str, workflow_attrs[EDGES_KEY]))
     assert len(workflow_edges) == 4
@@ -227,6 +213,35 @@ def test_nested_graph_topology_only_on_root(span_exporter: InMemorySpanExporter)
     for span in spans:
         if span is not roots[0]:
             assert NODES_KEY not in _attrs(span)
+
+
+class TopicState(TypedDict):
+    messages: Annotated[list[AnyMessage], add_messages]
+    topic: str
+
+
+def test_graph_state_messages_are_dropped(span_exporter: InMemorySpanExporter):
+    def answer(state: TopicState) -> dict[str, Any]:
+        return {"messages": [AIMessage(content="Sunny")], "topic": state["topic"] + "!"}
+
+    builder = StateGraph(TopicState)
+    _ = builder.add_node("answer", answer)  # pyright: ignore[reportUnknownMemberType]
+    _ = builder.add_edge(START, "answer")
+    graph = builder.compile()  # pyright: ignore[reportUnknownMemberType]
+
+    result = graph.invoke(  # pyright: ignore[reportUnknownMemberType]
+        {"messages": [HumanMessage(content="Weather?")], "topic": "weather"}
+    )
+    # The graph itself still sees the messages
+    assert [m.content for m in result["messages"]] == ["Weather?", "Sunny"]
+
+    spans = span_exporter.get_finished_spans()
+    root = _span(spans, "LangGraph.workflow")
+    node = _span(spans, "execute_task answer")
+    assert json.loads(cast(str, _attrs(root)["lmnr.span.input"])) == {"topic": "weather"}
+    assert json.loads(cast(str, _attrs(root)["lmnr.span.output"])) == {"topic": "weather!"}
+    assert json.loads(cast(str, _attrs(node)["lmnr.span.input"])) == {"topic": "weather"}
+    assert json.loads(cast(str, _attrs(node)["lmnr.span.output"])) == {"topic": "weather!"}
 
 
 def test_chain(span_exporter: InMemorySpanExporter):

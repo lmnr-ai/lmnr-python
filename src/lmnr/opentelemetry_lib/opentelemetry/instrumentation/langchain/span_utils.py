@@ -422,6 +422,18 @@ def sanitize_metadata(metadata: Mapping[str, Any] | None) -> dict[str, Any]:
     }
 
 
+def without_messages(payload: Any) -> Any:
+    """Drop a chain payload's `messages` key.
+
+    LangGraph passes the whole graph state, conversation included, as every
+    node's input and output. The messages are already on the LLM spans, so
+    repeating them on each chain span only bloats the trace.
+    """
+    if isinstance(payload, Mapping) and "messages" in payload:
+        return {key: value for key, value in payload.items() if key != "messages"}
+    return payload
+
+
 def retriever_output(documents: Sequence[Any]) -> list[Any]:
     output: list[Any] = []
     for document in documents:
