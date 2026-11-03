@@ -27,7 +27,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langchain.span_utils i
     set_completion_request,
     set_request_attributes,
     set_response_attributes,
-    without_messages,
+    small_state,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langchain.vendor_detection import (
     detect_vendor_from_class,
@@ -357,6 +357,13 @@ class LaminarCallbackHandler(BaseCallbackHandler):
             run_id, parent_run_id, span_name, attributes=attributes, tags=tags, metadata=metadata
         )
 
+    def _set_chain_payload(self, run_id: UUID, attribute: str, payload: Any) -> None:
+        # Chain payloads are graph state or raw runnable input, repeated on
+        # every span; keep only known-small keys, and nothing if none match.
+        run = self._runs.get(run_id)
+        if run is not None and should_send_prompts() and (kept := small_state(payload)):
+            set_span_attribute(run.span, attribute, json_dumps(kept))
+
     def _start_llm(
         self,
         serialized: dict[str, Any],
@@ -436,8 +443,8 @@ class LaminarCallbackHandler(BaseCallbackHandler):
         span = self._start_chain_like(
             run_id, parent_run_id, _run_name(serialized, kwargs), tags, metadata, kwargs
         )
-        if span is not None and should_send_prompts():
-            set_span_attribute(span, SPAN_INPUT, json_dumps(without_messages(inputs)))
+        if span is not None:
+            self._set_chain_payload(run_id, SPAN_INPUT, inputs)
 
     @dont_throw
     def on_chain_end(
@@ -449,7 +456,7 @@ class LaminarCallbackHandler(BaseCallbackHandler):
         **kwargs: Any,
     ) -> None:
         try:
-            self._set_output(run_id, without_messages(outputs))
+            self._set_chain_payload(run_id, SPAN_OUTPUT, outputs)
         finally:
             self._end_run(run_id)
 
