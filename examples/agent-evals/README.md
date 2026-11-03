@@ -2,7 +2,7 @@
 
 A support agent that handles billing tickets, with an [agent evaluation](https://laminar.sh/docs/agent-evaluations/introduction) suite you run with `lmnr-cli eval run`. The agent looks up a customer's charges in a SQLite database and can refund one. Each case starts with its own copy of the database, and a verifier checks both the database and the reply.
 
-The [quickstart](https://laminar.sh/docs/agent-evaluations/quickstart#get-started-manually) walks through every file.
+The [quickstart](https://laminar.sh/docs/agent-evaluations/quickstart#get-started-manually) walks through the files.
 
 ## Layout
 
