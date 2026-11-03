@@ -1,4 +1,10 @@
 {
+  "exclude": [
+    "examples/agent-evals",
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.*"
+  ],
   "reportAny": false,
   "reportExplicitAny": false,
   "failOnWarnings": false,

@@ -2,6 +2,8 @@
 dist/
 poetry.lock
 uv.lock
+# The agent-evals example image runs `uv sync --frozen`, so it needs its lock file.
+!examples/agent-evals/uv.lock
 lmnr_engine/
 .vscode
 .venv

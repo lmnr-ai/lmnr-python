@@ -165,10 +165,14 @@ wheel-exclude = ["**/AGENTS.md", "**/CLAUDE.md"]
 
 [tool.uv.workspace]
 members = ["examples/fastapi-app"]
+# Standalone project with its own uv.lock (its Docker image runs `uv sync --frozen`).
+exclude = ["examples/agent-evals"]
 
 [tool.ruff]
 target-version = "py311"
 line-length = 100
+# Standalone example project; its code is mirrored verbatim in the Laminar docs.
+extend-exclude = ["examples/agent-evals"]
 
 [tool.ruff.lint]
 # BLE001 (flake8-blind-except): the codebase intentionally catches bare
