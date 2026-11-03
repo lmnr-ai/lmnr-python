@@ -1,0 +1,4 @@
+images:
+  refund-agent-evals:
+    dockerfile: image/Dockerfile
+    context: ..

@@ -40,6 +40,7 @@ lmnr datasets pull <id>       # Pull dataset
 - Python `>=3.11` (`requires-python`).
 - ruff is the linter and formatter: 100-column lines, `target-version = "py311"`, `BLE001` ignored on purpose (instrumentation catches bare `Exception` so it never crashes the host app). There is no flake8 config; don't lint with it.
 - basedpyright reads `pyrightconfig.json`: `reportAny` / `reportExplicitAny` are off everywhere, and `tests/` also turns off `reportPrivateUsage` / `reportUnusedParameter`.
+- `examples/agent-evals` is a standalone project (own `uv.lock`, Harbor agent, Docker image) excluded from the uv workspace, ruff, and basedpyright. The docs' agent evaluations quickstart links to it and quotes some files verbatim, so keep the two in step when you change it.
 - Build backend is `uv_build`; `AGENTS.md` / `CLAUDE.md` are excluded from the sdist and wheel in `[tool.uv.build-backend]`.
 
 ## Architecture
