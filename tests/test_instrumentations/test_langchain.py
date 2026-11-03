@@ -116,9 +116,9 @@ def _assert_graph_spans(span_exporter: InMemorySpanExporter) -> None:
     assert workflow_attrs["gen_ai.agent.name"] == "LangGraph"
     assert workflow_attrs["lmnr.span.instrumentation_scope.name"] == "langchain"
     assert workflow_attrs["lmnr.span.path"] == ("LangGraph.workflow",)
-    # The graph state's messages are dropped: they are already on the LLM spans
-    assert json.loads(cast(str, workflow_attrs["lmnr.span.input"])) == {}
-    assert json.loads(cast(str, workflow_attrs["lmnr.span.output"])) == {}
+    # Graph state is not recorded: messages are already on the LLM spans
+    assert "lmnr.span.input" not in workflow_attrs
+    assert "lmnr.span.output" not in workflow_attrs
     assert json.loads(cast(str, workflow_attrs[NODES_KEY])) == EXPECTED_NODES
     workflow_edges = json.loads(cast(str, workflow_attrs[EDGES_KEY]))
     assert len(workflow_edges) == 4
@@ -129,7 +129,7 @@ def _assert_graph_spans(span_exporter: InMemorySpanExporter) -> None:
         "LangGraph.workflow",
         "execute_task assistant",
     )
-    # Nested chain spans keep only known-small state keys
+    # Chain spans keep only known-small state keys
     assert "lmnr.span.output" not in _attrs(condition_span)
 
     for span in (assistant_span, condition_span):
@@ -221,7 +221,7 @@ class TopicState(TypedDict):
     topic: str
 
 
-def test_graph_state_messages_are_dropped(span_exporter: InMemorySpanExporter):
+def test_graph_state_is_not_recorded(span_exporter: InMemorySpanExporter):
     def answer(state: TopicState) -> dict[str, Any]:
         return {"messages": [AIMessage(content="Sunny")], "topic": state["topic"] + "!"}
 
@@ -239,11 +239,10 @@ def test_graph_state_messages_are_dropped(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     root = _span(spans, "LangGraph.workflow")
     node = _span(spans, "execute_task answer")
-    assert json.loads(cast(str, _attrs(root)["lmnr.span.input"])) == {"topic": "weather"}
-    assert json.loads(cast(str, _attrs(root)["lmnr.span.output"])) == {"topic": "weather!"}
-    # Nested chain spans drop everything but known-small keys
-    assert "lmnr.span.input" not in _attrs(node)
-    assert "lmnr.span.output" not in _attrs(node)
+    # Chain spans, the root included, drop everything but known-small keys
+    for span in (root, node):
+        assert "lmnr.span.input" not in _attrs(span)
+        assert "lmnr.span.output" not in _attrs(span)
 
 
 class StepState(TypedDict):
@@ -255,7 +254,7 @@ class StepState(TypedDict):
     executionId: str
 
 
-def test_nested_chain_spans_keep_only_small_keys(span_exporter: InMemorySpanExporter):
+def test_chain_spans_keep_only_small_keys(span_exporter: InMemorySpanExporter):
     def step(state: StepState) -> dict[str, Any]:
         return {"messages": [AIMessage(content="Done")], "stepsTaken": state["stepsTaken"] + 1}
 
@@ -275,14 +274,20 @@ def test_nested_chain_spans_keep_only_small_keys(span_exporter: InMemorySpanExpo
         }
     )
 
-    node = _span(span_exporter.get_finished_spans(), "execute_task step")
-    assert json.loads(cast(str, _attrs(node)["lmnr.span.input"])) == {
+    spans = span_exporter.get_finished_spans()
+    small_input = {
         "maxSteps": 5,
         "stepsTaken": 0,
         "executionId": "exec-1",
         "prompt": {"model": "gpt-5", "thinkingEffort": "high"},
     }
-    assert json.loads(cast(str, _attrs(node)["lmnr.span.output"])) == {"stepsTaken": 1}
+    for name, output in (
+        ("LangGraph.workflow", {**small_input, "stepsTaken": 1}),
+        ("execute_task step", {"stepsTaken": 1}),
+    ):
+        attrs = _attrs(_span(spans, name))
+        assert json.loads(cast(str, attrs["lmnr.span.input"])) == small_input
+        assert json.loads(cast(str, attrs["lmnr.span.output"])) == output
 
 
 def test_chain(span_exporter: InMemorySpanExporter):
@@ -306,10 +311,10 @@ def test_chain(span_exporter: InMemorySpanExporter):
     assert root.parent is None
     assert _parent_id(add_one) == _span_id(root)
     assert _parent_id(double) == _span_id(root)
-    assert json.loads(cast(str, _attrs(root)["lmnr.span.input"])) == 1
-    assert json.loads(cast(str, _attrs(root)["lmnr.span.output"])) == 4
-    # A step's bare value is not a known-small state key
-    assert "lmnr.span.input" not in _attrs(double)
+    # Bare values are not known-small state keys
+    for span in (root, double):
+        assert "lmnr.span.input" not in _attrs(span)
+    assert "lmnr.span.output" not in _attrs(root)
     assert _attrs(double)["langchain.tags"] == ("seq:step:2",)
 
 

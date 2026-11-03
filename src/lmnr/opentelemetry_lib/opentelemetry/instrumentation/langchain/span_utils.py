@@ -422,20 +422,8 @@ def sanitize_metadata(metadata: Mapping[str, Any] | None) -> dict[str, Any]:
     }
 
 
-def without_messages(payload: Any) -> Any:
-    """Drop a chain payload's `messages` key.
-
-    LangGraph passes the whole graph state, conversation included, as every
-    node's input and output. The messages are already on the LLM spans, so
-    repeating them on each chain span only bloats the trace.
-    """
-    if isinstance(payload, Mapping) and "messages" in payload:
-        return {key: value for key, value in payload.items() if key != "messages"}
-    return payload
-
-
 # Graph state keys known to hold small values, in both camelCase and snake_case.
-# Best effort: anything else is dropped from nested chain spans.
+# Best effort: anything else is dropped from chain spans.
 _SMALL_STATE_KEYS = frozenset(
     {
         "maxSteps",
@@ -461,9 +449,9 @@ _SMALL_PROMPT_KEYS = frozenset(
 
 
 def small_state(payload: Any) -> dict[str, Any]:
-    """Keep only a nested chain payload's known-small keys.
+    """Keep only a chain payload's known-small keys.
 
-    LangGraph nodes and sequence steps receive and return whole graph state,
+    LangGraph graphs and nodes receive and return whole graph state,
     whose heavy parts (messages, prompts, tools, raw `input` / `kwargs`) vary
     by setup and repeat on every span. Rather than chase them, nothing is kept
     except an allowlist, so the result is often empty.
