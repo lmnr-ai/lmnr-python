@@ -27,6 +27,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langchain.span_utils i
     set_completion_request,
     set_request_attributes,
     set_response_attributes,
+    small_state,
     without_messages,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langchain.vendor_detection import (
@@ -141,6 +142,8 @@ class _Run:
     global_tokens: list[object] = field(default_factory=list)
     suppress_flag: _SuppressWhileRunning | None = None
     request_model: str | None = None
+    # A chain run without a known parent (`<name>.workflow`)
+    is_root: bool = False
 
 
 def _detach_global(token: object) -> None:
@@ -353,9 +356,24 @@ class LaminarCallbackHandler(BaseCallbackHandler):
                     attributes[f"lmnr.association.properties.{key}"] = value
             topology.clear()
 
-        return self._start_run(
+        span = self._start_run(
             run_id, parent_run_id, span_name, attributes=attributes, tags=tags, metadata=metadata
         )
+        if span is not None and (run := self._runs.get(run_id)) is not None:
+            run.is_root = is_root
+        return span
+
+    def _set_chain_payload(self, run_id: UUID, attribute: str, payload: Any) -> None:
+        run = self._runs.get(run_id)
+        if run is None or not should_send_prompts():
+            return
+        # The root run is the caller's own invocation and is recorded once.
+        # Nested runs (graph nodes, sequence steps) repeat whole graph state,
+        # so they keep only known-small keys, and nothing if none are present.
+        if run.is_root:
+            set_span_attribute(run.span, attribute, json_dumps(without_messages(payload)))
+        elif kept := small_state(payload):
+            set_span_attribute(run.span, attribute, json_dumps(kept))
 
     def _start_llm(
         self,
@@ -436,8 +454,8 @@ class LaminarCallbackHandler(BaseCallbackHandler):
         span = self._start_chain_like(
             run_id, parent_run_id, _run_name(serialized, kwargs), tags, metadata, kwargs
         )
-        if span is not None and should_send_prompts():
-            set_span_attribute(span, SPAN_INPUT, json_dumps(without_messages(inputs)))
+        if span is not None:
+            self._set_chain_payload(run_id, SPAN_INPUT, inputs)
 
     @dont_throw
     def on_chain_end(
@@ -449,7 +467,7 @@ class LaminarCallbackHandler(BaseCallbackHandler):
         **kwargs: Any,
     ) -> None:
         try:
-            self._set_output(run_id, without_messages(outputs))
+            self._set_chain_payload(run_id, SPAN_OUTPUT, outputs)
         finally:
             self._end_run(run_id)
 

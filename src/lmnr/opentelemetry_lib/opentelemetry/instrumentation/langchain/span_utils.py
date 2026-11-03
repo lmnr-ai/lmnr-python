@@ -434,6 +434,56 @@ def without_messages(payload: Any) -> Any:
     return payload
 
 
+# Graph state keys known to hold small values, in both camelCase and snake_case.
+# Best effort: anything else is dropped from nested chain spans.
+_SMALL_STATE_KEYS = frozenset(
+    {
+        "maxSteps",
+        "max_steps",
+        "stepsTaken",
+        "steps_taken",
+        "executionId",
+        "execution_id",
+        "tokenUsage",
+        "token_usage",
+        "startTime",
+        "start_time",
+        "timeout",
+        "pendingWakeUp",
+        "pending_wake_up",
+        "pendingContinuation",
+        "pending_continuation",
+    }
+)
+_SMALL_PROMPT_KEYS = frozenset(
+    {"model", "fallbackModel", "fallback_model", "thinkingEffort", "thinking_effort"}
+)
+
+
+def small_state(payload: Any) -> dict[str, Any]:
+    """Keep only a nested chain payload's known-small keys.
+
+    LangGraph nodes and sequence steps receive and return whole graph state,
+    whose heavy parts (messages, prompts, tools, raw `input` / `kwargs`) vary
+    by setup and repeat on every span. Rather than chase them, nothing is kept
+    except an allowlist, so the result is often empty.
+    """
+    if not isinstance(payload, Mapping):
+        return {}
+    payload = cast(Mapping[Any, Any], payload)
+    kept = {key: value for key, value in payload.items() if key in _SMALL_STATE_KEYS}
+    prompt = payload.get("prompt")
+    if isinstance(prompt, Mapping):
+        small_prompt = {
+            key: value
+            for key, value in cast(Mapping[Any, Any], prompt).items()
+            if key in _SMALL_PROMPT_KEYS
+        }
+        if small_prompt:
+            kept["prompt"] = small_prompt
+    return kept
+
+
 def retriever_output(documents: Sequence[Any]) -> list[Any]:
     output: list[Any] = []
     for document in documents:
