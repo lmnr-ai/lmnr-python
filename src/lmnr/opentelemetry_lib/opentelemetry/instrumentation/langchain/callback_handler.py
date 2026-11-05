@@ -185,28 +185,44 @@ def _class_name(serialized: Mapping[str, Any] | None) -> str:
     return class_id if isinstance(class_id, str) else ""
 
 
-def _starting_runnable() -> object:
-    """The runnable whose chain run is starting, from the frame that called
-    the callback manager (chain callbacks get no `serialized` to read it from).
+def _starting_frame_locals() -> Mapping[str, Any]:
+    """Locals of the frame that called the callback manager: its `self` is the
+    runnable whose chain run is starting (chain callbacks get no `serialized`
+    to read it from), and its `config` the config it runs with.
 
-    `None` when there is no such frame, e.g. under `asyncio.gather`.
+    Empty when there is no such frame, e.g. under `asyncio.gather`.
     """
     frame = sys._getframe(1)  # pyright: ignore[reportPrivateUsage]
     while frame is not None:
         module = frame.f_globals.get("__name__", "")
         if not module.startswith(("langchain_core.callbacks", _INSTRUMENTATION_PACKAGE)):
-            return frame.f_locals.get("self")
+            return frame.f_locals
         frame = frame.f_back
-    return None
+    return {}
+
+
+def _default_lambda_name(runnable: RunnableLambda[Any, Any]) -> str:
+    """The name a `RunnableLambda` gets without a `name=`: its function's."""
+    func = getattr(runnable, "func", None) or getattr(runnable, "afunc", None)
+    func_name = getattr(func, "__name__", None)
+    return func_name if isinstance(func_name, str) and func_name != "<lambda>" else "RunnableLambda"
 
 
 def _is_glue_run(name: str) -> bool:
     """True for an unnamed `RunnableSequence` or a `RunnableLambda` without an
-    explicit run name (a lambda defaults to its function's name)."""
+    explicit name (constructor `name=` or `run_name`); a lambda defaults to
+    its function's name."""
     if name in _GLUE_RUN_NAMES:
         return True
-    runnable = _starting_runnable()
-    return isinstance(runnable, RunnableLambda) and name == runnable.get_name()
+    frame_locals = _starting_frame_locals()
+    runnable = frame_locals.get("self")
+    if not isinstance(runnable, RunnableLambda):
+        return False
+    # A `run_name` that happens to repeat the function's name is still explicit
+    config = frame_locals.get("config")
+    if isinstance(config, Mapping) and cast(Mapping[str, Any], config).get("run_name"):
+        return False
+    return name == _default_lambda_name(cast(RunnableLambda[Any, Any], runnable))
 
 
 def _thread_id(metadata: Mapping[str, Any] | None, kwargs: Mapping[str, Any]) -> str | None:

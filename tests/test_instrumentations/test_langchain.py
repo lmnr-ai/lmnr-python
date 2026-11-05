@@ -379,6 +379,36 @@ async def test_glue_runs_are_skipped_abatch(span_exporter: InMemorySpanExporter)
     _assert_glue_skipped(span_exporter, roots=2)
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["invoke", "stream", "batch", "ainvoke"])
+async def test_explicitly_named_lambdas_are_kept(span_exporter: InMemorySpanExporter, mode: str):
+    def step(x: str) -> str:
+        return x
+
+    chain = (
+        RunnableLambda(lambda x: x)
+        | RunnableLambda(step, name="by_constructor")
+        # Repeats the function's name, but is still set explicitly
+        | RunnableLambda(step).with_config(run_name="step")
+        | RunnableLambda(step)
+    )
+    if mode == "invoke":
+        _ = chain.invoke("hi")
+    elif mode == "stream":
+        _ = list(chain.stream("hi"))
+    elif mode == "batch":
+        _ = chain.batch(["hi"])
+    else:
+        _ = await chain.ainvoke("hi")
+
+    spans = span_exporter.get_finished_spans()
+    assert sorted(span.name for span in spans) == [
+        "RunnableSequence.workflow",
+        "execute_task by_constructor",
+        "execute_task step",
+    ]
+
+
 def test_root_glue_run_is_kept(span_exporter: InMemorySpanExporter):
     def double(x: int) -> int:
         return x * 2
