@@ -372,6 +372,7 @@ def _assert_chat_span(span: ReadableSpan) -> None:
     assert attrs["gen_ai.usage.output_tokens"] == 3
     assert attrs["llm.usage.total_tokens"] == 13
     assert attrs["gen_ai.usage.cache_read_input_tokens"] == 4
+    assert attrs["gen_ai.usage.reasoning.output_tokens"] == 2
     assert attrs["gen_ai.response.model"] == "fake-model-1"
     assert attrs["gen_ai.request.model"] == "fake-model-1"
     assert attrs["gen_ai.response.id"] == "msg_1"
@@ -387,6 +388,7 @@ def _chat_response() -> AIMessage:
             "output_tokens": 3,
             "total_tokens": 13,
             "input_token_details": {"cache_read": 4},
+            "output_token_details": {"reasoning": 2},
         },
         response_metadata={"model_name": "fake-model-1"},
     )
@@ -645,12 +647,20 @@ def _openai_stream_chunk(delta: dict[str, Any], finish_reason: str | None = None
     }
 
 
+_OPENAI_USAGE = {
+    "prompt_tokens": 7,
+    "completion_tokens": 1,
+    "total_tokens": 8,
+    "completion_tokens_details": {"reasoning_tokens": 1},
+}
+
+
 def _openai_transport(captured: list[httpx.Request]) -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
         captured.append(request)
         body = json.loads(request.content)
         if body.get("stream"):
-            usage = {"prompt_tokens": 7, "completion_tokens": 1, "total_tokens": 8}
+            usage = _OPENAI_USAGE
             return httpx.Response(
                 200,
                 headers={"content-type": "text/event-stream"},
@@ -675,7 +685,7 @@ def _openai_transport(captured: list[httpx.Request]) -> httpx.MockTransport:
                         "finish_reason": "stop",
                     }
                 ],
-                "usage": {"prompt_tokens": 7, "completion_tokens": 1, "total_tokens": 8},
+                "usage": _OPENAI_USAGE,
             },
         )
 
@@ -817,6 +827,9 @@ def _assert_langchain_openai_span(
         assert attrs["gen_ai.response.id"] == "chatcmpl-1"
     assert attrs["gen_ai.usage.input_tokens"] == 7
     assert attrs["gen_ai.usage.output_tokens"] == 1
+    # `completion_tokens_details.reasoning_tokens` →
+    # `usage_metadata.output_token_details.reasoning`
+    assert attrs["gen_ai.usage.reasoning.output_tokens"] == 1
     assert attrs["gen_ai.response.finish_reasons"] == ("stop",)
     assert len(captured) == 1
     _assert_traceparent(captured[0], span)

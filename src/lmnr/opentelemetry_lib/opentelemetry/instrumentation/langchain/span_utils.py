@@ -276,6 +276,7 @@ def _set_usage(span: Span, response: LLMResult) -> None:
     output_tokens = 0
     cache_read_tokens: int | None = None
     cache_creation_tokens: int | None = None
+    reasoning_tokens: int | None = None
     found = False
 
     for generations in response.generations:
@@ -285,8 +286,8 @@ def _set_usage(span: Span, response: LLMResult) -> None:
             if not usage:
                 continue
             found = True
-            # LangChain's `input_tokens` already includes cached tokens; the
-            # details only break that total down.
+            # LangChain's `input_tokens` / `output_tokens` already include
+            # cached / reasoning tokens; the details only break the totals down.
             input_tokens += _int(usage.get("input_tokens")) or 0
             output_tokens += _int(usage.get("output_tokens")) or 0
             details = _as_mapping(usage.get("input_token_details"))
@@ -294,6 +295,9 @@ def _set_usage(span: Span, response: LLMResult) -> None:
                 cache_read_tokens = (cache_read_tokens or 0) + cache_read
             if (cache_creation := _int(details.get("cache_creation"))) is not None:
                 cache_creation_tokens = (cache_creation_tokens or 0) + cache_creation
+            output_details = _as_mapping(usage.get("output_token_details"))
+            if (reasoning := _int(output_details.get("reasoning"))) is not None:
+                reasoning_tokens = (reasoning_tokens or 0) + reasoning
 
     if not found:
         # Fall back to the provider-reported totals in `llm_output`, which
@@ -314,12 +318,21 @@ def _set_usage(span: Span, response: LLMResult) -> None:
             or _int(token_usage.get("generated_token_count"))
             or 0
         )
+        # OpenAI chat completions / Responses API shapes.
+        reasoning_tokens = _int(
+            _as_mapping(token_usage.get("completion_tokens_details")).get("reasoning_tokens")
+        )
+        if reasoning_tokens is None:
+            reasoning_tokens = _int(
+                _as_mapping(token_usage.get("output_tokens_details")).get("reasoning_tokens")
+            )
 
     set_span_attribute(span, "gen_ai.usage.input_tokens", input_tokens)
     set_span_attribute(span, "gen_ai.usage.output_tokens", output_tokens)
     set_span_attribute(span, "llm.usage.total_tokens", input_tokens + output_tokens)
     set_span_attribute(span, "gen_ai.usage.cache_read_input_tokens", cache_read_tokens)
     set_span_attribute(span, "gen_ai.usage.cache_creation_input_tokens", cache_creation_tokens)
+    set_span_attribute(span, "gen_ai.usage.reasoning.output_tokens", reasoning_tokens)
 
 
 def _response_model_and_id(response: LLMResult) -> tuple[str | None, str | None]:
