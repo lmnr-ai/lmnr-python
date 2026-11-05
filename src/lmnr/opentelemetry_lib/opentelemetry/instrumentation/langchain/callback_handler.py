@@ -15,9 +15,16 @@ from uuid import UUID
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.messages import BaseMessage
 from langchain_core.outputs import LLMResult
+from langchain_core.runnables import RunnableLambda
 from opentelemetry import context as context_api
 from opentelemetry.context import _RUNTIME_CONTEXT, _SUPPRESS_INSTRUMENTATION_KEY, Context
-from opentelemetry.trace import Span, Status, StatusCode, set_span_in_context
+from opentelemetry.trace import (
+    Span,
+    Status,
+    StatusCode,
+    get_current_span,
+    set_span_in_context,
+)
 from opentelemetry.util.types import AttributeValue
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langchain.span_utils import (
@@ -71,6 +78,9 @@ _PROVIDER_INSTRUMENTORS: dict[str, tuple[str, str]] = {
     "chat-google-generative-ai": ("google_genai", "GoogleGenAiSdkInstrumentor"),
     "groq-chat": ("groq", "GroqInstrumentor"),
 }
+# Default run names of LangChain's composition glue: a `|` pipeline and an
+# anonymous function in it. Nested, they add a trace level and no information.
+_GLUE_RUN_NAMES = frozenset({"RunnableSequence", "RunnableLambda"})
 
 
 @cache
@@ -133,8 +143,10 @@ class _SuppressWhileRunning:
 
 @dataclass
 class _Run:
-    span: Span
-    # Isolated context with this run's span current; child runs parent from it
+    # None for a glue run left out of the trace (`_is_glue_run`)
+    span: Span | None
+    # Isolated context with this run's span current (a glue run's parent's);
+    # child runs parent from it
     context: Context
     children: list[UUID] = field(default_factory=list)
     isolated_token: Token[Context] | None = None
@@ -171,6 +183,46 @@ def _class_name(serialized: Mapping[str, Any] | None) -> str:
     if isinstance(class_id, list) and class_id:
         return str(cast(list[Any], class_id)[-1])
     return class_id if isinstance(class_id, str) else ""
+
+
+def _starting_frame_locals() -> Mapping[str, Any]:
+    """Locals of the frame that called the callback manager: its `self` is the
+    runnable whose chain run is starting (chain callbacks get no `serialized`
+    to read it from), and its `config` the config it runs with.
+
+    Empty when there is no such frame, e.g. under `asyncio.gather`.
+    """
+    frame = sys._getframe(1)  # pyright: ignore[reportPrivateUsage]
+    while frame is not None:
+        module = frame.f_globals.get("__name__", "")
+        if not module.startswith(("langchain_core.callbacks", _INSTRUMENTATION_PACKAGE)):
+            return frame.f_locals
+        frame = frame.f_back
+    return {}
+
+
+def _default_lambda_name(runnable: RunnableLambda[Any, Any]) -> str:
+    """The name a `RunnableLambda` gets without a `name=`: its function's."""
+    func = getattr(runnable, "func", None) or getattr(runnable, "afunc", None)
+    func_name = getattr(func, "__name__", None)
+    return func_name if isinstance(func_name, str) and func_name != "<lambda>" else "RunnableLambda"
+
+
+def _is_glue_run(name: str) -> bool:
+    """True for an unnamed `RunnableSequence` or a `RunnableLambda` without an
+    explicit name (constructor `name=` or `run_name`); a lambda defaults to
+    its function's name."""
+    if name in _GLUE_RUN_NAMES:
+        return True
+    frame_locals = _starting_frame_locals()
+    runnable = frame_locals.get("self")
+    if not isinstance(runnable, RunnableLambda):
+        return False
+    # A `run_name` that happens to repeat the function's name is still explicit
+    config = frame_locals.get("config")
+    if isinstance(config, Mapping) and cast(Mapping[str, Any], config).get("run_name"):
+        return False
+    return name == _default_lambda_name(cast(RunnableLambda[Any, Any], runnable))
 
 
 def _thread_id(metadata: Mapping[str, Any] | None, kwargs: Mapping[str, Any]) -> str | None:
@@ -212,6 +264,9 @@ class LaminarCallbackHandler(BaseCallbackHandler):
         run = self._runs.get(run_id)
         return run.span if run is not None else None
 
+    def _has_run(self, run_id: UUID | None) -> bool:
+        return run_id is not None and (run_id in self._runs or run_id in self._handed_off)
+
     @staticmethod
     def current_llm_run_id() -> UUID | None:
         """Id of the LLM run open in the current context, if any."""
@@ -230,6 +285,7 @@ class LaminarCallbackHandler(BaseCallbackHandler):
         tags: list[str] | None = None,
         metadata: Mapping[str, Any] | None = None,
         suppress_downstream: bool = False,
+        skip: bool = False,
     ) -> Span | None:
         suppress = context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY)
         # An open LLM run's own flag is aimed at provider SDK instrumentations;
@@ -245,18 +301,24 @@ class LaminarCallbackHandler(BaseCallbackHandler):
             parent_context = self._handed_off[parent_run_id]
         else:
             parent_context = get_current_context()
-        span = safe_start_span(
-            name, context=parent_context, attributes=attributes, span_type=span_type
-        )
-        if span is None:
-            return None
-        set_instrumentation_scope_attributes(span, self._scope)
-        if tags:
-            set_span_attribute(span, "langchain.tags", tags)
-        if sanitized := sanitize_metadata(metadata):
-            set_span_attribute(span, "langchain.metadata", json_dumps(sanitized))
-
-        run = _Run(span=span, context=set_span_in_context(span, parent_context))
+        if skip:
+            # No span, but the run still attaches its parent's context: code
+            # in its body may run in a task the parent's context never reached
+            # (`abatch` starts runs under `asyncio.gather`)
+            span = None
+            run = _Run(span=None, context=parent_context)
+        else:
+            span = safe_start_span(
+                name, context=parent_context, attributes=attributes, span_type=span_type
+            )
+            if span is None:
+                return None
+            set_instrumentation_scope_attributes(span, self._scope)
+            if tags:
+                set_span_attribute(span, "langchain.tags", tags)
+            if sanitized := sanitize_metadata(metadata):
+                set_span_attribute(span, "langchain.metadata", json_dumps(sanitized))
+            run = _Run(span=span, context=set_span_in_context(span, parent_context))
         if parent is not None:
             parent.children.append(run_id)
         try:
@@ -282,7 +344,9 @@ class LaminarCallbackHandler(BaseCallbackHandler):
                         _SUPPRESS_INSTRUMENTATION_KEY, None, global_context
                     )
                 run.global_tokens.append(
-                    context_api.attach(set_span_in_context(span, global_context))
+                    context_api.attach(
+                        set_span_in_context(get_current_span(run.context), global_context)
+                    )
                 )
         except Exception:
             logger.debug("Failed to attach LangChain run context", exc_info=True)
@@ -304,7 +368,7 @@ class LaminarCallbackHandler(BaseCallbackHandler):
             with contextlib.suppress(Exception):
                 detach_context(run.isolated_token)
             run.isolated_token = None
-        if run.span.is_recording():
+        if run.span is not None and run.span.is_recording():
             run.span.end()
 
     def _end_run(self, run_id: UUID) -> None:
@@ -327,9 +391,7 @@ class LaminarCallbackHandler(BaseCallbackHandler):
         metadata: Mapping[str, Any] | None,
         kwargs: Mapping[str, Any],
     ) -> Span | None:
-        is_root = parent_run_id is None or (
-            parent_run_id not in self._runs and parent_run_id not in self._handed_off
-        )
+        is_root = not self._has_run(parent_run_id)
         attributes: dict[str, AttributeValue] = {}
         if is_root:
             span_name = f"{name}.workflow"
@@ -360,9 +422,9 @@ class LaminarCallbackHandler(BaseCallbackHandler):
     def _set_chain_payload(self, run_id: UUID, attribute: str, payload: Any) -> None:
         # Chain payloads are graph state or raw runnable input, repeated on
         # every span; keep only known-small keys, and nothing if none match.
-        run = self._runs.get(run_id)
-        if run is not None and should_send_prompts() and (kept := small_state(payload)):
-            set_span_attribute(run.span, attribute, json_dumps(kept))
+        span = self.get_span(run_id)
+        if span is not None and should_send_prompts() and (kept := small_state(payload)):
+            set_span_attribute(span, attribute, json_dumps(kept))
 
     def _start_llm(
         self,
@@ -409,9 +471,9 @@ class LaminarCallbackHandler(BaseCallbackHandler):
         return span
 
     def _set_output(self, run_id: UUID, output: Any) -> None:
-        run = self._runs.get(run_id)
-        if run is not None and should_send_prompts():
-            set_span_attribute(run.span, SPAN_OUTPUT, json_dumps(output))
+        span = self.get_span(run_id)
+        if span is not None and should_send_prompts():
+            set_span_attribute(span, SPAN_OUTPUT, json_dumps(output))
 
     def _handle_error(self, error: BaseException, run_id: UUID) -> None:
         run = self._runs.get(run_id)
@@ -422,9 +484,10 @@ class LaminarCallbackHandler(BaseCallbackHandler):
             _ = self._handed_off.pop(run_id, None)
             return
         try:
-            run.span.set_attribute("error.type", type(error).__name__)
-            run.span.record_exception(error)
-            run.span.set_status(Status(StatusCode.ERROR, str(error)))
+            if run.span is not None:
+                run.span.set_attribute("error.type", type(error).__name__)
+                run.span.record_exception(error)
+                run.span.set_status(Status(StatusCode.ERROR, str(error)))
         finally:
             self._end_run(run_id)
 
@@ -440,9 +503,14 @@ class LaminarCallbackHandler(BaseCallbackHandler):
         metadata: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
-        span = self._start_chain_like(
-            run_id, parent_run_id, _run_name(serialized, kwargs), tags, metadata, kwargs
-        )
+        name = _run_name(serialized, kwargs)
+        # A nested glue run gets no span; its children nest under its parent.
+        # A root one is kept, or each step of a bare `chain.invoke()` would
+        # start a trace of its own.
+        if self._has_run(parent_run_id) and _is_glue_run(name):
+            _ = self._start_run(run_id, parent_run_id, name, skip=True)
+            return
+        span = self._start_chain_like(run_id, parent_run_id, name, tags, metadata, kwargs)
         if span is not None:
             self._set_chain_payload(run_id, SPAN_INPUT, inputs)
 
@@ -518,7 +586,7 @@ class LaminarCallbackHandler(BaseCallbackHandler):
         # open keeps its suppression flag active
         try:
             run = self._runs.get(run_id)
-            if run is not None:
+            if run is not None and run.span is not None:
                 set_response_attributes(run.span, response, run.request_model)
         finally:
             self._end_run(run_id)
