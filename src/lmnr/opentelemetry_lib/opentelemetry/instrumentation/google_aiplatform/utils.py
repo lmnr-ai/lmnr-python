@@ -303,9 +303,9 @@ def set_generative_response_dict_attributes(span: Span, response: dict[str, Any]
         usage.get("total_token_count"),
     )
     set_span_attribute(
-        span, "gen_ai.usage.cache_read_input_tokens", usage.get("cached_content_token_count")
+        span, "gen_ai.usage.cache_read.input_tokens", usage.get("cached_content_token_count")
     )
-    set_span_attribute(span, "gen_ai.usage.reasoning_tokens", thoughts_token_count)
+    set_span_attribute(span, "gen_ai.usage.reasoning.output_tokens", thoughts_token_count)
 
 
 def _merge_text_parts(parts: list[dict[str, Any]]) -> list[dict[str, Any]]:

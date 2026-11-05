@@ -260,7 +260,7 @@ def set_response_attributes(
     prompt_tokens_details = dict(cast(dict[str, int], usage.get("prompt_tokens_details", {})))
     set_span_attribute(
         span,
-        "gen_ai.usage.cache_read_input_tokens",
+        "gen_ai.usage.cache_read.input_tokens",
         prompt_tokens_details.get("cached_tokens", 0),
     )
 
@@ -270,7 +270,7 @@ def set_response_attributes(
         reasoning_tokens = completion_token_details.get("reasoning_tokens")
         set_span_attribute(
             span,
-            "gen_ai.usage.reasoning_tokens",
+            "gen_ai.usage.reasoning.output_tokens",
             reasoning_tokens or 0,
         )
 

@@ -309,7 +309,7 @@ def _assert_chat_span(span: ReadableSpan) -> None:
     assert attrs["gen_ai.usage.input_tokens"] == 10
     assert attrs["gen_ai.usage.output_tokens"] == 3
     assert attrs["llm.usage.total_tokens"] == 13
-    assert attrs["gen_ai.usage.cache_read_input_tokens"] == 4
+    assert attrs["gen_ai.usage.cache_read.input_tokens"] == 4
     assert attrs["gen_ai.response.model"] == "fake-model-1"
     assert attrs["gen_ai.request.model"] == "fake-model-1"
     assert attrs["gen_ai.response.id"] == "msg_1"
