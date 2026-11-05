@@ -26,7 +26,7 @@
         "gen_ai.prompt.0.role": "system",
         "gen_ai.prompt.0.content": "You are concise.",
         "gen_ai.tool.definitions": "[{\"type\": \"function\", \"name\": \"get_weather\", \"description\": \"Weather for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}}, \"strict\": true}, {\"type\": \"web_search\"}]",
-        "gen_ai.usage.reasoning_tokens": 12,
+        "gen_ai.usage.reasoning.output_tokens": 12,
         "gen_ai.input.messages": "[{\"role\": \"user\", \"content\": \"Weather in Paris?\"}]",
         "gen_ai.output.messages": "[{\"type\": \"reasoning\", \"id\": \"rs_1\", \"summary\": [{\"type\": \"summary_text\", \"text\": \"Need the weather first.\"}]}, {\"type\": \"function_call\", \"call_id\": \"call_w1\", \"name\": \"get_weather\", \"arguments\": \"{\\\"city\\\": \\\"Paris\\\"}\", \"id\": \"fc_1\", \"status\": \"completed\"}]",
         "gen_ai.response.id": "resp_1"
@@ -60,7 +60,7 @@
         "gen_ai.prompt.0.role": "system",
         "gen_ai.prompt.0.content": "You are concise.",
         "gen_ai.tool.definitions": "[{\"type\": \"function\", \"name\": \"get_weather\", \"description\": \"Weather for a city.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\"}}}, \"strict\": true}, {\"type\": \"web_search\"}]",
-        "gen_ai.usage.reasoning_tokens": 12,
+        "gen_ai.usage.reasoning.output_tokens": 12,
         "gen_ai.input.messages": "[{\"role\": \"user\", \"content\": \"Weather in Paris?\"}, {\"type\": \"reasoning\", \"id\": \"rs_1\", \"summary\": [{\"type\": \"summary_text\", \"text\": \"Need the weather first.\"}]}, {\"type\": \"function_call\", \"call_id\": \"call_w1\", \"name\": \"get_weather\", \"arguments\": \"{\\\"city\\\": \\\"Paris\\\"}\", \"id\": \"fc_1\", \"status\": \"completed\"}, {\"type\": \"function_call_output\", \"call_id\": \"call_w1\", \"output\": \"{\\\"temp_c\\\": 18}\"}]",
         "gen_ai.output.messages": "[{\"type\": \"message\", \"id\": \"msg_1\", \"role\": \"assistant\", \"status\": \"completed\", \"content\": [{\"type\": \"output_text\", \"text\": \"It's 18\\u00b0C in Paris.\", \"annotations\": []}]}]",
         "gen_ai.response.id": "resp_2"

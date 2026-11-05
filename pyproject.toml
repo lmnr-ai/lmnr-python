@@ -68,13 +68,8 @@ dev = [
   "daytona==0.225.0",
   "google-adk==2.13.0",
   "google-cloud-aiplatform==2.6.0",
-<<<<<<< HEAD
-  "google-genai==2.19.0",
-  "groq==1.7.0",
-=======
   "google-genai==2.33.0",
-  "groq==1.1.2",
->>>>>>> b015a0e (remove deprecated mcp roots; support newer google adk telemetry)
+  "groq==1.7.0",
   "jsonschema==4.26.0",
   "kernel==0.44.0",
   "langchain==1.4.4",

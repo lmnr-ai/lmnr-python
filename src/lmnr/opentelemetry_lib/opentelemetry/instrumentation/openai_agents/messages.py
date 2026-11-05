@@ -313,11 +313,11 @@ def _apply_usage(lmnr_span: LaminarSpan, usage: Any) -> None:
     if input_tokens is not None:
         lmnr_span.set_attribute(Attributes.INPUT_TOKEN_COUNT.value, input_tokens)
     if cached_input_tokens:
-        lmnr_span.set_attribute("gen_ai.usage.cache_read_input_tokens", cached_input_tokens)
+        lmnr_span.set_attribute("gen_ai.usage.cache_read.input_tokens", cached_input_tokens)
     if output_tokens is not None:
         lmnr_span.set_attribute(Attributes.OUTPUT_TOKEN_COUNT.value, output_tokens)
     if reasoning_output_tokens:
-        lmnr_span.set_attribute("gen_ai.usage.reasoning_output_tokens", reasoning_output_tokens)
+        lmnr_span.set_attribute("gen_ai.usage.reasoning.output_tokens", reasoning_output_tokens)
     if total_tokens is not None:
         lmnr_span.set_attribute(Attributes.TOTAL_TOKEN_COUNT.value, total_tokens)
     elif input_tokens is not None and output_tokens is not None:

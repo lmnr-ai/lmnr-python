@@ -123,7 +123,7 @@ def process_responses_response(
         if input_details := usage_dict.get("input_tokens_details"):
             details = to_dict(input_details)
             cache_read_tokens = cast(int, details.get("cached_tokens") or 0)
-            set_span_attribute(span, "gen_ai.usage.cache_read_input_tokens", cache_read_tokens)
+            set_span_attribute(span, "gen_ai.usage.cache_read.input_tokens", cache_read_tokens)
 
     final_items = []
     if reasoning := response_dict.get("reasoning"):

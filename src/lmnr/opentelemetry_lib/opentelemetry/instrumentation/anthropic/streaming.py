@@ -130,10 +130,10 @@ def _set_token_usage(
     set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, completion_tokens)
 
     set_span_attribute(span, GEN_AI_RESPONSE_MODEL, complete_response.get("model"))
-    set_span_attribute(span, "gen_ai.usage.cache_read_input_tokens", cache_read_tokens)
+    set_span_attribute(span, "gen_ai.usage.cache_read.input_tokens", cache_read_tokens)
     set_span_attribute(
         span,
-        "gen_ai.usage.cache_creation_input_tokens",
+        "gen_ai.usage.cache_write.input_tokens",
         cache_creation_tokens,
     )
 
