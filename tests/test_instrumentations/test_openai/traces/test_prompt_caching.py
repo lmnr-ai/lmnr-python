@@ -80,11 +80,11 @@ def test_openai_prompt_caching(
 
     assert cache_creation_attributes["gen_ai.usage.input_tokens"] == 1149
     assert cache_creation_attributes["gen_ai.usage.output_tokens"] == 315
-    assert cache_creation_attributes["gen_ai.usage.cache_read_input_tokens"] == 0
+    assert cache_creation_attributes["gen_ai.usage.cache_read.input_tokens"] == 0
 
     assert cache_read_attributes["gen_ai.usage.input_tokens"] == 1149
     assert cache_read_attributes["gen_ai.usage.output_tokens"] == 353
-    assert cache_read_attributes["gen_ai.usage.cache_read_input_tokens"] == 1024
+    assert cache_read_attributes["gen_ai.usage.cache_read.input_tokens"] == 1024
 
 
 @pytest.mark.vcr
@@ -157,8 +157,8 @@ async def test_openai_prompt_caching_async(
 
     assert cache_creation_attributes["gen_ai.usage.input_tokens"] == 1150
     assert cache_creation_attributes["gen_ai.usage.output_tokens"] == 293
-    assert cache_creation_attributes["gen_ai.usage.cache_read_input_tokens"] == 0
+    assert cache_creation_attributes["gen_ai.usage.cache_read.input_tokens"] == 0
 
     assert cache_read_attributes["gen_ai.usage.input_tokens"] == 1150
     assert cache_read_attributes["gen_ai.usage.output_tokens"] == 307
-    assert cache_read_attributes["gen_ai.usage.cache_read_input_tokens"] == 1024
+    assert cache_read_attributes["gen_ai.usage.cache_read.input_tokens"] == 1024

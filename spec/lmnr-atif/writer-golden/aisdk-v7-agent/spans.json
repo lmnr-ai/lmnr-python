@@ -50,9 +50,9 @@
         "gen_ai.response.id": "resp_gpt-5.4_1",
         "gen_ai.usage.input_tokens": 120,
         "gen_ai.usage.output_tokens": 48,
-        "gen_ai.usage.reasoning_tokens": 16,
-        "gen_ai.usage.cache_read_input_tokens": 0,
-        "gen_ai.usage.cache_creation_input_tokens": 0,
+        "gen_ai.usage.reasoning.output_tokens": 16,
+        "gen_ai.usage.cache_read.input_tokens": 0,
+        "gen_ai.usage.cache_write.input_tokens": 0,
         "gen_ai.output.messages": "[{\"role\":\"assistant\",\"content\":[{\"type\":\"reasoning\",\"text\":\"I need the weather for both cities.\"},{\"type\":\"text\",\"text\":\"Checking the weather.\"},{\"type\":\"tool-call\",\"toolCallId\":\"call_w1\",\"toolName\":\"get_weather\",\"input\":{\"city\":\"Paris\"}},{\"type\":\"tool-call\",\"toolCallId\":\"call_w2\",\"toolName\":\"get_weather\",\"input\":{\"city\":\"Atlantis\"}}]}]"
       }
     },
@@ -111,9 +111,9 @@
         "gen_ai.response.id": "resp_gpt-5.4_2",
         "gen_ai.usage.input_tokens": 210,
         "gen_ai.usage.output_tokens": 20,
-        "gen_ai.usage.reasoning_tokens": 0,
-        "gen_ai.usage.cache_read_input_tokens": 0,
-        "gen_ai.usage.cache_creation_input_tokens": 0,
+        "gen_ai.usage.reasoning.output_tokens": 0,
+        "gen_ai.usage.cache_read.input_tokens": 0,
+        "gen_ai.usage.cache_write.input_tokens": 0,
         "gen_ai.output.messages": "[{\"role\":\"assistant\",\"content\":[{\"type\":\"tool-call\",\"toolCallId\":\"call_r1\",\"toolName\":\"research\",\"input\":{\"topic\":\"Paris museums\"}}]}]"
       }
     },
@@ -169,9 +169,9 @@
         "gen_ai.response.id": "resp_gpt-5.4-mini_1",
         "gen_ai.usage.input_tokens": 40,
         "gen_ai.usage.output_tokens": 12,
-        "gen_ai.usage.reasoning_tokens": 0,
-        "gen_ai.usage.cache_read_input_tokens": 0,
-        "gen_ai.usage.cache_creation_input_tokens": 0,
+        "gen_ai.usage.reasoning.output_tokens": 0,
+        "gen_ai.usage.cache_read.input_tokens": 0,
+        "gen_ai.usage.cache_write.input_tokens": 0,
         "gen_ai.output.messages": "[{\"role\":\"assistant\",\"content\":[{\"type\":\"tool-call\",\"toolCallId\":\"call_s1\",\"toolName\":\"search\",\"input\":{\"q\":\"Paris museums\"}}]}]"
       }
     },
@@ -210,9 +210,9 @@
         "gen_ai.response.id": "resp_gpt-5.4-mini_2",
         "gen_ai.usage.input_tokens": 70,
         "gen_ai.usage.output_tokens": 14,
-        "gen_ai.usage.reasoning_tokens": 0,
-        "gen_ai.usage.cache_read_input_tokens": 0,
-        "gen_ai.usage.cache_creation_input_tokens": 0,
+        "gen_ai.usage.reasoning.output_tokens": 0,
+        "gen_ai.usage.cache_read.input_tokens": 0,
+        "gen_ai.usage.cache_write.input_tokens": 0,
         "gen_ai.output.messages": "[{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Visit the Louvre and the Musée d'Orsay.\"}]}]"
       }
     },
@@ -235,9 +235,9 @@
         "gen_ai.response.id": "resp_gpt-5.4_3",
         "gen_ai.usage.input_tokens": 260,
         "gen_ai.usage.output_tokens": 30,
-        "gen_ai.usage.reasoning_tokens": 0,
-        "gen_ai.usage.cache_read_input_tokens": 0,
-        "gen_ai.usage.cache_creation_input_tokens": 0,
+        "gen_ai.usage.reasoning.output_tokens": 0,
+        "gen_ai.usage.cache_read.input_tokens": 0,
+        "gen_ai.usage.cache_write.input_tokens": 0,
         "gen_ai.output.messages": "[{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Paris: sunny, 22°C. Atlantis isn't a real city. Visit the Louvre and the Musée d'Orsay.\"}]}]"
       }
     },

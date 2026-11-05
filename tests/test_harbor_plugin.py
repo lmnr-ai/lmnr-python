@@ -397,7 +397,7 @@ async def test_trajectory_becomes_llm_and_tool_spans(
     assert first.attributes["gen_ai.usage.input_tokens"] == 100
     assert first.attributes["gen_ai.usage.output_tokens"] == 20
     assert first.attributes["llm.usage.total_tokens"] == 120
-    assert first.attributes["gen_ai.usage.cache_read_input_tokens"] == 50
+    assert first.attributes["gen_ai.usage.cache_read.input_tokens"] == 50
     assert first.attributes["gen_ai.usage.cost"] == 0.004
     assert json.loads(first.attributes["lmnr.span.input"]) == [
         {"role": "system", "content": "sys"},
@@ -703,7 +703,7 @@ async def test_lmnr_atif_trajectory_uses_exact_timings_and_call_details(
     assert attrs["gen_ai.request.temperature"] == 0
     assert tuple(attrs["gen_ai.response.finish_reasons"]) == ("tool_use",)
     assert attrs["gen_ai.response.id"] == "msg_01"
-    assert attrs["gen_ai.usage.cache_creation_input_tokens"] == 300
+    assert attrs["gen_ai.usage.cache_write.input_tokens"] == 300
     assert attrs["gen_ai.usage.input_cost"] == 0.00132
     assert attrs["gen_ai.usage.output_cost"] == 0.00096
     assert attrs["lmnr.trajectory.source_span_id"] == step3["extra"]["lmnr"]["span_id"]
@@ -954,7 +954,7 @@ async def test_plain_atif_tool_definitions_and_reasoning_effort_are_recorded(
 
     attrs = spans_by_name(span_exporter)["gpt-5"][0].attributes or {}
     assert json.loads(attrs["gen_ai.tool.definitions"]) == [tool]
-    assert attrs["gen_ai.request.reasoning_effort"] == "high"
+    assert attrs["gen_ai.request.reasoning.level"] == "high"
 
 
 @pytest.mark.asyncio

@@ -346,7 +346,10 @@ class TrajectoryConverter:
         for key, value in reader.as_dict(lmnr.get("request")).items():
             if value is not None:
                 attributes[f"gen_ai.request.{key}"] = _request_attribute(value)
-        if isinstance(step.get("reasoning_effort"), (str, int, float)):
+        # ATIF allows a numeric effort; only a level string fits the semconv attribute.
+        if isinstance(step.get("reasoning_effort"), str):
+            attributes["gen_ai.request.reasoning.level"] = step["reasoning_effort"]
+        elif isinstance(step.get("reasoning_effort"), (int, float)):
             attributes["gen_ai.request.reasoning_effort"] = step["reasoning_effort"]
         if isinstance(lmnr.get("finish_reason"), str):
             attributes["gen_ai.response.finish_reasons"] = [lmnr["finish_reason"]]
@@ -368,13 +371,13 @@ class TrajectoryConverter:
                 output_tokens or 0
             )
         if metrics.get("cached_tokens") is not None:
-            attributes["gen_ai.usage.cache_read_input_tokens"] = metrics["cached_tokens"]
+            attributes["gen_ai.usage.cache_read.input_tokens"] = metrics["cached_tokens"]
         if metrics.get("cost_usd") is not None:
             attributes[Attributes.TOTAL_COST.value] = metrics["cost_usd"]
         usage = reader.usage_extension(step.get("metrics"), ext)
         for key, attribute in (
-            ("reasoning_tokens", "gen_ai.usage.reasoning_tokens"),
-            ("cache_creation_tokens", "gen_ai.usage.cache_creation_input_tokens"),
+            ("reasoning_tokens", "gen_ai.usage.reasoning.output_tokens"),
+            ("cache_creation_tokens", "gen_ai.usage.cache_write.input_tokens"),
             ("input_cost_usd", Attributes.INPUT_COST.value),
             ("output_cost_usd", Attributes.OUTPUT_COST.value),
         ):

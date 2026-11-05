@@ -200,7 +200,7 @@ def _assert_usage(attrs: dict[str, Any], cached: bool = False):
     assert attrs["gen_ai.usage.output_tokens"] == 3
     assert attrs["llm.usage.total_tokens"] == 15
     if cached:
-        assert attrs["gen_ai.usage.cache_read_input_tokens"] == 4
+        assert attrs["gen_ai.usage.cache_read.input_tokens"] == 4
 
 
 # --- v1 chat --------------------------------------------------------------------

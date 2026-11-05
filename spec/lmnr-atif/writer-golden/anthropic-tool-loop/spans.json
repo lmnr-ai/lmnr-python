@@ -34,8 +34,8 @@
         "gen_ai.output.messages": "[{\"role\": \"assistant\", \"content\": [{\"type\": \"thinking\", \"thinking\": \"The user wants a refund. I should check whether the order has shipped.\", \"signature\": \"sig\"}, {\"type\": \"tool_use\", \"id\": \"toolu_01\", \"name\": \"get_order\", \"input\": {\"order_id\": \"A-1042\"}}], \"stop_reason\": \"tool_use\"}]",
         "gen_ai.usage.input_tokens": 1830,
         "gen_ai.usage.output_tokens": 64,
-        "gen_ai.usage.cache_read_input_tokens": 1500,
-        "gen_ai.usage.cache_creation_input_tokens": 300,
+        "gen_ai.usage.cache_read.input_tokens": 1500,
+        "gen_ai.usage.cache_write.input_tokens": 300,
         "gen_ai.usage.input_cost": 0.00132,
         "gen_ai.usage.output_cost": 0.00096,
         "gen_ai.usage.cost": 0.00228,
@@ -76,8 +76,8 @@
         "gen_ai.output.messages": "[{\"role\": \"assistant\", \"content\": [{\"type\": \"text\", \"text\": \"Your order A-1042 has already shipped, so I can't refund it yet. Once it arrives you can request a return.\"}], \"stop_reason\": \"end_turn\"}]",
         "gen_ai.usage.input_tokens": 1910,
         "gen_ai.usage.output_tokens": 41,
-        "gen_ai.usage.cache_read_input_tokens": 1800,
-        "gen_ai.usage.cache_creation_input_tokens": 0,
+        "gen_ai.usage.cache_read.input_tokens": 1800,
+        "gen_ai.usage.cache_write.input_tokens": 0,
         "gen_ai.usage.cost": 0.00117,
         "gen_ai.response.id": "msg_02"
       }

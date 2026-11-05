@@ -118,8 +118,8 @@ def process_completion_response(
         cache_creation_tokens = cast(
             int, details.get("cache_creation_tokens", usage.get("cache_creation_input_tokens")) or 0
         )
-        set_span_attribute(span, "gen_ai.usage.cache_read_input_tokens", cache_read_tokens)
-        set_span_attribute(span, "gen_ai.usage.cache_creation_input_tokens", cache_creation_tokens)
+        set_span_attribute(span, "gen_ai.usage.cache_read.input_tokens", cache_read_tokens)
+        set_span_attribute(span, "gen_ai.usage.cache_write.input_tokens", cache_creation_tokens)
 
     # Record raw response in rollout mode
     if record_raw_response:
