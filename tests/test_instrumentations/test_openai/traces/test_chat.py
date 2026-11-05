@@ -691,3 +691,73 @@ def test_chat_streaming_memory_leak_prevention(
     assert span.name == "openai.chat"
     assert span.status.status_code == StatusCode.OK
     assert span.end_time is not None
+
+
+def _unindexed_tool_call_stream() -> bytes:
+    """Gemini's OpenAI-compatible API streams each parallel call whole, without `index`."""
+
+    def chunk(delta: dict[str, Any], finish_reason: str | None = None) -> str:
+        payload = {
+            "id": "chatcmpl-unindexed",
+            "object": "chat.completion.chunk",
+            "created": 0,
+            "model": "gemini-3.5-flash",
+            "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}],
+        }
+        return f"data: {json.dumps(payload)}\n\n"
+
+    def call(call_id: str, city: str) -> dict[str, Any]:
+        return {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "id": call_id,
+                    "type": "function",
+                    "function": {"name": "get_weather", "arguments": json.dumps({"city": city})},
+                }
+            ],
+        }
+
+    return (
+        chunk(call("call_1", "Paris"))
+        + chunk(call("call_2", "Tokyo"))
+        + chunk({"role": "assistant"}, "stop")
+        + "data: [DONE]\n\n"
+    ).encode()
+
+
+def test_chat_streaming_tool_calls_without_index(
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+):
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            200,
+            headers={"Content-Type": "text/event-stream"},
+            content=_unindexed_tool_call_stream(),
+        )
+    )
+    client = OpenAI(
+        base_url="http://gemini.test/v1",
+        api_key="test_api_key",
+        http_client=httpx.Client(transport=transport),
+    )
+
+    response = client.chat.completions.create(
+        model="gemini-3.5-flash",
+        messages=[{"role": "user", "content": "Weather in Paris and Tokyo?"}],
+        stream=True,
+    )
+    chunks = list(response)
+
+    assert len(chunks) == 3
+
+    spans = span_exporter.get_finished_spans()
+    assert [span.name for span in spans] == ["openai.chat"]
+    attributes = spans[0].attributes or {}
+    output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
+    tool_calls = output_messages[0]["message"]["tool_calls"]
+    assert [(tc["id"], tc["function"]["arguments"]) for tc in tool_calls] == [
+        ("call_1", '{"city": "Paris"}'),
+        ("call_2", '{"city": "Tokyo"}'),
+    ]
