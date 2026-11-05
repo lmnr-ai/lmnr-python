@@ -318,6 +318,94 @@ def test_chain(span_exporter: InMemorySpanExporter):
     assert _attrs(double)["langchain.tags"] == ("seq:step:2",)
 
 
+def _glue_chain() -> Any:
+    def shout(x: str) -> str:
+        with Laminar.start_as_current_span("inside_lambda"):
+            return x.upper()
+
+    def to_messages(x: str) -> list[HumanMessage]:
+        return [HumanMessage(content=x)]
+
+    # A nested sequence of an anonymous lambda and a function-named lambda,
+    # then an explicitly named lambda and a chat model
+    inner = RunnableLambda(lambda x: x) | RunnableLambda(shout)
+    return (
+        inner
+        | RunnableLambda(to_messages).with_config(run_name="convert")
+        | _fake_chat_model(AIMessage(content="ok"))
+    )
+
+
+def _assert_glue_skipped(span_exporter: InMemorySpanExporter, roots: int = 1) -> None:
+    spans = span_exporter.get_finished_spans()
+    assert sorted(span.name for span in spans) == sorted(
+        [
+            "RunnableSequence.workflow",
+            "inside_lambda",
+            "execute_task convert",
+            "FakeMessagesListChatModel.chat",
+        ]
+        * roots
+    )
+    root_ids = {_span_id(span) for span in spans if span.name == "RunnableSequence.workflow"}
+    assert all(span.parent is None for span in spans if _span_id(span) in root_ids)
+    # Children of skipped runs parent to the nearest recorded ancestor
+    for span in spans:
+        if _span_id(span) not in root_ids:
+            assert _parent_id(span) in root_ids
+
+
+def test_glue_runs_are_skipped(span_exporter: InMemorySpanExporter):
+    assert _glue_chain().invoke("hi").content == "ok"
+    _assert_glue_skipped(span_exporter)
+
+
+def test_glue_runs_are_skipped_stream(span_exporter: InMemorySpanExporter):
+    _ = list(_glue_chain().stream("hi"))
+    _assert_glue_skipped(span_exporter)
+
+
+@pytest.mark.asyncio
+async def test_glue_runs_are_skipped_async(span_exporter: InMemorySpanExporter):
+    assert (await _glue_chain().ainvoke("hi")).content == "ok"
+    _assert_glue_skipped(span_exporter)
+
+
+@pytest.mark.asyncio
+async def test_glue_runs_are_skipped_abatch(span_exporter: InMemorySpanExporter):
+    # `abatch` starts the root runs under `asyncio.gather`, out of reach of
+    # frame inspection; the default sequence name still identifies them
+    _ = await _glue_chain().abatch(["a", "b"])
+    _assert_glue_skipped(span_exporter, roots=2)
+
+
+def test_root_glue_run_is_kept(span_exporter: InMemorySpanExporter):
+    def double(x: int) -> int:
+        return x * 2
+
+    assert RunnableLambda(double).invoke(1) == 2
+    spans = span_exporter.get_finished_spans()
+    assert [span.name for span in spans] == ["double.workflow"]
+
+
+def test_skipped_runs_are_cleared(span_exporter: InMemorySpanExporter):
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langchain import (
+        LangchainInstrumentor,
+    )
+
+    handler = LangchainInstrumentor()._handler
+    assert handler is not None
+
+    def fail(_: str) -> str:
+        raise ValueError("boom")
+
+    chain = RunnableLambda(lambda x: x) | (RunnableLambda(lambda x: x) | RunnableLambda(fail))
+    with pytest.raises(ValueError, match="boom"):
+        _ = chain.invoke("hi")
+    _ = _glue_chain().invoke("hi")
+    assert handler._runs == {}
+
+
 def test_chain_error(span_exporter: InMemorySpanExporter):
     def fail(_: int) -> int:
         raise ValueError("boom")
@@ -769,7 +857,6 @@ def test_openai_handed_off_span_nests_under_chain(span_exporter: InMemorySpanExp
     spans = span_exporter.get_finished_spans()
     assert sorted(span.name for span in spans) == [
         "RunnableSequence.workflow",
-        "execute_task RunnableLambda",
         "openai.chat",
     ]
     assert _parent_id(_span(spans, "openai.chat")) == _span_id(
