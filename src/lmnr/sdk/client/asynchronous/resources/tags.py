@@ -18,9 +18,7 @@ class AsyncTags(BaseAsyncResource):
         trace_id: str | int | uuid.UUID,
         tags: list[str] | str,
     ) -> list[str]:
-        """Tag a trace with a list of tags. Note that the trace must be ended
-        before tagging it. You may want to call `Laminar.flush()` after the
-        trace that you want to tag.
+        """Tag a trace with a list of tags.
 
         Args:
             trace_id (str | int | uuid.UUID): The trace id to tag.
@@ -45,10 +43,8 @@ class AsyncTags(BaseAsyncResource):
             trace_id = Laminar.get_trace_id()
             pass
 
-        # make sure `foo` is called outside a trace context
         foo()
 
-        # or make sure the trace is ended by this point
         Laminar.flush()
 
         await client.tags.tag(trace_id, "my_tag")
