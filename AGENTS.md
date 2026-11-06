@@ -117,6 +117,7 @@ LMNR_TRAJECTORY_FORCE_EXPORT  # With LMNR_TRAJECTORY_PATH: also export spans to 
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/google_adk/AGENTS.md`
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/google_aiplatform/AGENTS.md` - vertexai SDK: defining-class targets, `.text` raises, gRPC so mocks not VCR
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/google_genai/AGENTS.md` - native Gemini shape, bytes serialization
+- `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/groq/AGENTS.md` - native OpenAI-shape messages, cached / reasoning usage, stream accumulation, `MockTransport` tests
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/langchain/AGENTS.md` - callback handler, hand-off of LLM runs to provider instrumentors, LLM-run suppression flag, LangGraph topology, OpenAI traceparent
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/langfuse/AGENTS.md` - Langfuse bridge
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/litellm/AGENTS.md`
