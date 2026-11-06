@@ -177,25 +177,25 @@ def _set_accumulated_attributes(
             if "cached_tokens" in input_details:
                 set_span_attribute(
                     span,
-                    "gen_ai.usage.cache_read_input_tokens",
+                    "gen_ai.usage.cache_read.input_tokens",
                     input_details["cached_tokens"],
                 )
             elif "cache_read_input_tokens" in usage:
                 set_span_attribute(
                     span,
-                    "gen_ai.usage.cache_read_input_tokens",
+                    "gen_ai.usage.cache_read.input_tokens",
                     usage["cache_read_input_tokens"],
                 )
             if "cache_creation_tokens" in input_details:
                 set_span_attribute(
                     span,
-                    "gen_ai.usage.cache_creation_input_tokens",
+                    "gen_ai.usage.cache_write.input_tokens",
                     input_details["cache_creation_tokens"],
                 )
             elif "cache_creation_input_tokens" in usage:
                 set_span_attribute(
                     span,
-                    "gen_ai.usage.cache_creation_input_tokens",
+                    "gen_ai.usage.cache_write.input_tokens",
                     usage["cache_creation_input_tokens"],
                 )
 

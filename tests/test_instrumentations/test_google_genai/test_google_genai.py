@@ -838,7 +838,7 @@ def test_google_genai_reasoning_tokens(span_exporter: InMemorySpanExporter):
     assert spans[0].name == "gemini.generate_content"
     assert (spans[0].attributes or {})["gen_ai.request.thinking_budget"] == 512
     assert (spans[0].attributes or {})[
-        "gen_ai.usage.reasoning_tokens"
+        "gen_ai.usage.reasoning.output_tokens"
     ] == usage.thoughts_token_count
     assert (spans[0].attributes or {})["gen_ai.usage.output_tokens"] == (
         usage.candidates_token_count or 0
@@ -879,7 +879,7 @@ def test_google_genai_reasoning_tokens_with_include_thoughts(
     assert spans[0].name == "gemini.generate_content"
     assert (spans[0].attributes or {})["gen_ai.request.thinking_budget"] == 512
     assert (spans[0].attributes or {})[
-        "gen_ai.usage.reasoning_tokens"
+        "gen_ai.usage.reasoning.output_tokens"
     ] == usage.thoughts_token_count
     assert (spans[0].attributes or {})["gen_ai.usage.output_tokens"] == (
         usage.candidates_token_count or 0
@@ -933,7 +933,7 @@ async def test_google_genai_reasoning_tokens_async(span_exporter: InMemorySpanEx
     assert spans[0].name == "gemini.generate_content"
     assert (spans[0].attributes or {})["gen_ai.request.thinking_budget"] == 512
     assert (spans[0].attributes or {})[
-        "gen_ai.usage.reasoning_tokens"
+        "gen_ai.usage.reasoning.output_tokens"
     ] == usage.thoughts_token_count
     assert (spans[0].attributes or {})["gen_ai.usage.output_tokens"] == (
         usage.candidates_token_count or 0
@@ -975,7 +975,7 @@ async def test_google_genai_reasoning_tokens_with_include_thoughts_async(
     assert spans[0].name == "gemini.generate_content"
     assert (spans[0].attributes or {})["gen_ai.request.thinking_budget"] == 512
     assert (spans[0].attributes or {})[
-        "gen_ai.usage.reasoning_tokens"
+        "gen_ai.usage.reasoning.output_tokens"
     ] == usage.thoughts_token_count
     assert (spans[0].attributes or {})["gen_ai.usage.output_tokens"] == (
         usage.candidates_token_count or 0
@@ -1303,7 +1303,7 @@ def test_google_genai_cache_read_tokens(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
-    assert (spans[0].attributes or {})["gen_ai.usage.cache_read_input_tokens"] == (
+    assert (spans[0].attributes or {})["gen_ai.usage.cache_read.input_tokens"] == (
         usage.cached_content_token_count
     )
 
@@ -1343,7 +1343,7 @@ def test_google_genai_cache_read_tokens_streaming(span_exporter: InMemorySpanExp
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content_stream"
-    assert (spans[0].attributes or {})["gen_ai.usage.cache_read_input_tokens"] == (
+    assert (spans[0].attributes or {})["gen_ai.usage.cache_read.input_tokens"] == (
         usage.cached_content_token_count
     )
 

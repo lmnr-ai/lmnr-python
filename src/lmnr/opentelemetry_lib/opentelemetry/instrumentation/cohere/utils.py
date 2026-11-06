@@ -330,7 +330,7 @@ def _set_usage(span: Span, usage: Any) -> None:
             span, "llm.usage.total_tokens", (input_tokens or 0) + (output_tokens or 0)
         )
     set_span_attribute(
-        span, "gen_ai.usage.cache_read_input_tokens", _int(_get(usage, "cached_tokens"))
+        span, "gen_ai.usage.cache_read.input_tokens", _int(_get(usage, "cached_tokens"))
     )
 
 

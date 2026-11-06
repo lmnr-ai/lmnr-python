@@ -51,7 +51,7 @@ def _set_common_request_attributes(span: Span, kwargs: dict[str, Any]):
     reasoning_effort = kwargs.get("reasoning_effort") or to_dict(kwargs.get("reasoning")).get(
         "effort"
     )
-    set_span_attribute(span, "gen_ai.request.reasoning_effort", reasoning_effort)
+    set_span_attribute(span, "gen_ai.request.reasoning.level", reasoning_effort)
     if kwargs.get("stream"):
         set_span_attribute(span, "llm.is_streaming", True)
     if kwargs.get("tools") and should_send_prompts():
@@ -134,16 +134,16 @@ def _set_usage_attributes(
 
     input_details = cast(dict[str, int], usage.get(f"{input_key}_details") or {})
     set_span_attribute(
-        span, "gen_ai.usage.cache_read_input_tokens", input_details.get("cached_tokens")
+        span, "gen_ai.usage.cache_read.input_tokens", input_details.get("cached_tokens")
     )
     set_span_attribute(
         span,
-        "gen_ai.usage.cache_creation_input_tokens",
+        "gen_ai.usage.cache_write.input_tokens",
         input_details.get("cache_write_tokens"),
     )
     output_details = cast(dict[str, int], usage.get(f"{output_key}_details") or {})
     set_span_attribute(
-        span, "gen_ai.usage.reasoning_tokens", output_details.get("reasoning_tokens")
+        span, "gen_ai.usage.reasoning.output_tokens", output_details.get("reasoning_tokens")
     )
 
     set_span_attribute(span, "gen_ai.usage.cost", cast(float, usage.get("cost")))

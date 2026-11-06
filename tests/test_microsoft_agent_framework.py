@@ -311,14 +311,28 @@ def test_workflow_spans_keep_span_path(span_exporter: InMemorySpanExporter):
         ("gcp.gemini", {"capture_usage": False}, None, None),
     ],
 )
+# Under the latest experimental semconv (the framework's default) the framework
+# itself writes `gen_ai.usage.reasoning.output_tokens`.
+@pytest.mark.parametrize("experimental_semconv", [False, True])
 def test_gemini_thinking_tokens_count_as_output(
+    monkeypatch: pytest.MonkeyPatch,
     provider: Any,
     kwargs: dict[str, Any],
     expected_output: int,
     expected_reasoning: int,
+    experimental_semconv: bool,
 ):
     from agent_framework import ChatResponse
-    from agent_framework.observability import _get_response_attributes
+    from agent_framework.observability import OBSERVABILITY_SETTINGS, _get_response_attributes
+
+    monkeypatch.setattr(
+        OBSERVABILITY_SETTINGS,
+        "otel_semconv_stability_opt_in",
+        None if experimental_semconv else "",
+    )
+    assert OBSERVABILITY_SETTINGS.use_latest_experimental_gen_ai_semconv is experimental_semconv
+    if experimental_semconv and provider == "openai":
+        expected_reasoning = 30
 
     response = ChatResponse(
         messages=[],
@@ -330,7 +344,7 @@ def test_gemini_thinking_tokens_count_as_output(
     _ = _get_response_attributes(attributes, response, **kwargs)
 
     assert attributes.get("gen_ai.usage.output_tokens") == expected_output
-    assert attributes.get("gen_ai.usage.reasoning_tokens") == expected_reasoning
+    assert attributes.get("gen_ai.usage.reasoning.output_tokens") == expected_reasoning
 
 
 def test_mcp_tool_call_span_is_not_a_second_tool_span(span_exporter: InMemorySpanExporter):

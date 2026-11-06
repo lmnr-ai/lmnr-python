@@ -227,5 +227,5 @@ def test_chat_reasoning(
     spans = span_exporter.get_finished_spans()
     assert len(spans) >= 1
     span = spans[-1]
-    assert (span.attributes or {})["gen_ai.request.reasoning_effort"] == "low"
-    assert cast(int, (span.attributes or {})["gen_ai.usage.reasoning_tokens"]) > 0
+    assert (span.attributes or {})["gen_ai.request.reasoning.level"] == "low"
+    assert cast(int, (span.attributes or {})["gen_ai.usage.reasoning.output_tokens"]) > 0

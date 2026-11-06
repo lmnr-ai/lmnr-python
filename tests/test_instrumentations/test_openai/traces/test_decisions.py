@@ -70,15 +70,16 @@ def _assert_decision_span(span: ReadableSpan, decision: Any) -> None:
     assert attributes["gen_ai.usage.output_tokens"] == usage.output_tokens
     assert attributes["llm.usage.total_tokens"] == usage.total_tokens
     assert (
-        attributes["gen_ai.usage.cache_read_input_tokens"]
+        attributes["gen_ai.usage.cache_read.input_tokens"]
         == usage.input_tokens_details.cached_tokens
     )
     assert (
-        attributes["gen_ai.usage.cache_creation_input_tokens"]
+        attributes["gen_ai.usage.cache_write.input_tokens"]
         == usage.input_tokens_details.cache_write_tokens
     )
     assert (
-        attributes["gen_ai.usage.reasoning_tokens"] == usage.output_tokens_details.reasoning_tokens
+        attributes["gen_ai.usage.reasoning.output_tokens"]
+        == usage.output_tokens_details.reasoning_tokens
     )
 
     output = json.loads(cast(str, attributes["gen_ai.output.messages"]))
