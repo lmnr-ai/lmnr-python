@@ -19,14 +19,12 @@ from opentelemetry.trace.status import Status, StatusCode
 from typing_extensions import TypeVar, override
 
 from groq._streaming import AsyncStream, Stream
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.groq.event_models import Usage
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.groq.span_utils import (
+    StreamAccumulator,
     set_input_attributes,
     set_model_input_attributes,
     set_model_response_attributes,
-    set_model_streaming_response_attributes,
     set_response_attributes,
-    set_streaming_response_attributes,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
     BaseLaminarInstrumentor,
@@ -56,58 +54,22 @@ def is_streaming_response(response: Any) -> bool:
     return isinstance(response, (Stream, AsyncStream))
 
 
-def _process_streaming_chunk(chunk: Any) -> tuple[Any, Any, Any]:
-    """Extract content, finish_reason and usage from a streaming chunk."""
-    if not getattr(chunk, "choices", None):
-        return None, None, None
-
-    delta = chunk.choices[0].delta
-    content = delta.content if hasattr(delta, "content") else None
-    finish_reason = chunk.choices[0].finish_reason
-
-    # Extract usage from x_groq if present in the final chunk
-    usage = None
-    if hasattr(chunk, "x_groq") and chunk.x_groq and getattr(chunk.x_groq, "usage", None):
-        usage = chunk.x_groq.usage
-
-    return content, finish_reason, usage
-
-
-@dont_throw
-def _handle_streaming_response(
-    span: Span,
-    accumulated_content: Any,
-    finish_reason: str | None,
-    usage: Usage | None,
-):
-    set_model_streaming_response_attributes(span, usage)
-    set_streaming_response_attributes(span, accumulated_content, finish_reason, usage)
-
-
 def _create_stream_processor(
     response: Iterable[T],
     span: Span,
 ) -> Generator[T]:
     """Create a generator that processes a stream while collecting telemetry."""
-    accumulated_content = ""
-    finish_reason = None
-    usage = None
+    accumulator = StreamAccumulator()
 
     for chunk in response:
         try:
-            content, chunk_finish_reason, chunk_usage = _process_streaming_chunk(chunk)
-            if content:
-                accumulated_content += content
-            if chunk_finish_reason:
-                finish_reason = chunk_finish_reason
-            if chunk_usage:
-                usage = chunk_usage
+            accumulator.add(chunk)
         except Exception:
             logger.warning("Failed to process streaming chunk for groq span", exc_info=True)
         finally:
             yield chunk
 
-    _handle_streaming_response(span, accumulated_content, finish_reason, usage)
+    _handle_response(span, accumulator.response())
 
     if span.is_recording():
         span.set_status(Status(StatusCode.OK))
@@ -119,19 +81,11 @@ async def _create_async_stream_processor(
     response: AsyncIterable[T], span: Span
 ) -> AsyncGenerator[T]:
     """Create an async generator that processes a stream while collecting telemetry."""
-    accumulated_content = ""
-    finish_reason = None
-    usage = None
+    accumulator = StreamAccumulator()
 
     async for chunk in response:
         try:
-            content, chunk_finish_reason, chunk_usage = _process_streaming_chunk(chunk)
-            if content:
-                accumulated_content += content
-            if chunk_finish_reason:
-                finish_reason = chunk_finish_reason
-            if chunk_usage:
-                usage = chunk_usage
+            accumulator.add(chunk)
         except Exception:
             logger.warning(
                 "Failed to process streaming chunk for groq span",
@@ -140,7 +94,7 @@ async def _create_async_stream_processor(
         finally:
             yield chunk
 
-    _handle_streaming_response(span, accumulated_content, finish_reason, usage)
+    _handle_response(span, accumulator.response())
 
     if span.is_recording():
         span.set_status(Status(StatusCode.OK))

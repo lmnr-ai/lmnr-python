@@ -1,5 +1,5 @@
-import json
-from collections.abc import Iterable, Mapping
+from __future__ import annotations
+
 from typing import Any, cast
 
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
@@ -16,9 +16,9 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
 )
 from opentelemetry.trace import Span
 
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.groq.event_models import Usage
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.reasoning import (
     set_reasoning_attributes,
+    set_reasoning_usage,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     dont_throw,
@@ -26,28 +26,27 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     set_span_attribute,
     should_send_prompts,
 )
-
-CONTENT_FILTER_KEY = "content_filter_results"
+from lmnr.sdk.utils import json_dumps
 
 
 @dont_throw
 def set_input_attributes(span: Span, kwargs: dict[str, Any]):
-    if not span.is_recording():
+    if not span.is_recording() or not should_send_prompts():
         return
 
-    if should_send_prompts():
-        if kwargs.get("prompt") is not None:
-            set_span_attribute(span, "gen_ai.prompt.0.role", "user")
-            set_span_attribute(span, "gen_ai.prompt.0.content", kwargs.get("prompt"))
+    # `messages` and `tools` are typed `Iterable`; only record materialized
+    # sequences, since reading a generator would consume what the SDK sends.
+    messages = kwargs.get("messages")
+    if isinstance(messages, (list, tuple)):
+        set_span_attribute(
+            span, "gen_ai.input.messages", json_dumps(list(cast(list[Any], messages)))
+        )
 
-        elif kwargs.get("messages") is not None and isinstance(kwargs.get("messages"), Iterable):
-            for i, message in enumerate(cast(Iterable[dict[str, Any]], kwargs.get("messages"))):
-                set_span_attribute(
-                    span,
-                    f"gen_ai.prompt.{i}.content",
-                    _dump_content(message.get("content")),
-                )
-                set_span_attribute(span, f"gen_ai.prompt.{i}.role", message.get("role"))
+    tools = kwargs.get("tools")
+    if isinstance(tools, (list, tuple)) and tools:
+        set_span_attribute(
+            span, "gen_ai.tool.definitions", json_dumps(list(cast(list[Any], tools)))
+        )
 
 
 @dont_throw
@@ -56,7 +55,12 @@ def set_model_input_attributes(span: Span, kwargs: dict[str, Any]):
         return
 
     set_span_attribute(span, GEN_AI_REQUEST_MODEL, kwargs.get("model"))
-    set_span_attribute(span, GEN_AI_REQUEST_MAX_TOKENS, kwargs.get("max_tokens_to_sample"))
+    # `max_tokens` is deprecated in favor of `max_completion_tokens`.
+    set_span_attribute(
+        span,
+        GEN_AI_REQUEST_MAX_TOKENS,
+        kwargs.get("max_completion_tokens") or kwargs.get("max_tokens"),
+    )
     set_span_attribute(span, GEN_AI_REQUEST_TEMPERATURE, kwargs.get("temperature"))
     set_span_attribute(span, GEN_AI_REQUEST_TOP_P, kwargs.get("top_p"))
     set_span_attribute(span, GEN_AI_REQUEST_FREQUENCY_PENALTY, kwargs.get("frequency_penalty"))
@@ -65,151 +69,97 @@ def set_model_input_attributes(span: Span, kwargs: dict[str, Any]):
     set_reasoning_attributes(span, kwargs)
 
 
-def set_streaming_response_attributes(
-    span: Span,
-    accumulated_content: Any,
-    finish_reason: str | None = None,
-    usage: Any = None,  # TODO: set usage on attributes
-):
-    """Set span attributes for accumulated streaming response."""
-    if not span.is_recording() or not should_send_prompts():
-        return
+def _set_usage_attributes(span: Span, usage: dict[str, Any]):
+    set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, usage.get("prompt_tokens"))
+    set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, usage.get("completion_tokens"))
+    set_span_attribute(span, "llm.usage.total_tokens", usage.get("total_tokens"))
 
-    prefix = "gen_ai.completion.0"
-    set_span_attribute(span, f"{prefix}.role", "assistant")
-    set_span_attribute(span, f"{prefix}.content", accumulated_content)
-    if finish_reason:
-        set_span_attribute(span, f"{prefix}.finish_reason", finish_reason)
-
-
-def set_model_streaming_response_attributes(
-    span: Span,
-    usage: Usage | None,
-):
-    if not span.is_recording():
-        return
-
-    if usage:
-        set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, usage.prompt_tokens)
-        set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, usage.completion_tokens)
-        set_span_attribute(span, "llm.usage.total_tokens", usage.total_tokens)
+    prompt_details = cast(dict[str, int], usage.get("prompt_tokens_details") or {})
+    set_span_attribute(
+        span, "gen_ai.usage.cache_read.input_tokens", prompt_details.get("cached_tokens")
+    )
+    set_reasoning_usage(span, usage)
 
 
 @dont_throw
-def set_model_response_attributes(
-    span: Span,
-    response: Any,
-):
+def set_model_response_attributes(span: Span, response: Any):
     if not span.is_recording():
         return
     response = model_as_dict(response)
     set_span_attribute(span, GEN_AI_RESPONSE_MODEL, response.get("model"))
     set_span_attribute(span, GEN_AI_RESPONSE_ID, response.get("id"))
 
-    usage = cast(dict[str, int | float], response.get("usage") or {})
+    # Streams report usage on the last chunk's `x_groq.usage` (newer API
+    # versions also put it on the top-level `usage`).
+    x_groq = cast(dict[str, Any], response.get("x_groq") or {})
+    usage = response.get("usage") or x_groq.get("usage")
     if usage:
-        set_span_attribute(span, "llm.usage.total_tokens", usage.get("total_tokens"))
-        set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, usage.get("completion_tokens"))
-        set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, usage.get("prompt_tokens"))
+        _set_usage_attributes(span, cast(dict[str, Any], usage))
 
 
+@dont_throw
 def set_response_attributes(span: Span, response: Any):
-    if not span.is_recording():
+    if not span.is_recording() or not should_send_prompts():
         return
     choices = model_as_dict(response).get("choices")
-    if should_send_prompts() and choices:
-        _set_completions(span, choices)
+    if choices:
+        set_span_attribute(span, "gen_ai.output.messages", json_dumps(choices))
 
 
-def _set_completions(span: Span, choices: list[dict[str, Any]] | None):
-    if choices is None or not should_send_prompts():
-        return
+class StreamAccumulator:
+    """Folds `ChatCompletionChunk`s into a `ChatCompletion`-shaped dict."""
 
-    for choice in choices:
-        index = choice.get("index")
-        prefix = f"gen_ai.completion.{index}"
-        set_span_attribute(span, f"{prefix}.finish_reason", choice.get("finish_reason"))
+    def __init__(self):
+        self._id: str | None = None
+        self._model: str | None = None
+        self._usage: dict[str, Any] | None = None
+        self._choices: dict[int, dict[str, Any]] = {}
+        self._tool_calls: dict[int, dict[int, dict[str, Any]]] = {}
 
-        if choice.get("content_filter_results"):
-            set_span_attribute(
-                span,
-                f"{prefix}.{CONTENT_FILTER_KEY}",
-                json.dumps(choice.get("content_filter_results")),
-            )
+    def add(self, chunk: Any):
+        chunk = model_as_dict(chunk)
+        self._id = self._id or chunk.get("id")
+        self._model = self._model or chunk.get("model")
+        x_groq = cast(dict[str, Any], chunk.get("x_groq") or {})
+        if usage := chunk.get("usage") or x_groq.get("usage"):
+            self._usage = cast(dict[str, Any], usage)
 
-        if choice.get("finish_reason") == "content_filter":
-            set_span_attribute(span, f"{prefix}.role", "assistant")
-            set_span_attribute(span, f"{prefix}.content", "FILTERED")
-
-            return
-
-        message = choice.get("message")
-        if not message or not isinstance(message, Mapping):
-            return
-
-        message = cast(dict[str, str | dict[str, Any]], message)
-
-        set_span_attribute(span, f"{prefix}.role", cast(str | None, message.get("role")))
-        set_span_attribute(span, f"{prefix}.content", cast(str | None, message.get("content")))
-
-        function_call = message.get("function_call")
-        if function_call and isinstance(function_call, dict):
-            function_call = cast(dict[str, str], function_call)
-            set_span_attribute(span, f"{prefix}.tool_calls.0.name", function_call.get("name"))
-            set_span_attribute(
-                span,
-                f"{prefix}.tool_calls.0.arguments",
-                function_call.get("arguments"),
-            )
-
-        message = cast(dict[str, list[dict[str, Any]]], message)
-        tool_calls = message.get("tool_calls")
-        if tool_calls and isinstance(tool_calls, Iterable):  # pyright: ignore[reportUnnecessaryIsInstance]
-            for i, tool_call in enumerate(tool_calls):
-                if not isinstance(tool_call, Mapping):  # pyright: ignore[reportUnnecessaryIsInstance]
-                    continue
-                function = tool_call.get("function")
-                if not isinstance(function, Mapping):
-                    continue
-                function = cast(dict[str, str], tool_call.get("function"))
-                set_span_attribute(
-                    span,
-                    f"{prefix}.tool_calls.{i}.id",
-                    tool_call.get("id"),
-                )
-                set_span_attribute(
-                    span,
-                    f"{prefix}.tool_calls.{i}.name",
-                    function.get("name"),
-                )
-                set_span_attribute(
-                    span,
-                    f"{prefix}.tool_calls.{i}.arguments",
-                    function.get("arguments"),
-                )
-
-
-def _dump_content(content: Any) -> str:
-    if isinstance(content, str):
-        return content
-    json_serializable = []
-    if not isinstance(content, Iterable):
-        return ""
-    for item in content:
-        if not isinstance(item, Mapping):
-            continue
-        if item.get("type") == "text":  # pyright: ignore[reportUnknownMemberType]
-            json_serializable.append({"type": "text", "text": item.get("text")})  # pyright: ignore[reportUnknownMemberType]
-        elif image_url := item.get("image_url"):  # pyright: ignore[reportUnknownMemberType]
-            if not isinstance(image_url, Mapping):
-                continue
-            json_serializable.append(  # pyright: ignore[reportUnknownMemberType]
+        for choice in cast(list[dict[str, Any]], chunk.get("choices") or []):
+            index = cast(int, choice.get("index") or 0)
+            accumulated = self._choices.setdefault(
+                index,
                 {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": image_url.get("url"),  # pyright: ignore[reportUnknownMemberType]
-                        "detail": image_url.get("detail"),  # pyright: ignore[reportUnknownMemberType]
-                    },
-                }
+                    "index": index,
+                    "message": {"role": "assistant", "content": None},
+                    "finish_reason": None,
+                },
             )
-    return json.dumps(json_serializable)
+            message = cast(dict[str, Any], accumulated["message"])
+            delta = cast(dict[str, Any], choice.get("delta") or {})
+            if delta.get("role"):
+                message["role"] = delta["role"]
+            if delta.get("content"):
+                message["content"] = (message["content"] or "") + delta["content"]
+            if delta.get("reasoning"):
+                message["reasoning"] = message.get("reasoning", "") + delta["reasoning"]
+            for call in cast(list[dict[str, Any]], delta.get("tool_calls") or []):
+                slot = self._tool_calls.setdefault(index, {}).setdefault(
+                    cast(int, call.get("index") or 0),
+                    {"id": None, "type": "function", "function": {"name": "", "arguments": ""}},
+                )
+                slot["id"] = slot["id"] or call.get("id")
+                function = cast(dict[str, str | None], call.get("function") or {})
+                slot["function"]["name"] += function.get("name") or ""
+                slot["function"]["arguments"] += function.get("arguments") or ""
+            if choice.get("finish_reason"):
+                accumulated["finish_reason"] = choice["finish_reason"]
+
+    def response(self) -> dict[str, Any]:
+        for index, calls in self._tool_calls.items():
+            self._choices[index]["message"]["tool_calls"] = [calls[i] for i in sorted(calls)]
+        return {
+            "id": self._id,
+            "model": self._model,
+            "usage": self._usage,
+            "choices": [self._choices[i] for i in sorted(self._choices)],
+        }
