@@ -30,6 +30,8 @@ GEN_AI_REQUEST_THINKING_BUDGET = "gen_ai.request.thinking_budget"
 GEN_AI_REQUEST_THINKING_LEVEL = "gen_ai.request.thinking_level"
 # Anthropic `output_config.effort`
 GEN_AI_REQUEST_EFFORT = "gen_ai.request.effort"
+# Semconv reasoning usage, a subset of `gen_ai.usage.output_tokens`
+GEN_AI_USAGE_REASONING_OUTPUT_TOKENS = "gen_ai.usage.reasoning.output_tokens"
 
 
 def _get(obj: Any, key: str) -> Any:
@@ -101,3 +103,23 @@ def set_reasoning_attributes(span: Span, params: Any) -> None:
     }
     for name, value in attributes.items():
         set_span_attribute(span, name, value)
+
+
+@dont_throw
+def set_reasoning_usage(span: Span, usage: Any) -> None:
+    """Record the reasoning token count from an OpenAI-shaped `usage`.
+
+    `usage` is a mapping, pydantic model or plain object with chat completions'
+    `completion_tokens_details.reasoning_tokens` or the Responses API's
+    `output_tokens_details.reasoning_tokens`. The count is already included in
+    the output tokens. An explicit `0` is recorded; a missing or malformed count
+    leaves the attribute unset.
+    """
+    set_span_attribute(
+        span,
+        GEN_AI_USAGE_REASONING_OUTPUT_TOKENS,
+        _first(
+            _as_int(_get(_get(usage, "completion_tokens_details"), "reasoning_tokens")),
+            _as_int(_get(_get(usage, "output_tokens_details"), "reasoning_tokens")),
+        ),
+    )
