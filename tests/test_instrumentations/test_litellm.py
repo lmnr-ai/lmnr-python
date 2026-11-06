@@ -528,7 +528,7 @@ def test_litellm_completion_records_reasoning_tokens(
     assert attributes["gen_ai.usage.input_tokens"] == 1000
     assert attributes["gen_ai.usage.output_tokens"] == 500
     assert attributes["llm.usage.total_tokens"] == 1500
-    assert attributes["gen_ai.usage.cache_read_input_tokens"] == 200
+    assert attributes["gen_ai.usage.cache_read.input_tokens"] == 200
 
 
 def test_litellm_completion_records_reasoning_tokens_from_model_response(
