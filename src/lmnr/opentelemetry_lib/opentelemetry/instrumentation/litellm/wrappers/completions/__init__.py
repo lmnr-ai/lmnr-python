@@ -13,6 +13,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.litellm.utils import (
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.reasoning import (
     set_reasoning_attributes,
+    set_reasoning_usage,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     dont_throw,
@@ -108,6 +109,7 @@ def process_completion_response(
     set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, input_tokens)
     set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, output_tokens)
     set_span_attribute(span, "llm.usage.total_tokens", total_tokens)
+    set_reasoning_usage(span, usage)
     if input_details := usage.get("prompt_tokens_details"):
         details = cast(dict[str, int], to_dict(input_details))
         cache_read_tokens = cast(

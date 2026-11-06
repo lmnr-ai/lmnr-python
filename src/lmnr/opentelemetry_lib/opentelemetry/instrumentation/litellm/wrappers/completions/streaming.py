@@ -9,6 +9,9 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
 from opentelemetry.trace import Span, Status, StatusCode
 from typing_extensions import TypedDict
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.reasoning import (
+    set_reasoning_usage,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     dont_throw,
     set_span_attribute,
@@ -168,6 +171,7 @@ def _set_accumulated_attributes(
             set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, input_tokens)
             set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, output_tokens)
             set_span_attribute(span, "llm.usage.total_tokens", total_tokens)
+            set_reasoning_usage(span, usage)
 
             input_details = to_dict(usage.get("prompt_tokens_details", {}))
             if "cached_tokens" in input_details:

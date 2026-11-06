@@ -17,6 +17,9 @@ from pydantic import BaseModel
 from typing_extensions import override
 
 from lmnr import Laminar, LaminarLiteLLMCallback
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.litellm.wrappers.completions import (
+    process_completion_response,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.litellm.wrappers.completions.streaming import (
     process_completion_async_streaming_response,
     process_completion_streaming_response,
@@ -458,6 +461,96 @@ def test_litellm_completion_streaming_omits_unknown_cache_usage(
     attributes = span_exporter.get_finished_spans()[0].attributes or {}
     assert "gen_ai.usage.cache_read_input_tokens" not in attributes
     assert "gen_ai.usage.cache_creation_input_tokens" not in attributes
+    assert "gen_ai.usage.reasoning.output_tokens" not in attributes
+
+
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize(
+    ("details", "expected"),
+    [
+        ({"reasoning_tokens": 123}, 123),
+        ({"reasoning_tokens": 0}, 0),
+        ({"reasoning_tokens": None}, None),
+        ({"reasoning_tokens": True}, None),
+        ({"reasoning_tokens": "123"}, None),
+        ({}, None),
+        (None, None),
+        ("not-a-mapping", None),
+        (["reasoning_tokens"], None),
+    ],
+)
+def test_litellm_completion_records_reasoning_tokens(
+    span_exporter: InMemorySpanExporter, stream: bool, details: Any, expected: int | None
+):
+    """`completion_tokens_details.reasoning_tokens` lands on the semconv key; junk is skipped."""
+    span = Laminar.start_span("litellm.completion", span_type="LLM")
+    usage = {
+        "prompt_tokens": 1000,
+        "completion_tokens": 500,
+        "total_tokens": 1500,
+        "prompt_tokens_details": {"cached_tokens": 200},
+        "completion_tokens_details": details,
+    }
+    response: dict[str, Any] = {
+        "id": "chatcmpl-test",
+        "model": "o4-mini",
+        "choices": [
+            {"index": 0, "message": {"role": "assistant", "content": "Hi"}, "finish_reason": "stop"}
+        ],
+        "usage": usage,
+    }
+    if stream:
+        chunks: list[dict[str, Any]] = [
+            {
+                "id": "chatcmpl-test",
+                "model": "o4-mini",
+                "choices": [{"index": 0, "delta": {"role": "assistant", "content": "Hi"}}],
+            },
+            {"id": "chatcmpl-test", "model": "o4-mini", "choices": [], "usage": usage},
+        ]
+        assert list(process_completion_streaming_response(span, iter(chunks))) == chunks
+    else:
+        with Laminar.use_span(span, end_on_exit=True):
+            _ = process_completion_response(span, response)
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    attributes = spans[0].attributes or {}
+    if expected is None:
+        assert "gen_ai.usage.reasoning.output_tokens" not in attributes
+    else:
+        assert attributes["gen_ai.usage.reasoning.output_tokens"] == expected
+    assert "gen_ai.usage.reasoning_tokens" not in attributes
+    # Reasoning is a breakdown of the output, never added to it, and a bad
+    # details object must not skip the usage attributes around it.
+    assert attributes["gen_ai.usage.input_tokens"] == 1000
+    assert attributes["gen_ai.usage.output_tokens"] == 500
+    assert attributes["llm.usage.total_tokens"] == 1500
+    assert attributes["gen_ai.usage.cache_read_input_tokens"] == 200
+
+
+def test_litellm_completion_records_reasoning_tokens_from_model_response(
+    span_exporter: InMemorySpanExporter,
+):
+    """litellm's own pydantic `ModelResponse` / `Usage` objects are read too."""
+    span = Laminar.start_span("litellm.completion", span_type="LLM")
+    response = litellm.ModelResponse(
+        id="chatcmpl-test",
+        model="o4-mini",
+        choices=[{"index": 0, "message": {"role": "assistant", "content": "Hi"}}],
+        usage=litellm.Usage(
+            prompt_tokens=10,
+            completion_tokens=50,
+            total_tokens=60,
+            completion_tokens_details={"reasoning_tokens": 42},
+        ),
+    )
+    with Laminar.use_span(span, end_on_exit=True):
+        _ = process_completion_response(span, response)
+
+    attributes = span_exporter.get_finished_spans()[0].attributes or {}
+    assert attributes["gen_ai.usage.reasoning.output_tokens"] == 42
+    assert attributes["gen_ai.usage.output_tokens"] == 50
 
 
 @pytest.mark.asyncio
@@ -1787,6 +1880,11 @@ def test_litellm_responses_reasoning_effort(span_exporter: InMemorySpanExporter,
     assert len(spans) == 1
     assert (spans[0].attributes or {})["gen_ai.request.reasoning_effort"] == "low"
     assert (spans[0].attributes or {})["gen_ai.response.reasoning_effort"] == "low"
+    # Recorded `usage.output_tokens_details.reasoning_tokens`, a subset of output tokens
+    assert (spans[0].attributes or {})["gen_ai.usage.reasoning.output_tokens"] == (
+        192 if stream else 128
+    )
+    assert "gen_ai.usage.reasoning_tokens" not in (spans[0].attributes or {})
 
 
 @pytest.mark.vcr(record_mode="once")
