@@ -1,20 +1,19 @@
 """Pure functions that convert Langfuse / OpenInference span shapes into
 Laminar / OTel GenAI shapes.
 
-No `SpanProcessor` state lives here — see `processor.py` for the
-`SpanProcessor` that calls into these.
+No `SpanProcessor` state lives here; `processor.py` calls into these.
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from typing import Any, TypeAlias, cast
 
 from opentelemetry.sdk.trace import ReadableSpan
-from opentelemetry.trace import Span
 from opentelemetry.util.types import AttributeValue
 
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse.attributes import (
+from lmnr.opentelemetry_lib.bridges.langfuse.attributes import (
     _OI_LLM_INPUT_MESSAGES,  # pyright: ignore[reportPrivateUsage],
     _OI_LLM_OUTPUT_MESSAGES,  # pyright: ignore[reportPrivateUsage],
     _OI_SPAN_KIND,  # pyright: ignore[reportPrivateUsage],
@@ -222,24 +221,72 @@ def convert_openai_tool_calls_to_content_parts(messages: list[Any], is_output: b
     return [normalize(msg) if is_assistant(msg) else msg for msg in messages]
 
 
-def usage_field(usage: Any, *keys: str) -> int | None:
-    if not isinstance(usage, dict):
-        return None
-    for k in keys:
-        v = usage.get(k)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
-        if isinstance(v, (int, float)):
-            return int(v)
-    return None
+def _sum_fields(details: dict[str, Any], keep: Callable[[str], bool]) -> float | None:
+    values = [v for k, v in details.items() if keep(k) and isinstance(v, (int, float))]
+    return sum(values) if values else None
 
 
-def cost_field(cost: Any, *keys: str) -> float | None:
-    if not isinstance(cost, dict):
-        return None
-    for k in keys:
-        v = cost.get(k)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
-        if isinstance(v, (int, float)):
-            return float(v)
-    return None
+def _is_input_key(k: str) -> bool:
+    return k in ("input", "prompt_tokens", "input_tokens") or (
+        k.startswith("input_") and k != "input_tokens"
+    )
+
+
+def _is_output_key(k: str) -> bool:
+    return k in ("output", "completion_tokens", "output_tokens") or (
+        k.startswith("output_") and k != "output_tokens"
+    )
+
+
+def usage_attributes(
+    usage: Any,
+    cost: Any,
+    tokens: tuple[str, str, str, str, str, str],
+    costs: tuple[str, str, str],
+) -> dict[str, AttributeValue]:
+    """Map Langfuse `usage_details` / `cost_details` to GenAI usage attributes.
+
+    Langfuse's details are additive: `input` excludes cached tokens, which come
+    as separate `input_*` keys (`input_cached_tokens`, `input_cache_read`,
+    `input_cache_creation`, ...), and the same for `output_*` (reasoning).
+    Laminar's `gen_ai.usage.input_tokens` includes cached tokens, so the totals
+    are sums. `tokens` is (input, output, total, cache read, cache write,
+    reasoning) attribute names; `costs` is (input, output, total).
+    """
+    out: dict[str, AttributeValue] = {}
+    if isinstance(usage, dict):
+        details = cast(dict[str, Any], usage)
+        input_tokens = _sum_fields(details, _is_input_key)
+        output_tokens = _sum_fields(details, _is_output_key)
+        total_tokens = _sum_fields(details, lambda k: k in ("total", "total_tokens"))
+        cache_read = _sum_fields(
+            details, lambda k: k.startswith("input_") and ("cache_read" in k or "cached" in k)
+        )
+        cache_write = _sum_fields(
+            details,
+            lambda k: k.startswith("input_") and ("cache_creation" in k or "cache_write" in k),
+        )
+        reasoning = _sum_fields(details, lambda k: k.startswith("output_") and "reasoning" in k)
+        if total_tokens is None and (input_tokens is not None or output_tokens is not None):
+            total_tokens = (input_tokens or 0) + (output_tokens or 0)
+        for name, value in zip(
+            tokens,
+            (input_tokens, output_tokens, total_tokens, cache_read, cache_write, reasoning),
+            strict=True,
+        ):
+            if value is not None:
+                out[name] = int(value)
+    if isinstance(cost, dict):
+        details = cast(dict[str, Any], cost)
+        input_cost = _sum_fields(details, lambda k: k == "input" or k.startswith("input_"))
+        output_cost = _sum_fields(details, lambda k: k == "output" or k.startswith("output_"))
+        total_cost = _sum_fields(details, lambda k: k == "total")
+        if total_cost is None and (input_cost is not None or output_cost is not None):
+            total_cost = (input_cost or 0.0) + (output_cost or 0.0)
+        for name, value in zip(costs, (input_cost, output_cost, total_cost), strict=True):
+            if value is not None:
+                out[name] = float(value)
+    return out
 
 
 def oi_collect_indexed(attrs: dict[str, AttributeValue], prefix: str) -> list[dict[str, OIValue]]:
@@ -412,34 +459,6 @@ def is_openinference_span(span: ReadableSpan) -> bool:
         )
         for k in attrs
     )
-
-
-def is_llm_span(span: Span) -> bool:
-    """True if `span` is already typed as an LLM span.
-
-    Used to gate LiteLLM's primary-span forcing: when the active parent is
-    Laminar's own `litellm.completion` LLM span (present when
-    `Instruments.LITELLM` runs alongside the bridge), letting LiteLLM fold its
-    `gen_ai.*` attrs onto that parent is the correct deduplicated shape, so we
-    must NOT redirect it into a second nested `litellm_request` LLM span.
-    Reads the live (still-recording) span's attributes defensively — any
-    unexpected span shape falls back to False (fold not LLM → safe to force).
-    """
-    try:
-        attrs = getattr(span, "attributes", None) or {}  # pyright: ignore[reportUnknownVariableType]
-        if attrs.get("lmnr.span.type") == "LLM":  # pyright: ignore[reportUnknownMemberType]
-            return True
-        if attrs.get(_OI_SPAN_KIND) == "LLM":  # pyright: ignore[reportUnknownMemberType]
-            return True
-        return any(
-            isinstance(k, str)
-            and (
-                k == "gen_ai.request.model" or k == "gen_ai.response.model" or k == "gen_ai.system"
-            )
-            for k in attrs  # pyright: ignore[reportUnknownVariableType]
-        )
-    except Exception:  # pylint: disable=broad-exception-caught
-        return False
 
 
 def is_langfuse_span(span: ReadableSpan) -> bool:
