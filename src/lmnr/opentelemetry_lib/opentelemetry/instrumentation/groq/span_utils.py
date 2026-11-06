@@ -75,11 +75,11 @@ def _set_usage_attributes(span: Span, usage: dict[str, Any]):
 
     prompt_details = cast(dict[str, int], usage.get("prompt_tokens_details") or {})
     set_span_attribute(
-        span, "gen_ai.usage.cache_read_input_tokens", prompt_details.get("cached_tokens")
+        span, "gen_ai.usage.cache_read.input_tokens", prompt_details.get("cached_tokens")
     )
     completion_details = cast(dict[str, int], usage.get("completion_tokens_details") or {})
     set_span_attribute(
-        span, "gen_ai.usage.reasoning_tokens", completion_details.get("reasoning_tokens")
+        span, "gen_ai.usage.reasoning.output_tokens", completion_details.get("reasoning_tokens")
     )
 
 

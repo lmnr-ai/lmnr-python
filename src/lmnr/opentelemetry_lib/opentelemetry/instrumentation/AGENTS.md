@@ -18,6 +18,12 @@
 
 - **The replay cache keys off `gen_ai.input.messages`, which app-server PREFERS over the legacy `gen_ai.prompt.{N}.*` reconstruction.** In `app-server/src/traces/spans.rs::parse_and_enrich_attributes`, the `gen_ai.input.messages` branch (and `gen_ai.output.messages`) OVERWRITES whatever the `gen_ai.prompt.{N}.*` / `ai.prompt.messages` handlers put on `self.input`/`self.output`. So a provider that emits ONLY the legacy per-index attrs has no hashable input for the cache. Both the chat-completions and LiteLLM-responses paths already stamp `gen_ai.input.messages`; the OpenAI **Responses-API** wrapper historically stamped only `gen_ai.prompt.{N}.*`, so it was invisible to replay until we added `build_genai_input_messages` / `build_genai_output_messages` in `instrumentation/openai/v1/responses_wrappers.py` (stamped from `set_data_attributes`, alongside — not replacing — the legacy attrs that the existing `test_responses.py` asserts on).
 
+## Usage attributes
+
+- **New code stamps the dotted OTel GenAI spec keys:** `gen_ai.usage.cache_read.input_tokens`, `gen_ai.usage.cache_creation.input_tokens`, `gen_ai.usage.reasoning.output_tokens`. Do NOT copy the underscore forms (`gen_ai.usage.cache_read_input_tokens`, `cache_creation_input_tokens`, `reasoning_tokens`) from older instrumentors (openai, anthropic, litellm, openrouter, cohere, ...); those are legacy and pending migration.
+- app-server's `normalize_aisdk_attributes` (`app-server/src/traces/spans.rs`) copies each dotted key into the legacy underscore key it still stores and queries, so the dotted keys show up in the UI and cost with no extra work.
+- Write them as string literals. The `GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS` / `GEN_AI_USAGE_REASONING_OUTPUT_TOKENS` constants are only in newer `opentelemetry-semantic-conventions`, which reaches us transitively through `opentelemetry-sdk>=1.39` and isn't pinned.
+
 ## Reasoning / thinking attributes
 
 - **All providers record reasoning config through `shared/reasoning.py::set_reasoning_attributes(span, params)`.** It reads whichever known shape `params` has (kwargs mapping, pydantic config or plain object). There is no semconv, so each knob keeps its provider name:

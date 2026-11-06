@@ -305,8 +305,8 @@ def _assert_tool_call_span(span: ReadableSpan, streaming: bool):
     assert attrs["gen_ai.usage.input_tokens"] == 120
     assert attrs["gen_ai.usage.output_tokens"] == 40
     assert attrs["llm.usage.total_tokens"] == 160
-    assert attrs["gen_ai.usage.cache_read_input_tokens"] == 64
-    assert attrs["gen_ai.usage.reasoning_tokens"] == 25
+    assert attrs["gen_ai.usage.cache_read.input_tokens"] == 64
+    assert attrs["gen_ai.usage.reasoning.output_tokens"] == 25
 
 
 def test_chat_tool_calls(instrument_legacy: MagicMock, span_exporter: InMemorySpanExporter):
@@ -369,8 +369,8 @@ def test_chat_usage_without_details(
 
     attrs = _attrs(_only_span(span_exporter))
     assert attrs["gen_ai.usage.input_tokens"] == 10
-    assert "gen_ai.usage.cache_read_input_tokens" not in attrs
-    assert "gen_ai.usage.reasoning_tokens" not in attrs
+    assert "gen_ai.usage.cache_read.input_tokens" not in attrs
+    assert "gen_ai.usage.reasoning.output_tokens" not in attrs
 
 
 def test_chat_content_not_traced(
