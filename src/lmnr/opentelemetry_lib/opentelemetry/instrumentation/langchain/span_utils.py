@@ -332,6 +332,7 @@ def _set_usage(span: Span, response: LLMResult) -> None:
     set_span_attribute(span, "llm.usage.total_tokens", input_tokens + output_tokens)
     set_span_attribute(span, "gen_ai.usage.cache_read.input_tokens", cache_read_tokens)
     set_span_attribute(span, "gen_ai.usage.cache_write.input_tokens", cache_creation_tokens)
+    set_span_attribute(span, "gen_ai.usage.reasoning.output_tokens", reasoning_tokens)
 
 
 def _response_model_and_id(response: LLMResult) -> tuple[str | None, str | None]:
