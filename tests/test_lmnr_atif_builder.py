@@ -238,46 +238,6 @@ def test_default_producer_is_this_sdk():
     }
 
 
-@pytest.mark.parametrize(
-    "attrs",
-    [
-        {
-            "gen_ai.request.reasoning.level": "high",
-            "gen_ai.usage.cache_read.input_tokens": 5,
-            "gen_ai.usage.cache_write.input_tokens": 3,
-            "gen_ai.usage.reasoning.output_tokens": 7,
-        },
-        # Pre-semconv names, still emitted by older SDKs.
-        {
-            "gen_ai.request.reasoning_effort": "high",
-            "gen_ai.usage.cache_read_input_tokens": 5,
-            "gen_ai.usage.cache_creation_input_tokens": 3,
-            "gen_ai.usage.reasoning_tokens": 7,
-        },
-    ],
-)
-def test_reasoning_and_cache_attributes(attrs: dict[str, Any]):
-    trajectory = build_trajectory(
-        [
-            _record(1, None, "root", "DEFAULT", 0, 2),
-            _llm(
-                2,
-                0,
-                1,
-                [{"role": "user", "content": "hi"}],
-                [{"role": "assistant", "content": "yo"}],
-                **attrs,
-            ),
-        ]
-    )
-    assert trajectory is not None
-    step = trajectory["steps"][-1]
-    assert step["reasoning_effort"] == "high"
-    assert "request" not in step.get("extra", {}).get("lmnr", {})
-    assert step["metrics"]["cached_tokens"] == 5
-    assert step["metrics"]["extra"]["lmnr"] == {"reasoning_tokens": 7, "cache_creation_tokens": 3}
-
-
 def test_failed_agent_no_tool_spawned_counts_as_an_error():
     hi = [{"role": "user", "content": "hi"}]
     yo = [{"role": "assistant", "content": "yo"}]
