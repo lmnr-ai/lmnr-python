@@ -61,7 +61,9 @@ def test_laminar_stays_off_the_global_provider():
 
 
 def test_conflicting_instrumentations_are_disabled():
-    assert _run("bridge", "laminar_first")["openai_instrumented"] is False
+    run = _run("bridge", "laminar_first")
+    assert run["openai_instrumented"] is False
+    assert "OPENAI" in run["block_instruments"]
 
 
 def test_explicit_instruments_are_honored_with_a_warning():
@@ -74,6 +76,18 @@ def test_explicit_instruments_are_honored_with_a_warning():
 def test_bridge_survives_shutdown_and_reinitialize(order: str):
     assert _paths(_run("bridge_reinit", order)) == _paths(_run("bridge", order))
     assert _run("bridge_reinit", order)["langfuse"] == _run("none", order)["langfuse"]
+
+
+def test_inherits_global_context_with_the_bridge():
+    assert _run("bridge", "laminar_first")["inherits_global_context"] is True
+
+
+def test_unavailable_bridge_changes_nothing_in_laminar():
+    run = _run("bridge_unavailable", "laminar_first")
+    assert run["laminar_is_global"] is True
+    assert run["block_instruments"] == []
+    assert run["inherits_global_context"] is False
+    assert any("langfuse bridge needs langfuse >= 3.0" in w for w in run["warnings"])
 
 
 def test_unknown_bridge_is_rejected():

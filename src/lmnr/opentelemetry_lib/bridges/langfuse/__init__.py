@@ -50,6 +50,7 @@ def _major(version: str | None) -> int | None:
 
 class LangfuseBridge(LaminarBridge):
     bridge: Bridge = Bridge.LANGFUSE
+    requirement: str = f"langfuse >= {MIN_LANGFUSE_MAJOR}.0 (`pip install -U langfuse`)"
     # Everything that records LLM calls or agent-framework steps, which reach
     # Laminar through Langfuse (its wrappers, or OTel instrumentations on its
     # provider). Browser / sandbox instrumentations and the Claude Agent SDK,

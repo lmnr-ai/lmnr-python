@@ -32,6 +32,10 @@ class LaminarBridge(ABC):
 
     bridge: Bridge
 
+    #: What `is_available` checks for, shown in the warning when it fails,
+    #: e.g. "langfuse >= 3.0 (`pip install -U langfuse`)".
+    requirement: str = ""
+
     #: Laminar instruments that would record the calls this bridge already
     #: forwards. They are left out of the default instrument set while the
     #: bridge is enabled.

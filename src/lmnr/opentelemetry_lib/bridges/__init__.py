@@ -40,6 +40,22 @@ def resolve_bridges(bridges: Iterable[Bridge | str] | None) -> list[LaminarBridg
     return resolved
 
 
+def available_bridges(bridges: Iterable[LaminarBridge]) -> list[LaminarBridge]:
+    """The bridges whose competitor SDK is installed in a supported version.
+    The others are skipped with a warning and have no effect at all."""
+    available: list[LaminarBridge] = []
+    for bridge in bridges:
+        if bridge.is_available():
+            available.append(bridge)
+        else:
+            logger.warning(
+                "The %s bridge needs %s; it is disabled for this run.",
+                bridge.bridge.value,
+                bridge.requirement,
+            )
+    return available
+
+
 def conflicting_instruments(bridges: Iterable[LaminarBridge]) -> set[Instruments]:
     return {i for bridge in bridges for i in bridge.conflicting_instruments}
 
@@ -48,12 +64,16 @@ def install_bridges(
     bridges: Iterable[LaminarBridge],
     lmnr_tracer_provider: TracerProvider,
     lmnr_span_processor: SpanProcessor,
-) -> None:
+) -> list[LaminarBridge]:
+    """Install `bridges` and return the ones that are now active."""
+    installed: list[LaminarBridge] = []
     for bridge in bridges:
         try:
-            _installed = bridge.install(lmnr_tracer_provider, lmnr_span_processor)
+            if bridge.install(lmnr_tracer_provider, lmnr_span_processor):
+                installed.append(bridge)
         except Exception:
             logger.warning("Failed to install the %s bridge", bridge.bridge.value, exc_info=True)
+    return installed
 
 
 def uninstall_bridges() -> None:
@@ -64,6 +84,7 @@ def uninstall_bridges() -> None:
 __all__ = [
     "Bridge",
     "LaminarBridge",
+    "available_bridges",
     "conflicting_instruments",
     "get_bridge",
     "install_bridges",

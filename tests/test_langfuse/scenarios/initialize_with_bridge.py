@@ -3,7 +3,8 @@
     python initialize_with_bridge.py MODE ORDER
 
 MODE: `none` (no Laminar), `bridge`, `bridge_reinit` (initialize, shutdown,
-initialize again) or `bridge_explicit_openai` (bridge + instruments={OPENAI}).
+initialize again), `bridge_explicit_openai` (bridge + instruments={OPENAI})
+or `bridge_unavailable` (bridge requested, langfuse reported as unsupported).
 ORDER: `laminar_first` or `langfuse_first`. Prints one JSON document.
 """
 
@@ -46,6 +47,7 @@ OTLPSpanExporter.export = _record  # pyright: ignore[reportAttributeAccessIssue]
 # One per `init_tracing`: `Laminar.shutdown` shuts the previous one down.
 laminar_exporters: list[InMemorySpanExporter] = []
 warnings: list[str] = []
+block_instruments: list[str] = []
 
 
 class _Capture(logging.Handler):
@@ -64,9 +66,15 @@ def init_laminar() -> None:
     def init_tracing(*args: Any, **kwargs: Any) -> Any:
         laminar_exporters.append(InMemorySpanExporter())
         kwargs["exporter"] = laminar_exporters[-1]
+        block_instruments[:] = sorted(i.name for i in kwargs.get("block_instruments") or ())
         return original(*args, **kwargs)
 
     logging.getLogger("lmnr.sdk.laminar").addHandler(_Capture())
+    logging.getLogger("lmnr.opentelemetry_lib.bridges").addHandler(_Capture())
+    if mode == "bridge_unavailable":
+        from lmnr.opentelemetry_lib.bridges.langfuse import LangfuseBridge
+
+        LangfuseBridge.is_available = lambda _self: False  # pyright: ignore[reportAttributeAccessIssue]
     instruments = {Instruments.OPENAI} if mode == "bridge_explicit_openai" else None
     with patch.object(laminar_module, "init_tracing", side_effect=init_tracing):
         Laminar.initialize(
@@ -133,7 +141,11 @@ langfuse.flush()
 
 openai_instrumented = None
 laminar_is_global = None
+inherits_global_context = None
 if mode != "none":
+    from lmnr.opentelemetry_lib.tracing import context as laminar_context
+
+    inherits_global_context = laminar_context._inherit_global_context
     from lmnr.opentelemetry_lib.tracing.wrapper import get_tracer_wrapper
 
     wrapper = get_tracer_wrapper()
@@ -172,6 +184,8 @@ print(
             ),
             "laminar_is_global": laminar_is_global,
             "openai_instrumented": openai_instrumented,
+            "inherits_global_context": inherits_global_context,
+            "block_instruments": block_instruments,
             "warnings": warnings,
         },
         default=str,

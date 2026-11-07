@@ -24,6 +24,7 @@ from typing_extensions import TypedDict
 
 from lmnr.opentelemetry_lib.bridges import (
     Bridge,
+    available_bridges,
     conflicting_instruments,
     install_bridges,
     resolve_bridges,
@@ -432,6 +433,9 @@ class Laminar:
                 )
         cls.__global_metadata = {**env_metadata, **(metadata or {})}
 
+        # A bridge whose SDK is missing or too old changes nothing: Laminar's
+        # instruments, provider and context stay as without `bridges`.
+        enabled_bridges = available_bridges(enabled_bridges)
         block_instruments = set(disabled_instruments) if disabled_instruments is not None else None
         if enabled_bridges:
             conflicts = conflicting_instruments(enabled_bridges)
@@ -491,13 +495,16 @@ class Laminar:
             export=export,
         )
 
-        set_inherit_global_context(any(b.inherits_global_context for b in enabled_bridges))
-        if enabled_bridges:
+        installed_bridges = (
             install_bridges(
                 enabled_bridges,
                 lmnr_tracer_provider=_tracer_wrapper.tracer_provider,
                 lmnr_span_processor=_tracer_wrapper.span_processor,
             )
+            if enabled_bridges
+            else []
+        )
+        set_inherit_global_context(any(b.inherits_global_context for b in installed_bridges))
 
         # Build the debug runtime only after tracing is up. It has no dependency
         # on init_tracing (which never reads the runtime or global
