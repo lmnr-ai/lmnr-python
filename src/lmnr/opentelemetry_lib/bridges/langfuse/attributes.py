@@ -1,9 +1,4 @@
-"""Attribute-name constants for the Langfuse <-> Laminar bridge.
-
-Pure data — no behavior. Split out of the original monolithic
-`langfuse/__init__.py` so `translate.py` / `processor.py` don't have to import
-the whole orchestrator module just to reach a constant.
-"""
+"""Attribute-name constants for the Langfuse -> Laminar bridge. Pure data."""
 
 from __future__ import annotations
 
@@ -24,7 +19,8 @@ _OBSERVATION_OUTPUT = "langfuse.observation.output"
 _OBSERVATION_MODEL = "langfuse.observation.model.name"
 _OBSERVATION_USAGE_DETAILS = "langfuse.observation.usage_details"
 _OBSERVATION_COST_DETAILS = "langfuse.observation.cost_details"
-_OBSERVATION_METADATA_PREFIX = "langfuse.observation.metadata"
+_OBSERVATION_LEVEL = "langfuse.observation.level"
+_OBSERVATION_STATUS_MESSAGE = "langfuse.observation.status_message"
 
 _GEN_AI_REQUEST_MODEL = "gen_ai.request.model"
 _GEN_AI_RESPONSE_MODEL = "gen_ai.response.model"
@@ -33,6 +29,9 @@ _GEN_AI_OUTPUT_MESSAGES = "gen_ai.output.messages"
 _GEN_AI_TOOL_DEFINITIONS = "gen_ai.tool.definitions"
 _GEN_AI_USAGE_INPUT_TOKENS = "gen_ai.usage.input_tokens"
 _GEN_AI_USAGE_OUTPUT_TOKENS = "gen_ai.usage.output_tokens"
+_GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS = "gen_ai.usage.cache_read.input_tokens"
+_GEN_AI_USAGE_CACHE_WRITE_INPUT_TOKENS = "gen_ai.usage.cache_write.input_tokens"
+_GEN_AI_USAGE_REASONING_OUTPUT_TOKENS = "gen_ai.usage.reasoning.output_tokens"
 _GEN_AI_USAGE_TOTAL_TOKENS = "llm.usage.total_tokens"
 _GEN_AI_USAGE_INPUT_COST = "gen_ai.usage.input_cost"
 _GEN_AI_USAGE_OUTPUT_COST = "gen_ai.usage.output_cost"

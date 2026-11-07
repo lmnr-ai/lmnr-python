@@ -1,0 +1,498 @@
+"""Forwards spans from a Langfuse-owned `TracerProvider` to Laminar without
+touching the spans Langfuse exports.
+
+`LangfuseBridgeSpanProcessor` sits on Langfuse's provider next to
+`LangfuseSpanProcessor`. Laminar's own processor never sees the live span:
+its `on_start` stamps go into a side table, and `on_end` hands it a copy with
+those stamps plus the `langfuse.*` -> Laminar translation.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from threading import Lock
+from typing import Any, cast
+
+from opentelemetry.context import Context
+from opentelemetry.sdk.trace import Event, ReadableSpan, Span, SpanProcessor
+from opentelemetry.trace import StatusCode
+from opentelemetry.util.types import AttributeValue
+from typing_extensions import override
+
+from lmnr.opentelemetry_lib.bridges.base import Bridge
+from lmnr.opentelemetry_lib.bridges.langfuse.attributes import (
+    _GEN_AI_INPUT_MESSAGES,  # pyright: ignore[reportPrivateUsage]
+    _GEN_AI_OUTPUT_MESSAGES,  # pyright: ignore[reportPrivateUsage]
+    _GEN_AI_REQUEST_MODEL,  # pyright: ignore[reportPrivateUsage]
+    _GEN_AI_RESPONSE_MODEL,  # pyright: ignore[reportPrivateUsage]
+    _GEN_AI_TOOL_DEFINITIONS,  # pyright: ignore[reportPrivateUsage]
+    _GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS,  # pyright: ignore[reportPrivateUsage]
+    _GEN_AI_USAGE_CACHE_WRITE_INPUT_TOKENS,  # pyright: ignore[reportPrivateUsage]
+    _GEN_AI_USAGE_INPUT_COST,  # pyright: ignore[reportPrivateUsage]
+    _GEN_AI_USAGE_INPUT_TOKENS,  # pyright: ignore[reportPrivateUsage]
+    _GEN_AI_USAGE_OUTPUT_COST,  # pyright: ignore[reportPrivateUsage]
+    _GEN_AI_USAGE_OUTPUT_TOKENS,  # pyright: ignore[reportPrivateUsage]
+    _GEN_AI_USAGE_REASONING_OUTPUT_TOKENS,  # pyright: ignore[reportPrivateUsage]
+    _GEN_AI_USAGE_TOTAL_COST,  # pyright: ignore[reportPrivateUsage]
+    _GEN_AI_USAGE_TOTAL_TOKENS,  # pyright: ignore[reportPrivateUsage]
+    _LLM_OBSERVATION_TYPES,  # pyright: ignore[reportPrivateUsage]
+    _OBSERVATION_COST_DETAILS,  # pyright: ignore[reportPrivateUsage]
+    _OBSERVATION_INPUT,  # pyright: ignore[reportPrivateUsage]
+    _OBSERVATION_LEVEL,  # pyright: ignore[reportPrivateUsage]
+    _OBSERVATION_MODEL,  # pyright: ignore[reportPrivateUsage]
+    _OBSERVATION_OUTPUT,  # pyright: ignore[reportPrivateUsage]
+    _OBSERVATION_STATUS_MESSAGE,  # pyright: ignore[reportPrivateUsage]
+    _OBSERVATION_TYPE,  # pyright: ignore[reportPrivateUsage]
+    _OBSERVATION_USAGE_DETAILS,  # pyright: ignore[reportPrivateUsage]
+    _OI_INPUT_VALUE,  # pyright: ignore[reportPrivateUsage]
+    _OI_LLM_INPUT_MESSAGES,  # pyright: ignore[reportPrivateUsage]
+    _OI_LLM_MODEL_NAME,  # pyright: ignore[reportPrivateUsage]
+    _OI_LLM_OUTPUT_MESSAGES,  # pyright: ignore[reportPrivateUsage]
+    _OI_LLM_SPAN_KINDS,  # pyright: ignore[reportPrivateUsage]
+    _OI_LLM_TOOLS,  # pyright: ignore[reportPrivateUsage]
+    _OI_OUTPUT_VALUE,  # pyright: ignore[reportPrivateUsage]
+    _OI_SPAN_KIND,  # pyright: ignore[reportPrivateUsage]
+    _OI_TOKEN_COMPLETION,  # pyright: ignore[reportPrivateUsage]
+    _OI_TOKEN_PROMPT,  # pyright: ignore[reportPrivateUsage]
+    _OI_TOKEN_TOTAL,  # pyright: ignore[reportPrivateUsage]
+    _TOOL_OBSERVATION_TYPES,  # pyright: ignore[reportPrivateUsage]
+    _TRACE_INPUT,  # pyright: ignore[reportPrivateUsage]
+    _TRACE_METADATA_PREFIX,  # pyright: ignore[reportPrivateUsage]
+    _TRACE_OUTPUT,  # pyright: ignore[reportPrivateUsage]
+    _TRACE_SESSION_ID,  # pyright: ignore[reportPrivateUsage]
+    _TRACE_TAGS,  # pyright: ignore[reportPrivateUsage]
+    _TRACE_USER_ID,  # pyright: ignore[reportPrivateUsage]
+)
+from lmnr.opentelemetry_lib.tracing.attributes import (
+    ASSOCIATION_PROPERTIES,
+    SESSION_ID,
+    SPAN_BRIDGE_NAME,
+    SPAN_BRIDGE_VERSION,
+    SPAN_INPUT,
+    SPAN_OUTPUT,
+    SPAN_TYPE,
+    USER_ID,
+)
+from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.utils import json_dumps
+
+from .translate import (
+    convert_openai_tool_calls_to_content_parts,
+    genai_input_from_langfuse,
+    genai_output_from_langfuse,
+    is_langfuse_span,
+    is_openinference_span,
+    oi_collect_indexed,
+    oi_message_to_genai,
+    oi_tool_to_genai,
+    parse_json,
+    split_messages_and_tool_defs_langchain,
+    usage_attributes,
+)
+
+logger = get_default_logger(__name__)
+
+_DISABLED = "lmnr.internal.disabled"
+
+
+def _metadata_value(value: Any, json_encoded: bool) -> AttributeValue:
+    if json_encoded and isinstance(value, str):
+        value = parse_json(value)
+    if isinstance(value, (str, bool, int, float)):
+        return value
+    return json_dumps(value)
+
+
+def _promote_trace_attributes(
+    attrs: dict[str, AttributeValue],
+    new_attrs: dict[str, AttributeValue],
+    json_encoded_metadata: bool,
+) -> None:
+    """Map trace-level session / user / tags / metadata to Laminar
+    association properties. Observation-level metadata is left raw: it is
+    mostly integration noise (LangChain's `ls_*` keys)."""
+    session_id = attrs.get(_TRACE_SESSION_ID)
+    if isinstance(session_id, str) and session_id:
+        new_attrs[f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}"] = session_id
+    user_id = attrs.get(_TRACE_USER_ID)
+    if isinstance(user_id, str) and user_id:
+        new_attrs[f"{ASSOCIATION_PROPERTIES}.{USER_ID}"] = user_id
+
+    tags = attrs.get(_TRACE_TAGS)
+    if isinstance(tags, (list, tuple)) and tags:
+        new_attrs[f"{ASSOCIATION_PROPERTIES}.tags"] = [str(tag) for tag in tags]
+
+    for k, v in attrs.items():
+        if k == _TRACE_METADATA_PREFIX:
+            # Unflattened form: one JSON object.
+            parsed = parse_json(v)
+            if isinstance(parsed, dict):
+                for mk, mv in cast(dict[str, Any], parsed).items():
+                    new_attrs[f"{ASSOCIATION_PROPERTIES}.metadata.{mk}"] = _metadata_value(
+                        mv, False
+                    )
+        elif k.startswith(_TRACE_METADATA_PREFIX + "."):
+            sub = k[len(_TRACE_METADATA_PREFIX) + 1 :]
+            new_attrs[f"{ASSOCIATION_PROPERTIES}.metadata.{sub}"] = _metadata_value(
+                v, json_encoded_metadata
+            )
+
+
+def _translate_langfuse(
+    attrs: dict[str, AttributeValue], json_encoded_metadata: bool
+) -> dict[str, AttributeValue]:
+    new_attrs: dict[str, AttributeValue] = {}
+
+    is_llm = False
+    obs_type = attrs.get(_OBSERVATION_TYPE)
+    if isinstance(obs_type, str):
+        if obs_type.lower() in _LLM_OBSERVATION_TYPES:
+            new_attrs[SPAN_TYPE] = "LLM"
+            is_llm = True
+        elif obs_type.lower() in _TOOL_OBSERVATION_TYPES:
+            new_attrs[SPAN_TYPE] = "TOOL"
+
+    model = attrs.get(_OBSERVATION_MODEL)
+    if isinstance(model, str) and model:
+        new_attrs[_GEN_AI_REQUEST_MODEL] = model
+        new_attrs[_GEN_AI_RESPONSE_MODEL] = model
+
+    new_attrs.update(
+        usage_attributes(
+            parse_json(attrs.get(_OBSERVATION_USAGE_DETAILS)),
+            parse_json(attrs.get(_OBSERVATION_COST_DETAILS)),
+            tokens=(
+                _GEN_AI_USAGE_INPUT_TOKENS,
+                _GEN_AI_USAGE_OUTPUT_TOKENS,
+                _GEN_AI_USAGE_TOTAL_TOKENS,
+                _GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS,
+                _GEN_AI_USAGE_CACHE_WRITE_INPUT_TOKENS,
+                _GEN_AI_USAGE_REASONING_OUTPUT_TOKENS,
+            ),
+            costs=(_GEN_AI_USAGE_INPUT_COST, _GEN_AI_USAGE_OUTPUT_COST, _GEN_AI_USAGE_TOTAL_COST),
+        )
+    )
+
+    # LLM input/output becomes GenAI messages so the transcript view renders;
+    # anything else (or an unrecognized LLM shape) stays a raw blob.
+    input_raw = attrs.get(_OBSERVATION_INPUT)
+    if input_raw is None:
+        input_raw = attrs.get(_TRACE_INPUT)
+    input_handled = False
+    if is_llm and input_raw is not None:
+        split = genai_input_from_langfuse(input_raw)
+        if split is not None:
+            messages, tools = split
+            messages, lc_tools = split_messages_and_tool_defs_langchain(messages)
+            messages = convert_openai_tool_calls_to_content_parts(messages, False)
+            new_attrs[_GEN_AI_INPUT_MESSAGES] = json_dumps(messages)
+            if tools:
+                new_attrs[_GEN_AI_TOOL_DEFINITIONS] = json_dumps(tools)
+            elif lc_tools:
+                new_attrs[_GEN_AI_TOOL_DEFINITIONS] = json_dumps(lc_tools)
+            input_handled = True
+    if not input_handled and isinstance(input_raw, str) and input_raw and SPAN_INPUT not in attrs:
+        new_attrs[SPAN_INPUT] = input_raw
+
+    output_raw = attrs.get(_OBSERVATION_OUTPUT)
+    if output_raw is None:
+        output_raw = attrs.get(_TRACE_OUTPUT)
+    output_handled = False
+    if is_llm and output_raw is not None:
+        messages = genai_output_from_langfuse(output_raw)
+        if messages is not None:
+            if isinstance(messages, list):
+                messages = convert_openai_tool_calls_to_content_parts(
+                    messages,
+                    True,  # pyright: ignore[reportUnknownArgumentType]
+                )
+            new_attrs[_GEN_AI_OUTPUT_MESSAGES] = json_dumps(messages)
+            output_handled = True
+    if (
+        not output_handled
+        and isinstance(output_raw, str)
+        and output_raw
+        and SPAN_OUTPUT not in attrs
+    ):
+        new_attrs[SPAN_OUTPUT] = output_raw
+
+    _promote_trace_attributes(attrs, new_attrs, json_encoded_metadata)
+    return new_attrs
+
+
+def _translate_openinference(
+    attrs: dict[str, AttributeValue], json_encoded_metadata: bool
+) -> dict[str, AttributeValue]:
+    """Translate openinference's flat indexed `llm.*` attributes (groq /
+    google_genai instrumentations, LiteLLM's `langfuse_otel` callback)."""
+    new_attrs: dict[str, AttributeValue] = {}
+
+    # LiteLLM's `langfuse_otel` callback forces `openinference.span.kind=TOOL`
+    # on any completion that passes `tools=[...]`, so a TOOL kind is only
+    # trusted when the span carries no LLM signal.
+    kind = attrs.get(_OI_SPAN_KIND)
+    has_llm_signals = (
+        _OI_LLM_MODEL_NAME in attrs
+        or _OI_TOKEN_PROMPT in attrs
+        or _OI_TOKEN_COMPLETION in attrs
+        or _OI_TOKEN_TOTAL in attrs
+        or any(
+            k.startswith((_OI_LLM_INPUT_MESSAGES + ".", _OI_LLM_OUTPUT_MESSAGES + "."))
+            for k in attrs
+        )
+    )
+    is_llm = (isinstance(kind, str) and kind.upper() in _OI_LLM_SPAN_KINDS) or has_llm_signals
+    if is_llm:
+        new_attrs[SPAN_TYPE] = "LLM"
+    elif isinstance(kind, str) and kind.upper() == "TOOL":
+        new_attrs[SPAN_TYPE] = "TOOL"
+
+    model = attrs.get(_OI_LLM_MODEL_NAME)
+    if isinstance(model, str) and model:
+        new_attrs[_GEN_AI_REQUEST_MODEL] = model
+        new_attrs[_GEN_AI_RESPONSE_MODEL] = model
+
+    prompt_tokens = attrs.get(_OI_TOKEN_PROMPT)
+    completion_tokens = attrs.get(_OI_TOKEN_COMPLETION)
+    total_tokens = attrs.get(_OI_TOKEN_TOTAL)
+    if isinstance(prompt_tokens, (int, float)):
+        new_attrs[_GEN_AI_USAGE_INPUT_TOKENS] = int(prompt_tokens)
+    if isinstance(completion_tokens, (int, float)):
+        new_attrs[_GEN_AI_USAGE_OUTPUT_TOKENS] = int(completion_tokens)
+    if isinstance(total_tokens, (int, float)):
+        new_attrs[_GEN_AI_USAGE_TOTAL_TOKENS] = int(total_tokens)
+    elif isinstance(prompt_tokens, (int, float)) or isinstance(completion_tokens, (int, float)):
+        new_attrs[_GEN_AI_USAGE_TOTAL_TOKENS] = int(
+            (cast(int | float, prompt_tokens) or 0) + (cast(int | float, completion_tokens) or 0)
+        )
+
+    input_messages = [
+        oi_message_to_genai(m) for m in oi_collect_indexed(attrs, _OI_LLM_INPUT_MESSAGES)
+    ]
+    if input_messages:
+        new_attrs[_GEN_AI_INPUT_MESSAGES] = json_dumps(input_messages)
+    output_messages = [
+        oi_message_to_genai(m) for m in oi_collect_indexed(attrs, _OI_LLM_OUTPUT_MESSAGES)
+    ]
+    if output_messages:
+        new_attrs[_GEN_AI_OUTPUT_MESSAGES] = json_dumps(output_messages)
+
+    tools = [oi_tool_to_genai(t) for t in oi_collect_indexed(attrs, _OI_LLM_TOOLS)]
+    tools = [t for t in tools if t]
+    if tools:
+        new_attrs[_GEN_AI_TOOL_DEFINITIONS] = json_dumps(tools)
+
+    # LiteLLM's hybrid spans also carry `langfuse.observation.input/output`.
+    if not input_messages:
+        in_val = attrs.get(_OI_INPUT_VALUE)
+        if not (isinstance(in_val, str) and in_val):
+            in_val = attrs.get(_OBSERVATION_INPUT)
+        if isinstance(in_val, str) and in_val and SPAN_INPUT not in attrs:
+            new_attrs[SPAN_INPUT] = in_val
+    if not output_messages:
+        out_val = attrs.get(_OI_OUTPUT_VALUE)
+        if not (isinstance(out_val, str) and out_val):
+            out_val = attrs.get(_OBSERVATION_OUTPUT)
+        if isinstance(out_val, str) and out_val and SPAN_OUTPUT not in attrs:
+            new_attrs[SPAN_OUTPUT] = out_val
+
+    _promote_trace_attributes(attrs, new_attrs, json_encoded_metadata)
+    return new_attrs
+
+
+def translate_span(
+    span: ReadableSpan, json_encoded_metadata: bool = False
+) -> dict[str, AttributeValue]:
+    """Laminar attributes to add on top of `span`'s own. Pure: never touches
+    `span`.
+
+    openinference is checked first: LiteLLM's hybrid spans carry both layouts
+    but no `langfuse.observation.type`, and their model / tokens / messages
+    live in the `llm.*` keys. Real Langfuse SDK spans never carry those.
+    """
+    attrs = dict(span.attributes or {})
+    if not attrs:
+        return {}
+    try:
+        if is_openinference_span(span):
+            return _translate_openinference(attrs, json_encoded_metadata)
+        if is_langfuse_span(span):
+            return _translate_langfuse(attrs, json_encoded_metadata)
+    except Exception:
+        logger.debug("Langfuse attribute translation failed", exc_info=True)
+    return {}
+
+
+def error_event(span: ReadableSpan) -> Event | None:
+    """An `exception` event for a failed span that has none.
+
+    Laminar marks a span failed only through an `exception` event, and
+    Langfuse never records one: a failure is an OTel ERROR status or
+    `langfuse.observation.level=ERROR` with a status message.
+    """
+    if any(event.name == "exception" for event in span.events):
+        return None
+    attrs = span.attributes or {}
+    status = span.status
+    failed = status.status_code == StatusCode.ERROR or attrs.get(_OBSERVATION_LEVEL) == "ERROR"
+    if not failed:
+        return None
+    message = attrs.get(_OBSERVATION_STATUS_MESSAGE) or status.description or ""
+    return Event(
+        name="exception",
+        attributes={"exception.type": "Error", "exception.message": str(message)},
+        timestamp=span.end_time,
+    )
+
+
+class _ShadowSpan:
+    """Stands in for a live span in Laminar's `on_start`.
+
+    Reads go to the real span with the shadow's own writes on top; writes stay
+    in `added`, so the real span (which Langfuse exports) is never touched.
+    """
+
+    def __init__(self, span: Span) -> None:
+        self._span: Span = span
+        self.added: dict[str, AttributeValue] = {}
+
+    @property
+    def attributes(self) -> dict[str, AttributeValue]:
+        return {**(self._span.attributes or {}), **self.added}
+
+    def set_attribute(self, key: str, value: AttributeValue) -> None:
+        self.added[key] = value
+
+    def set_attributes(self, attributes: dict[str, AttributeValue]) -> None:
+        self.added.update(attributes)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._span, name)
+
+
+class LangfuseBridgeSpanProcessor(SpanProcessor):
+    """Feeds Laminar's span processor a translated copy of every span that
+    ends on a Langfuse-owned provider and that Langfuse itself exports.
+
+    One instance per provider, all wrapping the same Laminar processor, so
+    Laminar's span-path bookkeeping sees every bridged span.
+    """
+
+    def __init__(
+        self,
+        lmnr_span_processor: SpanProcessor,
+        bridge_version: str | None,
+        should_forward: Callable[[ReadableSpan], bool] | None = None,
+        json_encoded_metadata: bool = False,
+    ) -> None:
+        self.lmnr_span_processor: SpanProcessor = lmnr_span_processor
+        self._bridge_version: str | None = bridge_version
+        self._should_forward: Callable[[ReadableSpan], bool] | None = should_forward
+        self._json_encoded_metadata: bool = json_encoded_metadata
+        self._lock: Lock = Lock()
+        self._added: dict[int, dict[str, AttributeValue]] = {}
+
+    @override
+    def on_start(self, span: Span, parent_context: Context | None = None) -> None:
+        try:
+            shadow = _ShadowSpan(span)
+            self.lmnr_span_processor.on_start(cast(Span, cast(object, shadow)), parent_context)
+            span_context = span.get_span_context()
+            with self._lock:
+                self._added[span_context.span_id] = shadow.added
+        except Exception:
+            logger.debug("Langfuse bridge failed to start a span", exc_info=True)
+
+    @override
+    def on_end(self, span: ReadableSpan) -> None:
+        try:
+            with self._lock:
+                added = self._added.pop(span.context.span_id, None) if span.context else None
+            if added is None:
+                return
+            forward = True
+            if self._should_forward is not None:
+                try:
+                    forward = self._should_forward(span)
+                except Exception:
+                    forward = False
+            attributes: dict[str, AttributeValue] = {**(span.attributes or {}), **added}
+            if forward:
+                attributes.update(translate_span(span, self._json_encoded_metadata))
+                attributes[SPAN_BRIDGE_NAME] = Bridge.LANGFUSE.value
+                if self._bridge_version:
+                    attributes[SPAN_BRIDGE_VERSION] = self._bridge_version
+            else:
+                # Still end it in Laminar's processor so its per-span
+                # bookkeeping is released; disabled spans aren't exported.
+                attributes[_DISABLED] = True
+            events = list(span.events)
+            if forward and (event := error_event(span)) is not None:
+                events.append(event)
+            self.lmnr_span_processor.on_end(
+                ReadableSpan(
+                    name=span.name,
+                    context=span.context,
+                    parent=span.parent,
+                    resource=span.resource,
+                    attributes=attributes,
+                    events=events,
+                    links=span.links,
+                    kind=span.kind,
+                    status=span.status,
+                    start_time=span.start_time,
+                    end_time=span.end_time,
+                    instrumentation_scope=span.instrumentation_scope,
+                )
+            )
+        except Exception:
+            logger.debug("Langfuse bridge failed to forward a span", exc_info=True)
+
+    @override
+    def shutdown(self) -> None:
+        return None
+
+    @override
+    def force_flush(self, timeout_millis: int = 30000) -> bool:
+        return True
+
+
+def langfuse_would_export(provider: object, span: ReadableSpan) -> bool:
+    """Whether any `LangfuseSpanProcessor` on `provider` exports `span`.
+
+    Mirrors `LangfuseSpanProcessor.on_end` in langfuse 3.x-5.x: the project
+    check, `blocked_instrumentation_scopes` (3.x, 4.x) and
+    `should_export_span` (4.x, 5.x). Those are private, so each is probed and
+    skipped when absent.
+    """
+    try:
+        from langfuse._client.span_processor import LangfuseSpanProcessor
+    except Exception:
+        return False
+    active = getattr(provider, "_active_span_processor", None)
+    processors = cast(tuple[SpanProcessor, ...], getattr(active, "_span_processors", ()))
+    scope = span.instrumentation_scope
+    is_langfuse_scope = scope is not None and scope.name == "langfuse-sdk"
+    for processor in processors:
+        if not isinstance(processor, LangfuseSpanProcessor):
+            continue
+        p = cast(Any, processor)
+        project_check = getattr(p, "_is_langfuse_project_span", None)
+        if is_langfuse_scope and callable(project_check) and not project_check(span):
+            continue
+        blocked = getattr(p, "_is_blocked_instrumentation_scope", None)
+        if callable(blocked) and blocked(span):
+            continue
+        should_export = getattr(p, "_should_export_span", None)
+        if callable(should_export) and not should_export(span):
+            continue
+        return True
+    return False
+
+
+__all__ = [
+    "LangfuseBridgeSpanProcessor",
+    "error_event",
+    "langfuse_would_export",
+    "translate_span",
+]

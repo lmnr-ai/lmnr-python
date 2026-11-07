@@ -1,5 +1,6 @@
 import atexit
 import logging
+import os
 import sys
 import threading
 from collections.abc import Sequence
@@ -9,9 +10,10 @@ from opentelemetry._logs import set_logger_provider
 from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
-from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace import SpanLimits, TracerProvider
 from opentelemetry.sdk.trace.export import SpanExporter
 
+from lmnr.opentelemetry_lib.tracing.attributes import TRACER_NAME
 from lmnr.opentelemetry_lib.tracing.context import setup_thread_context_inheritance
 from lmnr.opentelemetry_lib.tracing.exporter import LaminarLogExporter
 from lmnr.opentelemetry_lib.tracing.instruments import (
@@ -20,7 +22,6 @@ from lmnr.opentelemetry_lib.tracing.instruments import (
 )
 from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 from lmnr.opentelemetry_lib.tracing.wrapper import (
-    TRACER_NAME,
     TracerWrapper,
     clear_tracing_state,
     default_session_recording_options,
@@ -66,6 +67,14 @@ _lock = threading.Lock()
 # initialize()/shutdown() cycles — see TracerWrapper.shutdown.
 _tracer_provider: TracerProvider | None = None
 _logger_provider: LoggerProvider | None = None
+
+
+def _span_limits() -> SpanLimits:
+    """Raise the 128-attribute default (each GenAI message is several
+    attributes) on Laminar's own provider only, unless the user set a limit."""
+    if os.getenv("OTEL_ATTRIBUTE_COUNT_LIMIT") or os.getenv("OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT"):
+        return SpanLimits()
+    return SpanLimits(max_span_attributes=10000)
 
 
 def init_tracing(
@@ -154,7 +163,7 @@ def init_tracing(
         )
 
         if _tracer_provider is None:
-            _tracer_provider = TracerProvider(resource=resource)
+            _tracer_provider = TracerProvider(resource=resource, span_limits=_span_limits())
             global_provider = trace.get_tracer_provider()
             if set_global_tracer_provider and isinstance(
                 global_provider, trace.ProxyTracerProvider
@@ -218,7 +227,6 @@ def init_tracing(
             instruments=instruments,
             block_instruments=block_instruments,
             async_client=async_client,
-            lmnr_span_processor=span_processor,
         )
 
         # Publish LAST, after init_instrumentations. Some instrumentors import
