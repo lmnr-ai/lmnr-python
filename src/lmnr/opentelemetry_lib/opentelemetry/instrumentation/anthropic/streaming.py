@@ -63,6 +63,10 @@ def _new_complete_response() -> CompleteResponse:
     }
 
 
+# Blocks whose arguments stream in as `input_json_delta`.
+_TOOL_USE_BLOCK_TYPES = ("tool_use", "server_tool_use", "mcp_tool_use")
+
+
 @dont_throw
 def _process_response_item(
     item: Any,
@@ -80,7 +84,7 @@ def _process_response_item(
             complete_response["events"].append(
                 {"index": index, "text": "", "type": item.content_block.type}
             )
-            if item.content_block.type == "tool_use":
+            if item.content_block.type in _TOOL_USE_BLOCK_TYPES:
                 complete_response["events"][index]["id"] = item.content_block.id
                 complete_response["events"][index]["name"] = item.content_block.name
                 complete_response["events"][index]["input"] = ""

@@ -12,7 +12,7 @@ class AnthropicUsage(TypedDict):
 
 
 class AnthropicContentBlock(TypedDict, total=False):
-    type: Literal["text", "tool_use", "thinking"]
+    type: Literal["text", "tool_use", "server_tool_use", "mcp_tool_use", "thinking"]
     text: str
     id: str
     name: str

@@ -260,7 +260,7 @@ def set_streaming_response_attributes(
                     "thinking": event.get("text", ""),
                 }
             )
-        elif event_type == "tool_use":
+        elif event_type in ("tool_use", "server_tool_use", "mcp_tool_use"):
             tool_input = event.get("input", "")
             # input may be a stringified JSON from streaming, try to parse
             if isinstance(tool_input, str):  # pyright: ignore[reportUnnecessaryIsInstance]
@@ -270,7 +270,7 @@ def set_streaming_response_attributes(
                     pass
             content.append(
                 {
-                    "type": "tool_use",
+                    "type": event_type,
                     "id": event.get("id", ""),
                     "name": event.get("name", ""),
                     "input": tool_input,
