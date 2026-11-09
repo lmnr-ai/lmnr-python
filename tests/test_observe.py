@@ -413,6 +413,34 @@ def test_observe_skip_input_keys_with_kwargs(span_exporter: InMemorySpanExporter
     }
 
 
+def test_observe_varargs(span_exporter: InMemorySpanExporter):
+    @observe()
+    def observed_foo(_a: int, *_rest: int, _flag: bool = False, **_kwargs: int) -> int:
+        return _a
+
+    result = observed_foo(1, 2, 3, x=4)
+    spans = span_exporter.get_finished_spans()
+    assert result == 1
+    assert len(spans) == 1
+    assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.input"])) == {
+        "_a": 1,
+        "_rest": [2, 3],
+        "x": 4,
+    }
+
+
+def test_observe_skip_varargs(span_exporter: InMemorySpanExporter):
+    @observe(ignore_inputs=["_rest"])
+    def observed_foo(_a: int, *_rest: int, _flag: bool = False) -> int:
+        return _a
+
+    result = observed_foo(1, 2, 3)
+    spans = span_exporter.get_finished_spans()
+    assert result == 1
+    assert len(spans) == 1
+    assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.input"])) == {"_a": 1}
+
+
 @pytest.mark.asyncio
 async def test_observe_skip_input_keys_async(span_exporter: InMemorySpanExporter):
     @observe(ignore_inputs=["_a"])

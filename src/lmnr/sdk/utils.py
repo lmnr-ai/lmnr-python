@@ -224,9 +224,14 @@ def get_input_from_func_args(
         res = {
             k: v for k, v in normalized_kwargs.items() if not (ignore_inputs and k in ignore_inputs)
         }
-        for i, k in enumerate(inspect.signature(func).parameters.keys()):
+        for i, (k, param) in enumerate(inspect.signature(func).parameters.items()):
             if is_method and k in ["self", "cls"]:
                 continue
+            if param.kind == inspect.Parameter.VAR_POSITIONAL:
+                # *args takes every remaining positional value; nothing after it is positional
+                if not (ignore_inputs and k in ignore_inputs) and i < len(normalized_args):
+                    res[k] = normalized_args[i:]
+                break
             if ignore_inputs and k in ignore_inputs:
                 continue
             # If param has default value, then it's not present in func args
