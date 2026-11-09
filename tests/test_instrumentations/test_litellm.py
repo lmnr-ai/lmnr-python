@@ -1978,6 +1978,7 @@ def test_litellm_responses_with_tool_call(span_exporter: InMemorySpanExporter):
             "name": "get_weather",
             "namespace": None,
             "caller": None,
+            "async_": None,
             "type": "function_call",
             "id": cast(litellm.ResponseOutputItem, response.output[0]).id,
             "status": "completed",
@@ -2157,6 +2158,7 @@ async def test_litellm_responses_with_tool_call_async(
             "id": cast(litellm.ResponseOutputItem, response.output[0]).id,
             "status": "completed",
             "namespace": None,
+            "async_": None,
         }
     ]
     assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"])) == [

@@ -7,9 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
-
-from lmnr.opentelemetry_lib.bridges.base import Bridge, LaminarBridge
+from lmnr.opentelemetry_lib.bridges.base import Bridge, BridgeContext, LaminarBridge
 from lmnr.opentelemetry_lib.bridges.langfuse import LangfuseBridge
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 from lmnr.sdk.log import get_default_logger
@@ -61,15 +59,13 @@ def conflicting_instruments(bridges: Iterable[LaminarBridge]) -> set[Instruments
 
 
 def install_bridges(
-    bridges: Iterable[LaminarBridge],
-    lmnr_tracer_provider: TracerProvider,
-    lmnr_span_processor: SpanProcessor,
+    bridges: Iterable[LaminarBridge], context: BridgeContext
 ) -> list[LaminarBridge]:
     """Install `bridges` and return the ones that are now active."""
     installed: list[LaminarBridge] = []
     for bridge in bridges:
         try:
-            if bridge.install(lmnr_tracer_provider, lmnr_span_processor):
+            if bridge.install(context):
                 installed.append(bridge)
         except Exception:
             logger.warning("Failed to install the %s bridge", bridge.bridge.value, exc_info=True)
@@ -83,6 +79,7 @@ def uninstall_bridges() -> None:
 
 __all__ = [
     "Bridge",
+    "BridgeContext",
     "LaminarBridge",
     "available_bridges",
     "conflicting_instruments",

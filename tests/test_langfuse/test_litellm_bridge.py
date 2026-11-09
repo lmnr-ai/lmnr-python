@@ -84,7 +84,7 @@ def test_litellm_bridge_attaches_to_existing_logger(laminar: Laminar, bridge: La
     original_loggers = list(litellm_logging._in_memory_loggers)
     litellm_logging._in_memory_loggers.append(logger_obj)
     try:
-        assert bridge.install(laminar.provider, laminar.processor)
+        assert bridge.install(laminar.context)
         assert len(_bridge_processors(provider)) == 1
 
         # LiteLLM exports everything on its provider to Langfuse, so
@@ -106,7 +106,7 @@ def test_litellm_bridge_patches_factory_for_late_loggers(laminar: Laminar, bridg
     original_loggers = list(litellm_logging._in_memory_loggers)
     original_factory = litellm_logging._init_custom_logger_compatible_class  # pyright: ignore[reportUnknownVariableType]
     try:
-        assert bridge.install(laminar.provider, laminar.processor)
+        assert bridge.install(laminar.context)
         assert litellm_logging._init_custom_logger_compatible_class is not original_factory
 
         logger_obj = litellm_logging._init_custom_logger_compatible_class(

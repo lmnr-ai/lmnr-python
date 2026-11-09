@@ -398,16 +398,17 @@ class OpenAIRolloutWrapper:
                             type="response.function_call_arguments.delta",
                         )
                     )
-                    events.append(
-                        ResponseFunctionCallArgumentsDoneEvent(
-                            item_id=item_id,
-                            output_index=output_index,
-                            arguments=item.arguments,
-                            name=item.name,
-                            sequence_number=seq(),
-                            type="response.function_call_arguments.done",
-                        )
+                    done = ResponseFunctionCallArgumentsDoneEvent(
+                        item_id=item_id,
+                        output_index=output_index,
+                        arguments=item.arguments,
+                        sequence_number=seq(),
+                        type="response.function_call_arguments.done",
                     )
+                    # openai 3.x dropped `name` from this event; older SDKs have it.
+                    if "name" in ResponseFunctionCallArgumentsDoneEvent.model_fields:
+                        setattr(done, "name", item.name)  # noqa: B010
+                    events.append(done)
 
                 events.append(
                     ResponseOutputItemDoneEvent(

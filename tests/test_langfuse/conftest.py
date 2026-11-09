@@ -13,7 +13,7 @@ from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from typing_extensions import override
 
-from lmnr.opentelemetry_lib.bridges import Bridge, get_bridge
+from lmnr.opentelemetry_lib.bridges import Bridge, BridgeContext, get_bridge
 from lmnr.opentelemetry_lib.bridges.langfuse import LangfuseBridge
 from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 
@@ -62,6 +62,9 @@ class Laminar:
         )
         self.provider: TracerProvider = TracerProvider()
         self.provider.add_span_processor(self.processor)
+        self.context: BridgeContext = BridgeContext(
+            span_processor=self.processor, tracer_provider=self.provider
+        )
 
     def spans(self) -> dict[str, ReadableSpan]:
         return {s.name: s for s in self.exporter.get_finished_spans()}

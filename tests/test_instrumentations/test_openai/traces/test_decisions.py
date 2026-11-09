@@ -9,6 +9,7 @@ from typing import Any, cast
 
 import pytest
 from openai import AsyncOpenAI, BadRequestError, OpenAI
+from openai.types.decision_create_params import InputUnionMember1, Question
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
@@ -22,7 +23,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai import (
 MODEL = "gpt-6-luna"
 INPUT = "The movie was wonderful, though the popcorn was stale."
 
-QUESTIONS = [
+QUESTIONS: list[Question] = [
     {"type": "predicate", "name": "positive", "instructions": "Is it positive?"},
     {
         "type": "choice",
@@ -86,7 +87,7 @@ def _assert_decision_span(span: ReadableSpan, decision: Any) -> None:
 def test_decisions_create(
     instrumentor: OpenAIInstrumentor, span_exporter: InMemorySpanExporter, openai_client: OpenAI
 ):
-    decision = openai_client.decisions.create(  # pyright: ignore[reportAttributeAccessIssue] requires openai >= 3.26
+    decision = openai_client.decisions.create(
         model=MODEL,
         input=INPUT,
         questions=QUESTIONS,
@@ -112,7 +113,7 @@ async def test_decisions_create_async_with_message_input(
     span_exporter: InMemorySpanExporter,
     async_openai_client: AsyncOpenAI,
 ):
-    messages = [
+    messages: list[InputUnionMember1] = [
         {
             "role": "user",
             "content": [
@@ -121,7 +122,7 @@ async def test_decisions_create_async_with_message_input(
             ],
         }
     ]
-    decision = await async_openai_client.decisions.create(  # pyright: ignore[reportAttributeAccessIssue] requires openai >= 3.26
+    decision = await async_openai_client.decisions.create(
         model=MODEL, input=messages, questions=QUESTIONS
     )
 
@@ -138,7 +139,7 @@ def test_decisions_create_with_raw_response(
     span_exporter: InMemorySpanExporter,
     openai_client: OpenAI,
 ):
-    raw = openai_client.decisions.with_raw_response.create(  # pyright: ignore[reportAttributeAccessIssue] requires openai >= 3.26
+    raw = openai_client.decisions.with_raw_response.create(
         model=MODEL, input=INPUT, questions=QUESTIONS
     )
 
@@ -152,7 +153,7 @@ def test_decisions_create_error(
     openai_client: OpenAI,
 ):
     with pytest.raises(BadRequestError):
-        openai_client.decisions.create(  # pyright: ignore[reportAttributeAccessIssue] requires openai >= 3.26
+        openai_client.decisions.create(
             model=MODEL,
             input=INPUT,
             questions=[{"type": "choice", "instructions": "Pick one.", "choices": []}],
@@ -176,7 +177,7 @@ def test_decisions_create_does_not_consume_iterator_params(
     span_exporter: InMemorySpanExporter,
     openai_client: OpenAI,
 ):
-    decision = openai_client.decisions.create(  # pyright: ignore[reportAttributeAccessIssue] requires openai >= 3.26
+    decision = openai_client.decisions.create(
         model=MODEL, input=INPUT, questions=(q for q in QUESTIONS)
     )
 
@@ -198,9 +199,7 @@ def test_decisions_create_without_content_tracing(
     monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.setenv("LMNR_TRACE_CONTENT", "false")
-    decision = openai_client.decisions.create(  # pyright: ignore[reportAttributeAccessIssue] requires openai >= 3.26
-        model=MODEL, input=INPUT, questions=QUESTIONS
-    )
+    decision = openai_client.decisions.create(model=MODEL, input=INPUT, questions=QUESTIONS)
 
     span = _only_span(span_exporter)
     attributes = span.attributes or {}

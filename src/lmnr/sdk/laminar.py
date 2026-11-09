@@ -24,6 +24,7 @@ from typing_extensions import TypedDict
 
 from lmnr.opentelemetry_lib.bridges import (
     Bridge,
+    BridgeContext,
     available_bridges,
     conflicting_instruments,
     install_bridges,
@@ -498,8 +499,10 @@ class Laminar:
         installed_bridges = (
             install_bridges(
                 enabled_bridges,
-                lmnr_tracer_provider=_tracer_wrapper.tracer_provider,
-                lmnr_span_processor=_tracer_wrapper.span_processor,
+                BridgeContext(
+                    span_processor=_tracer_wrapper.span_processor,
+                    tracer_provider=_tracer_wrapper.tracer_provider,
+                ),
             )
             if enabled_bridges
             else []
@@ -1078,12 +1081,15 @@ class Laminar:
             # Get metadata from context if it exists
             ctx_metadata = cast(MetadataType, get_value(CONTEXT_METADATA_KEY, ctx)) or {}
             # Merge with priority: global < context < parent < explicit
-            merged_metadata = {
-                **(cls.__global_metadata or {}),
-                **(ctx_metadata or {}),
-                **(parsed["metadata"] or {}),
-                **(metadata or {}),
-            }
+            merged_metadata = cast(
+                MetadataType,
+                {
+                    **(cls.__global_metadata or {}),
+                    **(ctx_metadata or {}),
+                    **(parsed["metadata"] or {}),
+                    **(metadata or {}),
+                },
+            )
 
             # Get association props from context (fallback values)
             ctx_user_id = cast(str, get_value(CONTEXT_USER_ID_KEY, ctx))
@@ -1339,12 +1345,15 @@ class Laminar:
                         pass
 
             # Merge with priority: global < context < parent < explicit
-            merged_metadata = {
-                **(cls.__global_metadata or {}),
-                **(ctx_metadata or {}),
-                **(parsed.get("metadata") or {}),
-                **(metadata or {}),
-            }
+            merged_metadata = cast(
+                MetadataType,
+                {
+                    **(cls.__global_metadata or {}),
+                    **(ctx_metadata or {}),
+                    **(parsed.get("metadata") or {}),
+                    **(metadata or {}),
+                },
+            )
 
             # Merge user_id and session_id with priority: context < parent < explicit
             final_user_id = (
@@ -1530,11 +1539,14 @@ class Laminar:
         ctx_session_id = cast(str, get_value(CONTEXT_SESSION_ID_KEY, ctx))
         ctx_metadata = cast(MetadataType, get_value(CONTEXT_METADATA_KEY, ctx))
 
-        merged_metadata = {
-            **(cls.__global_metadata or {}),
-            **(ctx_metadata or {}),
-            **(parsed["metadata"] or {}),
-        }
+        merged_metadata = cast(
+            MetadataType,
+            {
+                **(cls.__global_metadata or {}),
+                **(ctx_metadata or {}),
+                **(parsed["metadata"] or {}),
+            },
+        )
         final_user_id = parsed["user_id"] if parsed["user_id"] is not None else ctx_user_id
         final_session_id = (
             parsed["session_id"] if parsed["session_id"] is not None else ctx_session_id

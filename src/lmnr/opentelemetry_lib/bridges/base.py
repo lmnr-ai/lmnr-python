@@ -4,11 +4,20 @@ A bridge sends what a competitor's SDK records (Langfuse, LangSmith,
 Braintrust, ...) to Laminar as well, without changing what the competitor's
 own backend receives. Each one is enabled through
 `Laminar.initialize(bridges=[...])`.
+
+The contract assumes nothing about how a bridge hooks the competitor SDK.
+Langfuse is built on OpenTelemetry, so its bridge adds a span processor to
+Langfuse's tracer provider; a bridge for an SDK that isn't (LangSmith,
+Braintrust) can hook it at the network level and record spans with Laminar's
+tracer instead. Either way the spans reach Laminar through the
+`BridgeContext` passed to `install`. Only the attributes in the last section
+of `LaminarBridge` are specific to OpenTelemetry-based SDKs.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from enum import Enum
 
 from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
@@ -20,6 +29,20 @@ class Bridge(str, Enum):
     """Competitor SDKs that Laminar can bridge from."""
 
     LANGFUSE = "langfuse"
+
+
+@dataclass(frozen=True)
+class BridgeContext:
+    """Laminar's tracing pipeline, as built by `Laminar.initialize`."""
+
+    #: Laminar's span processor. A bridge that receives finished spans from
+    #: the competitor SDK hands Laminar's copies to it directly.
+    span_processor: SpanProcessor
+    #: Laminar's tracer provider. A bridge that builds spans itself (from
+    #: intercepted requests, say) creates them with
+    #: `tracer_provider.get_tracer(...)`, which routes them through
+    #: `span_processor` like any other Laminar span.
+    tracer_provider: TracerProvider
 
 
 class LaminarBridge(ABC):
@@ -41,25 +64,27 @@ class LaminarBridge(ABC):
     #: bridge is enabled.
     conflicting_instruments: frozenset[Instruments] = frozenset()
 
-    #: Whether Laminar's tracing must stay off the global OTel tracer provider
-    #: while this bridge is enabled.
-    requires_private_tracer_provider: bool = False
-
-    #: Whether Laminar spans should nest under spans of the competitor that are
-    #: active in the global OTel context.
-    inherits_global_context: bool = False
-
     @abstractmethod
     def is_available(self) -> bool:
         """Whether a supported version of the competitor SDK is installed."""
 
     @abstractmethod
-    def install(
-        self, lmnr_tracer_provider: TracerProvider, lmnr_span_processor: SpanProcessor
-    ) -> bool:
-        """Start forwarding to `lmnr_span_processor`. Returns whether the
+    def install(self, context: BridgeContext) -> bool:
+        """Start sending to Laminar through `context`. Returns whether the
         bridge is now active. Must never raise."""
 
     @abstractmethod
     def uninstall(self) -> None:
         """Undo `install`. Idempotent; must never raise."""
+
+    # Only for competitor SDKs built on OpenTelemetry, whose spans share the
+    # process's global OTel state with Laminar's. A bridge that hooks its SDK
+    # at the network level leaves both False.
+
+    #: Keep Laminar's tracer provider off the global OTel slot, so the
+    #: competitor SDK doesn't pick it up as its own.
+    requires_private_tracer_provider: bool = False
+
+    #: Nest Laminar spans under the competitor's span that is active in the
+    #: global OTel context.
+    inherits_global_context: bool = False

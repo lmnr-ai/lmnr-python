@@ -8,9 +8,11 @@ Langfuse client on its own provider whose export is recorded
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
+from pathlib import Path
 from typing import Any
 
-import httpx
 import pytest
 from opentelemetry.sdk.trace import TracerProvider
 
@@ -26,6 +28,8 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
 from lmnr.opentelemetry_lib.utils.package_check import get_package_version
 
 from .conftest import Laminar, RecordingExporter, _replace_langfuse_exporter
+
+_OPENAI_SCENARIO = Path(__file__).parent / "scenarios" / "langfuse_openai.py"
 
 # Values that differ between two otherwise identical runs.
 _VOLATILE = {"langfuse.observation.completion_start_time"}
@@ -96,7 +100,7 @@ def test_langfuse_export_is_unchanged_by_the_bridge(laminar: Laminar, bridge: La
 
     with_bridge = RecordingExporter()
     client = _new_client(with_bridge)
-    assert bridge.install(laminar.provider, laminar.processor)
+    assert bridge.install(laminar.context)
     _run_scenario(client)
     client.shutdown()
 
@@ -109,7 +113,7 @@ def test_langfuse_export_is_unchanged_by_the_bridge(laminar: Laminar, bridge: La
 def test_bridged_spans_are_translated(
     laminar: Laminar, bridge: LangfuseBridge, langfuse_client: Any
 ):
-    assert bridge.install(laminar.provider, laminar.processor)
+    assert bridge.install(laminar.context)
     _run_scenario(langfuse_client)
     spans = laminar.spans()
 
@@ -145,7 +149,7 @@ def test_bridged_spans_are_translated(
 
 
 def test_clients_created_after_install_are_bridged(laminar: Laminar, bridge: LangfuseBridge):
-    assert bridge.install(laminar.provider, laminar.processor)
+    assert bridge.install(laminar.context)
     client = _new_client(RecordingExporter())
     _run_scenario(client)
     client.shutdown()
@@ -156,7 +160,7 @@ def test_uninstall_stops_forwarding(laminar: Laminar, bridge: LangfuseBridge, la
     from langfuse._client.resource_manager import LangfuseResourceManager
 
     original_init = LangfuseResourceManager._initialize_instance
-    assert bridge.install(laminar.provider, laminar.processor)
+    assert bridge.install(laminar.context)
     assert LangfuseResourceManager._initialize_instance is not original_init
     bridge.uninstall()
     assert LangfuseResourceManager._initialize_instance is original_init
@@ -173,7 +177,7 @@ def test_only_spans_langfuse_exports_are_forwarded(
 ):
     """Spans from other instrumentations on Langfuse's provider reach Laminar
     exactly when Langfuse exports them (its scope filter, langfuse >= 4)."""
-    assert bridge.install(laminar.provider, laminar.processor)
+    assert bridge.install(laminar.context)
     provider = langfuse_client._resources.tracer_provider
     with provider.get_tracer("some.http.library").start_as_current_span("http-call"):
         pass
@@ -183,74 +187,22 @@ def test_only_spans_langfuse_exports_are_forwarded(
     assert ("http-call" in laminar.spans()) == exported_by_langfuse
 
 
-def _chat_completion(with_tool_call: bool) -> dict[str, Any]:
-    message: dict[str, Any] = {"role": "assistant", "content": None if with_tool_call else "4"}
-    if with_tool_call:
-        message["tool_calls"] = [
-            {
-                "id": "call_1",
-                "type": "function",
-                "function": {"name": "add", "arguments": '{"a": 2, "b": 2}'},
-            }
-        ]
-    return {
-        "id": "chatcmpl-1",
-        "object": "chat.completion",
-        "created": 0,
-        "model": "gpt-4o-2024-08-06",
-        "choices": [
-            {
-                "index": 0,
-                "message": message,
-                "finish_reason": "tool_calls" if with_tool_call else "stop",
-            }
-        ],
-        "usage": {
-            "prompt_tokens": 11,
-            "completion_tokens": 3,
-            "total_tokens": 14,
-            "prompt_tokens_details": {"cached_tokens": 2},
-        },
-    }
-
-
 @pytest.mark.parametrize("with_tools", [False, True])
-def test_langfuse_openai_wrapper(
-    laminar: Laminar, bridge: LangfuseBridge, langfuse_client: Any, with_tools: bool
-):
-    from langfuse.openai import OpenAI
-
-    assert bridge.install(laminar.provider, laminar.processor)
-    client = OpenAI(
-        api_key="sk-test",
-        http_client=httpx.Client(
-            transport=httpx.MockTransport(
-                lambda _request: httpx.Response(200, json=_chat_completion(with_tools))
-            )
-        ),
+def test_langfuse_openai_wrapper(with_tools: bool):
+    """`langfuse.openai` patches the openai SDK for the whole process, so this
+    runs in a subprocess (`scenarios/langfuse_openai.py`)."""
+    result = subprocess.run(
+        [sys.executable, str(_OPENAI_SCENARIO), "1" if with_tools else "0"],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
     )
-    tools = [
-        {
-            "type": "function",
-            "function": {
-                "name": "add",
-                "parameters": {"type": "object", "properties": {"a": {}, "b": {}}},
-            },
-        }
-    ]
-    kwargs: dict[str, Any] = {"tools": tools} if with_tools else {}
-    _response = client.chat.completions.create(
-        model="gpt-4o", messages=[{"role": "user", "content": "2+2?"}], **kwargs
-    )
-    langfuse_client.flush()
+    assert result.returncode == 0, result.stderr[-3000:]
+    llm_spans: list[dict[str, Any]] = json.loads(result.stdout.strip().splitlines()[-1])
 
-    llm_spans = [
-        s
-        for s in laminar.exporter.get_finished_spans()
-        if (s.attributes or {}).get(SPAN_TYPE) == "LLM"
-    ]
     assert len(llm_spans) == 1
-    attributes = dict(llm_spans[0].attributes or {})
+    attributes = llm_spans[0]
     assert attributes["gen_ai.request.model"] == "gpt-4o-2024-08-06"
     assert attributes["gen_ai.usage.input_tokens"] == 11
     assert attributes["gen_ai.usage.output_tokens"] == 3

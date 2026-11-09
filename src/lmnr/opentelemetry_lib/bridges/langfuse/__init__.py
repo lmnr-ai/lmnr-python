@@ -16,10 +16,9 @@ Langfuse's own spans and export are left exactly as they were.
 
 from __future__ import annotations
 
-from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
 from typing_extensions import override
 
-from lmnr.opentelemetry_lib.bridges.base import Bridge, LaminarBridge
+from lmnr.opentelemetry_lib.bridges.base import Bridge, BridgeContext, LaminarBridge
 from lmnr.opentelemetry_lib.bridges.langfuse.litellm_bridge import LiteLLMLangfuseBridge
 from lmnr.opentelemetry_lib.bridges.langfuse.provider_attachment import ProviderAttachment
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
@@ -96,9 +95,7 @@ class LangfuseBridge(LaminarBridge):
         return self._attachment is not None
 
     @override
-    def install(
-        self, lmnr_tracer_provider: TracerProvider, lmnr_span_processor: SpanProcessor
-    ) -> bool:
+    def install(self, context: BridgeContext) -> bool:
         self.uninstall()
         version = _langfuse_version()
         major = _major(version)
@@ -111,8 +108,9 @@ class LangfuseBridge(LaminarBridge):
             )
             return False
         attachment = ProviderAttachment(
-            lmnr_span_processor,
-            lmnr_tracer_provider,
+            context.span_processor,
+            # Never attach to Laminar's own provider.
+            context.tracer_provider,
             bridge_version=version,
             # langfuse 5 JSON-encodes metadata values.
             json_encoded_metadata=major >= 5,
