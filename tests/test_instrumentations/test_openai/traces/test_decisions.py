@@ -1,9 +1,6 @@
 """Decisions API (`client.decisions.create`, openai>=3.26.0).
 
-The dev env pins `openai==2.30.0` (litellm caps `openai<3`), which has no
-Decisions resource, so this module is skipped there and CI runs it in a
-separate step with `--with openai==3.26.0`. Cassettes were recorded against
-`gpt-6-luna`; assertions compare the span against the parsed response rather
+Cassettes were recorded against `gpt-6-luna`; assertions compare the span against the parsed response rather
 than hard-coded scores, so re-recording doesn't require editing them.
 """
 
@@ -11,19 +8,16 @@ import json
 from typing import Any, cast
 
 import pytest
-from opentelemetry.sdk.trace import ReadableSpan
-
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai import (
-    OpenAIInstrumentor,
-)
-
-pytest.importorskip("openai.resources.decisions")
-
 from openai import AsyncOpenAI, BadRequestError, OpenAI
+from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
 from opentelemetry.trace import StatusCode
+
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai import (
+    OpenAIInstrumentor,
+)
 
 MODEL = "gpt-6-luna"
 INPUT = "The movie was wonderful, though the popcorn was stale."

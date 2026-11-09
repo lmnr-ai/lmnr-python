@@ -42,5 +42,5 @@
 ## Tests
 
 - `tests/test_langfuse/`: `test_translator.py` (pure translation, no SDK), `test_bridge.py` (real `Langfuse(tracer_provider=TracerProvider())` client, recording exporter swapped into `LangfuseSpanProcessor`, separate `LaminarSpanProcessor` with an in-memory exporter), `test_litellm_bridge.py`, and `test_initialize_with_bridge.py`, which runs `scenarios/initialize_with_bridge.py` in a subprocess per case because the global provider and instrumentation can only be set once per process.
-- The dev pin is langfuse 4.15.0: langfuse 5.x (and 4.18+) need opentelemetry-sdk >= 1.45, which the pinned google-adk excludes. `run-tests.yml` runs `tests/test_langfuse` against 5.2.0 (with matching 1.45 OTLP exporters) and 3.15.0 overlays. Locally: `uv run --with langfuse==5.2.0 --with opentelemetry-exporter-otlp-proto-grpc==1.45.1 --with opentelemetry-exporter-otlp-proto-http==1.45.1 pytest tests/test_langfuse`.
+- The dev pin is langfuse 5.2.0. `run-tests.yml` runs `tests/test_langfuse` against 4.15.0 and 3.15.0 overlays. Locally: `uv run --with langfuse==4.15.0 pytest tests/test_langfuse`.
 - langfuse 3.15, 4.15, 4.18 and 5.2 all import on Python 3.14 (the old pydantic-v1 problem is gone).

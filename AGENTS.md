@@ -32,7 +32,7 @@ lmnr datasets pull <id>       # Pull dataset
 ```
 
 - CI: `lint.yml` (ruff check + format check), `typecheck.yml` (basedpyright), `run-tests.yml` (pytest).
-- `run-tests.yml` has `uv run --with <pkg>==X ...` overlay steps. `openai==3.26.0` is a temporary workaround (litellm caps `openai<3`). `mcp==1.30.0` is permanent while mcp 1.x is supported: the dev pin is mcp 2.x and the 1.x instrumentation is a separate set of wrappers (`instrumentation/mcp/AGENTS.md`). The two `langfuse` overlays (5.x, 3.x) are permanent too: the Langfuse bridge supports three majors and the dev pin can only hold one (`bridges/langfuse/AGENTS.md`). Do not add more overlays without a reason of the same kind.
+- `run-tests.yml` has `uv run --with <pkg>==X ...` overlay steps. `mcp==1.30.0` is permanent while mcp 1.x is supported: the dev pin is mcp 2.x and the 1.x instrumentation is a separate set of wrappers (`instrumentation/mcp/AGENTS.md`). The two `langfuse` overlays (4.x, 3.x) are permanent too: the Langfuse bridge supports three majors and the dev pin can only hold one (`bridges/langfuse/AGENTS.md`). Do not add more overlays without a reason of the same kind.
 - The husky pre-commit hook (`.husky/pre-commit`) runs `ruff check --fix` + `ruff format` on staged Python files and fails the commit if ruff changed anything; re-stage and commit again.
 
 ## Tooling
