@@ -8,6 +8,8 @@ from collections.abc import Generator
 from typing import Any, cast
 
 import pytest
+from langfuse import Langfuse
+from langfuse._client.resource_manager import LangfuseResourceManager
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
@@ -95,9 +97,6 @@ def langfuse_export() -> RecordingExporter:
 def langfuse_client(langfuse_export: RecordingExporter) -> Generator[Any, None, None]:
     """A real Langfuse client on its own provider, exporting to
     `langfuse_export` synchronously."""
-    from langfuse import Langfuse
-    from langfuse._client.resource_manager import LangfuseResourceManager
-
     LangfuseResourceManager._instances.clear()
     client = Langfuse(tracer_provider=TracerProvider())
     _replace_langfuse_exporter(client, langfuse_export)
@@ -109,8 +108,6 @@ def langfuse_client(langfuse_export: RecordingExporter) -> Generator[Any, None, 
 def _replace_langfuse_exporter(client: Any, exporter: SpanExporter) -> None:
     """Swap the OTLP exporter inside `LangfuseSpanProcessor` (a
     `BatchSpanProcessor`) for `exporter`. Its batching is kept; tests flush."""
-    from langfuse._client.resource_manager import LangfuseResourceManager
-
     for rm in LangfuseResourceManager._instances.values():
         active = cast(Any, rm.tracer_provider)._active_span_processor
         for proc in getattr(active, "_span_processors", ()):

@@ -398,17 +398,18 @@ class OpenAIRolloutWrapper:
                             type="response.function_call_arguments.delta",
                         )
                     )
-                    done = ResponseFunctionCallArgumentsDoneEvent(
-                        item_id=item_id,
-                        output_index=output_index,
-                        arguments=item.arguments,
-                        sequence_number=seq(),
-                        type="response.function_call_arguments.done",
-                    )
-                    # openai 3.x dropped `name` from this event; older SDKs have it.
+                    done_fields: dict[str, Any] = {
+                        "item_id": item_id,
+                        "output_index": output_index,
+                        "arguments": item.arguments,
+                        "sequence_number": seq(),
+                        "type": "response.function_call_arguments.done",
+                    }
+                    # openai 3.x dropped `name` from this event; before that it
+                    # is a required field, so it must be passed to the constructor.
                     if "name" in ResponseFunctionCallArgumentsDoneEvent.model_fields:
-                        setattr(done, "name", item.name)  # noqa: B010
-                    events.append(done)
+                        done_fields["name"] = item.name
+                    events.append(ResponseFunctionCallArgumentsDoneEvent(**done_fields))
 
                 events.append(
                     ResponseOutputItemDoneEvent(

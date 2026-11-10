@@ -16,6 +16,7 @@ Langfuse's own spans and export are left exactly as they were.
 
 from __future__ import annotations
 
+from packaging.version import InvalidVersion, parse
 from typing_extensions import override
 
 from lmnr.opentelemetry_lib.bridges.base import Bridge, BridgeContext, LaminarBridge
@@ -37,8 +38,6 @@ def _langfuse_version() -> str | None:
 
 
 def _major(version: str | None) -> int | None:
-    from packaging.version import InvalidVersion, parse
-
     if version is None:
         return None
     try:

@@ -15,53 +15,55 @@ from typing import Any, cast
 
 from opentelemetry.context import Context
 from opentelemetry.sdk.trace import Event, ReadableSpan, Span, SpanProcessor
+from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
+    GEN_AI_INPUT_MESSAGES,
+    GEN_AI_OUTPUT_MESSAGES,
+    GEN_AI_REQUEST_MODEL,
+    GEN_AI_RESPONSE_MODEL,
+    GEN_AI_TOOL_DEFINITIONS,
+    GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS,
+    GEN_AI_USAGE_INPUT_TOKENS,
+    GEN_AI_USAGE_OUTPUT_TOKENS,
+    GEN_AI_USAGE_REASONING_OUTPUT_TOKENS,
+)
 from opentelemetry.trace import StatusCode
 from opentelemetry.util.types import AttributeValue
 from typing_extensions import override
 
 from lmnr.opentelemetry_lib.bridges.base import Bridge
 from lmnr.opentelemetry_lib.bridges.langfuse.attributes import (
-    _GEN_AI_INPUT_MESSAGES,  # pyright: ignore[reportPrivateUsage]
-    _GEN_AI_OUTPUT_MESSAGES,  # pyright: ignore[reportPrivateUsage]
-    _GEN_AI_REQUEST_MODEL,  # pyright: ignore[reportPrivateUsage]
-    _GEN_AI_RESPONSE_MODEL,  # pyright: ignore[reportPrivateUsage]
-    _GEN_AI_TOOL_DEFINITIONS,  # pyright: ignore[reportPrivateUsage]
-    _GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS,  # pyright: ignore[reportPrivateUsage]
-    _GEN_AI_USAGE_CACHE_WRITE_INPUT_TOKENS,  # pyright: ignore[reportPrivateUsage]
-    _GEN_AI_USAGE_INPUT_COST,  # pyright: ignore[reportPrivateUsage]
-    _GEN_AI_USAGE_INPUT_TOKENS,  # pyright: ignore[reportPrivateUsage]
-    _GEN_AI_USAGE_OUTPUT_COST,  # pyright: ignore[reportPrivateUsage]
-    _GEN_AI_USAGE_OUTPUT_TOKENS,  # pyright: ignore[reportPrivateUsage]
-    _GEN_AI_USAGE_REASONING_OUTPUT_TOKENS,  # pyright: ignore[reportPrivateUsage]
-    _GEN_AI_USAGE_TOTAL_COST,  # pyright: ignore[reportPrivateUsage]
-    _GEN_AI_USAGE_TOTAL_TOKENS,  # pyright: ignore[reportPrivateUsage]
-    _LLM_OBSERVATION_TYPES,  # pyright: ignore[reportPrivateUsage]
-    _OBSERVATION_COST_DETAILS,  # pyright: ignore[reportPrivateUsage]
-    _OBSERVATION_INPUT,  # pyright: ignore[reportPrivateUsage]
-    _OBSERVATION_LEVEL,  # pyright: ignore[reportPrivateUsage]
-    _OBSERVATION_MODEL,  # pyright: ignore[reportPrivateUsage]
-    _OBSERVATION_OUTPUT,  # pyright: ignore[reportPrivateUsage]
-    _OBSERVATION_STATUS_MESSAGE,  # pyright: ignore[reportPrivateUsage]
-    _OBSERVATION_TYPE,  # pyright: ignore[reportPrivateUsage]
-    _OBSERVATION_USAGE_DETAILS,  # pyright: ignore[reportPrivateUsage]
-    _OI_INPUT_VALUE,  # pyright: ignore[reportPrivateUsage]
-    _OI_LLM_INPUT_MESSAGES,  # pyright: ignore[reportPrivateUsage]
-    _OI_LLM_MODEL_NAME,  # pyright: ignore[reportPrivateUsage]
-    _OI_LLM_OUTPUT_MESSAGES,  # pyright: ignore[reportPrivateUsage]
-    _OI_LLM_SPAN_KINDS,  # pyright: ignore[reportPrivateUsage]
-    _OI_LLM_TOOLS,  # pyright: ignore[reportPrivateUsage]
-    _OI_OUTPUT_VALUE,  # pyright: ignore[reportPrivateUsage]
-    _OI_SPAN_KIND,  # pyright: ignore[reportPrivateUsage]
-    _OI_TOKEN_COMPLETION,  # pyright: ignore[reportPrivateUsage]
-    _OI_TOKEN_PROMPT,  # pyright: ignore[reportPrivateUsage]
-    _OI_TOKEN_TOTAL,  # pyright: ignore[reportPrivateUsage]
-    _TOOL_OBSERVATION_TYPES,  # pyright: ignore[reportPrivateUsage]
-    _TRACE_INPUT,  # pyright: ignore[reportPrivateUsage]
-    _TRACE_METADATA_PREFIX,  # pyright: ignore[reportPrivateUsage]
-    _TRACE_OUTPUT,  # pyright: ignore[reportPrivateUsage]
-    _TRACE_SESSION_ID,  # pyright: ignore[reportPrivateUsage]
-    _TRACE_TAGS,  # pyright: ignore[reportPrivateUsage]
-    _TRACE_USER_ID,  # pyright: ignore[reportPrivateUsage]
+    GEN_AI_USAGE_CACHE_WRITE_INPUT_TOKENS,
+    GEN_AI_USAGE_COST,
+    GEN_AI_USAGE_INPUT_COST,
+    GEN_AI_USAGE_OUTPUT_COST,
+    LF_LLM_OBSERVATION_TYPES,
+    LF_OBSERVATION_COST_DETAILS,
+    LF_OBSERVATION_INPUT,
+    LF_OBSERVATION_LEVEL,
+    LF_OBSERVATION_MODEL,
+    LF_OBSERVATION_OUTPUT,
+    LF_OBSERVATION_STATUS_MESSAGE,
+    LF_OBSERVATION_TYPE,
+    LF_OBSERVATION_USAGE_DETAILS,
+    LF_TOOL_OBSERVATION_TYPES,
+    LF_TRACE_INPUT,
+    LF_TRACE_METADATA_PREFIX,
+    LF_TRACE_OUTPUT,
+    LF_TRACE_SESSION_ID,
+    LF_TRACE_TAGS,
+    LF_TRACE_USER_ID,
+    LLM_USAGE_TOTAL_TOKENS,
+    OI_INPUT_VALUE,
+    OI_LLM_INPUT_MESSAGES,
+    OI_LLM_MODEL_NAME,
+    OI_LLM_OUTPUT_MESSAGES,
+    OI_LLM_SPAN_KINDS,
+    OI_LLM_TOOLS,
+    OI_OUTPUT_VALUE,
+    OI_SPAN_KIND,
+    OI_TOKEN_COMPLETION,
+    OI_TOKEN_PROMPT,
+    OI_TOKEN_TOTAL,
 )
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
@@ -111,19 +113,19 @@ def _promote_trace_attributes(
     """Map trace-level session / user / tags / metadata to Laminar
     association properties. Observation-level metadata is left raw: it is
     mostly integration noise (LangChain's `ls_*` keys)."""
-    session_id = attrs.get(_TRACE_SESSION_ID)
+    session_id = attrs.get(LF_TRACE_SESSION_ID)
     if isinstance(session_id, str) and session_id:
         new_attrs[f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}"] = session_id
-    user_id = attrs.get(_TRACE_USER_ID)
+    user_id = attrs.get(LF_TRACE_USER_ID)
     if isinstance(user_id, str) and user_id:
         new_attrs[f"{ASSOCIATION_PROPERTIES}.{USER_ID}"] = user_id
 
-    tags = attrs.get(_TRACE_TAGS)
+    tags = attrs.get(LF_TRACE_TAGS)
     if isinstance(tags, (list, tuple)) and tags:
         new_attrs[f"{ASSOCIATION_PROPERTIES}.tags"] = [str(tag) for tag in tags]
 
     for k, v in attrs.items():
-        if k == _TRACE_METADATA_PREFIX:
+        if k == LF_TRACE_METADATA_PREFIX:
             # Unflattened form: one JSON object.
             parsed = parse_json(v)
             if isinstance(parsed, dict):
@@ -131,8 +133,8 @@ def _promote_trace_attributes(
                     new_attrs[f"{ASSOCIATION_PROPERTIES}.metadata.{mk}"] = _metadata_value(
                         mv, False
                     )
-        elif k.startswith(_TRACE_METADATA_PREFIX + "."):
-            sub = k[len(_TRACE_METADATA_PREFIX) + 1 :]
+        elif k.startswith(LF_TRACE_METADATA_PREFIX + "."):
+            sub = k[len(LF_TRACE_METADATA_PREFIX) + 1 :]
             new_attrs[f"{ASSOCIATION_PROPERTIES}.metadata.{sub}"] = _metadata_value(
                 v, json_encoded_metadata
             )
@@ -144,40 +146,40 @@ def _translate_langfuse(
     new_attrs: dict[str, AttributeValue] = {}
 
     is_llm = False
-    obs_type = attrs.get(_OBSERVATION_TYPE)
+    obs_type = attrs.get(LF_OBSERVATION_TYPE)
     if isinstance(obs_type, str):
-        if obs_type.lower() in _LLM_OBSERVATION_TYPES:
+        if obs_type.lower() in LF_LLM_OBSERVATION_TYPES:
             new_attrs[SPAN_TYPE] = "LLM"
             is_llm = True
-        elif obs_type.lower() in _TOOL_OBSERVATION_TYPES:
+        elif obs_type.lower() in LF_TOOL_OBSERVATION_TYPES:
             new_attrs[SPAN_TYPE] = "TOOL"
 
-    model = attrs.get(_OBSERVATION_MODEL)
+    model = attrs.get(LF_OBSERVATION_MODEL)
     if isinstance(model, str) and model:
-        new_attrs[_GEN_AI_REQUEST_MODEL] = model
-        new_attrs[_GEN_AI_RESPONSE_MODEL] = model
+        new_attrs[GEN_AI_REQUEST_MODEL] = model
+        new_attrs[GEN_AI_RESPONSE_MODEL] = model
 
     new_attrs.update(
         usage_attributes(
-            parse_json(attrs.get(_OBSERVATION_USAGE_DETAILS)),
-            parse_json(attrs.get(_OBSERVATION_COST_DETAILS)),
+            parse_json(attrs.get(LF_OBSERVATION_USAGE_DETAILS)),
+            parse_json(attrs.get(LF_OBSERVATION_COST_DETAILS)),
             tokens=(
-                _GEN_AI_USAGE_INPUT_TOKENS,
-                _GEN_AI_USAGE_OUTPUT_TOKENS,
-                _GEN_AI_USAGE_TOTAL_TOKENS,
-                _GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS,
-                _GEN_AI_USAGE_CACHE_WRITE_INPUT_TOKENS,
-                _GEN_AI_USAGE_REASONING_OUTPUT_TOKENS,
+                GEN_AI_USAGE_INPUT_TOKENS,
+                GEN_AI_USAGE_OUTPUT_TOKENS,
+                LLM_USAGE_TOTAL_TOKENS,
+                GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS,
+                GEN_AI_USAGE_CACHE_WRITE_INPUT_TOKENS,
+                GEN_AI_USAGE_REASONING_OUTPUT_TOKENS,
             ),
-            costs=(_GEN_AI_USAGE_INPUT_COST, _GEN_AI_USAGE_OUTPUT_COST, _GEN_AI_USAGE_TOTAL_COST),
+            costs=(GEN_AI_USAGE_INPUT_COST, GEN_AI_USAGE_OUTPUT_COST, GEN_AI_USAGE_COST),
         )
     )
 
     # LLM input/output becomes GenAI messages so the transcript view renders;
     # anything else (or an unrecognized LLM shape) stays a raw blob.
-    input_raw = attrs.get(_OBSERVATION_INPUT)
+    input_raw = attrs.get(LF_OBSERVATION_INPUT)
     if input_raw is None:
-        input_raw = attrs.get(_TRACE_INPUT)
+        input_raw = attrs.get(LF_TRACE_INPUT)
     input_handled = False
     if is_llm and input_raw is not None:
         split = genai_input_from_langfuse(input_raw)
@@ -185,18 +187,18 @@ def _translate_langfuse(
             messages, tools = split
             messages, lc_tools = split_messages_and_tool_defs_langchain(messages)
             messages = convert_openai_tool_calls_to_content_parts(messages, False)
-            new_attrs[_GEN_AI_INPUT_MESSAGES] = json_dumps(messages)
+            new_attrs[GEN_AI_INPUT_MESSAGES] = json_dumps(messages)
             if tools:
-                new_attrs[_GEN_AI_TOOL_DEFINITIONS] = json_dumps(tools)
+                new_attrs[GEN_AI_TOOL_DEFINITIONS] = json_dumps(tools)
             elif lc_tools:
-                new_attrs[_GEN_AI_TOOL_DEFINITIONS] = json_dumps(lc_tools)
+                new_attrs[GEN_AI_TOOL_DEFINITIONS] = json_dumps(lc_tools)
             input_handled = True
     if not input_handled and isinstance(input_raw, str) and input_raw and SPAN_INPUT not in attrs:
         new_attrs[SPAN_INPUT] = input_raw
 
-    output_raw = attrs.get(_OBSERVATION_OUTPUT)
+    output_raw = attrs.get(LF_OBSERVATION_OUTPUT)
     if output_raw is None:
-        output_raw = attrs.get(_TRACE_OUTPUT)
+        output_raw = attrs.get(LF_TRACE_OUTPUT)
     output_handled = False
     if is_llm and output_raw is not None:
         messages = genai_output_from_langfuse(output_raw)
@@ -206,7 +208,7 @@ def _translate_langfuse(
                     messages,
                     True,  # pyright: ignore[reportUnknownArgumentType]
                 )
-            new_attrs[_GEN_AI_OUTPUT_MESSAGES] = json_dumps(messages)
+            new_attrs[GEN_AI_OUTPUT_MESSAGES] = json_dumps(messages)
             output_handled = True
     if (
         not output_handled
@@ -230,69 +232,68 @@ def _translate_openinference(
     # LiteLLM's `langfuse_otel` callback forces `openinference.span.kind=TOOL`
     # on any completion that passes `tools=[...]`, so a TOOL kind is only
     # trusted when the span carries no LLM signal.
-    kind = attrs.get(_OI_SPAN_KIND)
+    kind = attrs.get(OI_SPAN_KIND)
     has_llm_signals = (
-        _OI_LLM_MODEL_NAME in attrs
-        or _OI_TOKEN_PROMPT in attrs
-        or _OI_TOKEN_COMPLETION in attrs
-        or _OI_TOKEN_TOTAL in attrs
+        OI_LLM_MODEL_NAME in attrs
+        or OI_TOKEN_PROMPT in attrs
+        or OI_TOKEN_COMPLETION in attrs
+        or OI_TOKEN_TOTAL in attrs
         or any(
-            k.startswith((_OI_LLM_INPUT_MESSAGES + ".", _OI_LLM_OUTPUT_MESSAGES + "."))
-            for k in attrs
+            k.startswith((OI_LLM_INPUT_MESSAGES + ".", OI_LLM_OUTPUT_MESSAGES + ".")) for k in attrs
         )
     )
-    is_llm = (isinstance(kind, str) and kind.upper() in _OI_LLM_SPAN_KINDS) or has_llm_signals
+    is_llm = (isinstance(kind, str) and kind.upper() in OI_LLM_SPAN_KINDS) or has_llm_signals
     if is_llm:
         new_attrs[SPAN_TYPE] = "LLM"
     elif isinstance(kind, str) and kind.upper() == "TOOL":
         new_attrs[SPAN_TYPE] = "TOOL"
 
-    model = attrs.get(_OI_LLM_MODEL_NAME)
+    model = attrs.get(OI_LLM_MODEL_NAME)
     if isinstance(model, str) and model:
-        new_attrs[_GEN_AI_REQUEST_MODEL] = model
-        new_attrs[_GEN_AI_RESPONSE_MODEL] = model
+        new_attrs[GEN_AI_REQUEST_MODEL] = model
+        new_attrs[GEN_AI_RESPONSE_MODEL] = model
 
-    prompt_tokens = attrs.get(_OI_TOKEN_PROMPT)
-    completion_tokens = attrs.get(_OI_TOKEN_COMPLETION)
-    total_tokens = attrs.get(_OI_TOKEN_TOTAL)
+    prompt_tokens = attrs.get(OI_TOKEN_PROMPT)
+    completion_tokens = attrs.get(OI_TOKEN_COMPLETION)
+    total_tokens = attrs.get(OI_TOKEN_TOTAL)
     if isinstance(prompt_tokens, (int, float)):
-        new_attrs[_GEN_AI_USAGE_INPUT_TOKENS] = int(prompt_tokens)
+        new_attrs[GEN_AI_USAGE_INPUT_TOKENS] = int(prompt_tokens)
     if isinstance(completion_tokens, (int, float)):
-        new_attrs[_GEN_AI_USAGE_OUTPUT_TOKENS] = int(completion_tokens)
+        new_attrs[GEN_AI_USAGE_OUTPUT_TOKENS] = int(completion_tokens)
     if isinstance(total_tokens, (int, float)):
-        new_attrs[_GEN_AI_USAGE_TOTAL_TOKENS] = int(total_tokens)
+        new_attrs[LLM_USAGE_TOTAL_TOKENS] = int(total_tokens)
     elif isinstance(prompt_tokens, (int, float)) or isinstance(completion_tokens, (int, float)):
-        new_attrs[_GEN_AI_USAGE_TOTAL_TOKENS] = int(
+        new_attrs[LLM_USAGE_TOTAL_TOKENS] = int(
             (cast(int | float, prompt_tokens) or 0) + (cast(int | float, completion_tokens) or 0)
         )
 
     input_messages = [
-        oi_message_to_genai(m) for m in oi_collect_indexed(attrs, _OI_LLM_INPUT_MESSAGES)
+        oi_message_to_genai(m) for m in oi_collect_indexed(attrs, OI_LLM_INPUT_MESSAGES)
     ]
     if input_messages:
-        new_attrs[_GEN_AI_INPUT_MESSAGES] = json_dumps(input_messages)
+        new_attrs[GEN_AI_INPUT_MESSAGES] = json_dumps(input_messages)
     output_messages = [
-        oi_message_to_genai(m) for m in oi_collect_indexed(attrs, _OI_LLM_OUTPUT_MESSAGES)
+        oi_message_to_genai(m) for m in oi_collect_indexed(attrs, OI_LLM_OUTPUT_MESSAGES)
     ]
     if output_messages:
-        new_attrs[_GEN_AI_OUTPUT_MESSAGES] = json_dumps(output_messages)
+        new_attrs[GEN_AI_OUTPUT_MESSAGES] = json_dumps(output_messages)
 
-    tools = [oi_tool_to_genai(t) for t in oi_collect_indexed(attrs, _OI_LLM_TOOLS)]
+    tools = [oi_tool_to_genai(t) for t in oi_collect_indexed(attrs, OI_LLM_TOOLS)]
     tools = [t for t in tools if t]
     if tools:
-        new_attrs[_GEN_AI_TOOL_DEFINITIONS] = json_dumps(tools)
+        new_attrs[GEN_AI_TOOL_DEFINITIONS] = json_dumps(tools)
 
     # LiteLLM's hybrid spans also carry `langfuse.observation.input/output`.
     if not input_messages:
-        in_val = attrs.get(_OI_INPUT_VALUE)
+        in_val = attrs.get(OI_INPUT_VALUE)
         if not (isinstance(in_val, str) and in_val):
-            in_val = attrs.get(_OBSERVATION_INPUT)
+            in_val = attrs.get(LF_OBSERVATION_INPUT)
         if isinstance(in_val, str) and in_val and SPAN_INPUT not in attrs:
             new_attrs[SPAN_INPUT] = in_val
     if not output_messages:
-        out_val = attrs.get(_OI_OUTPUT_VALUE)
+        out_val = attrs.get(OI_OUTPUT_VALUE)
         if not (isinstance(out_val, str) and out_val):
-            out_val = attrs.get(_OBSERVATION_OUTPUT)
+            out_val = attrs.get(LF_OBSERVATION_OUTPUT)
         if isinstance(out_val, str) and out_val and SPAN_OUTPUT not in attrs:
             new_attrs[SPAN_OUTPUT] = out_val
 
@@ -334,10 +335,10 @@ def error_event(span: ReadableSpan) -> Event | None:
         return None
     attrs = span.attributes or {}
     status = span.status
-    failed = status.status_code == StatusCode.ERROR or attrs.get(_OBSERVATION_LEVEL) == "ERROR"
+    failed = status.status_code == StatusCode.ERROR or attrs.get(LF_OBSERVATION_LEVEL) == "ERROR"
     if not failed:
         return None
-    message = attrs.get(_OBSERVATION_STATUS_MESSAGE) or status.description or ""
+    message = attrs.get(LF_OBSERVATION_STATUS_MESSAGE) or status.description or ""
     return Event(
         name="exception",
         attributes={"exception.type": "Error", "exception.message": str(message)},

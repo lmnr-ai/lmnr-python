@@ -77,7 +77,7 @@ class LiteLLMLangfuseBridge:
                 logger.debug("LiteLLM cache-provider attach failed", exc_info=True)
             return tracer
 
-        logger_obj._get_tracer_with_dynamic_headers = patched_get_tracer  # pyright: ignore[reportPrivateUsage]
+        logger_obj._get_tracer_with_dynamic_headers = patched_get_tracer
         self._wrapped_loggers[id(logger_obj)] = (logger_obj, orig_get_tracer)
 
     def patch_logger_factory(self) -> None:
@@ -109,7 +109,7 @@ class LiteLLMLangfuseBridge:
                 logger.debug("LiteLLM post-init attach failed", exc_info=True)
             return result
 
-        litellm_logging._init_custom_logger_compatible_class = patched  # pyright: ignore[reportPrivateUsage]
+        litellm_logging._init_custom_logger_compatible_class = patched
 
     def unpatch_logger_factory(self) -> None:
         if self._original_litellm_init_logger is None:
@@ -117,7 +117,7 @@ class LiteLLMLangfuseBridge:
         try:
             from litellm.litellm_core_utils import litellm_logging
 
-            litellm_logging._init_custom_logger_compatible_class = (  # pyright: ignore[reportPrivateUsage]
+            litellm_logging._init_custom_logger_compatible_class = (
                 self._original_litellm_init_logger
             )
         except Exception:
@@ -128,7 +128,7 @@ class LiteLLMLangfuseBridge:
     def unwrap_loggers(self) -> None:
         for logger_obj, orig_get_tracer in list(self._wrapped_loggers.values()):
             try:
-                logger_obj._get_tracer_with_dynamic_headers = orig_get_tracer  # pyright: ignore[reportPrivateUsage]
+                logger_obj._get_tracer_with_dynamic_headers = orig_get_tracer
             except Exception:
                 logger.debug("Could not restore LiteLLM logger wrap", exc_info=True)
         self._wrapped_loggers = {}

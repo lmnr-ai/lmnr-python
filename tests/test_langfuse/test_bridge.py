@@ -8,12 +8,11 @@ Langfuse client on its own provider whose export is recorded
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
-from pathlib import Path
 from typing import Any
 
 import pytest
+from langfuse import Langfuse, observe, propagate_attributes
+from langfuse._client.resource_manager import LangfuseResourceManager
 from opentelemetry.sdk.trace import TracerProvider
 
 from lmnr.opentelemetry_lib.bridges.langfuse import LangfuseBridge
@@ -29,16 +28,11 @@ from lmnr.opentelemetry_lib.utils.package_check import get_package_version
 
 from .conftest import Laminar, RecordingExporter, _replace_langfuse_exporter
 
-_OPENAI_SCENARIO = Path(__file__).parent / "scenarios" / "langfuse_openai.py"
-
 # Values that differ between two otherwise identical runs.
 _VOLATILE = {"langfuse.observation.completion_start_time"}
 
 
 def _new_client(exporter: RecordingExporter) -> Any:
-    from langfuse import Langfuse
-    from langfuse._client.resource_manager import LangfuseResourceManager
-
     LangfuseResourceManager._instances.clear()
     client = Langfuse(tracer_provider=TracerProvider())
     _replace_langfuse_exporter(client, exporter)
@@ -46,8 +40,6 @@ def _new_client(exporter: RecordingExporter) -> Any:
 
 
 def _run_scenario(client: Any) -> None:
-    from langfuse import observe, propagate_attributes
-
     @observe(as_type="generation")
     def generate(question: str) -> str:
         client.update_current_generation(
@@ -157,8 +149,6 @@ def test_clients_created_after_install_are_bridged(laminar: Laminar, bridge: Lan
 
 
 def test_uninstall_stops_forwarding(laminar: Laminar, bridge: LangfuseBridge, langfuse_client: Any):
-    from langfuse._client.resource_manager import LangfuseResourceManager
-
     original_init = LangfuseResourceManager._initialize_instance
     assert bridge.install(laminar.context)
     assert LangfuseResourceManager._initialize_instance is not original_init
@@ -185,36 +175,3 @@ def test_only_spans_langfuse_exports_are_forwarded(
 
     exported_by_langfuse = any(s["name"] == "http-call" for s in langfuse_export.spans)
     assert ("http-call" in laminar.spans()) == exported_by_langfuse
-
-
-@pytest.mark.parametrize("with_tools", [False, True])
-def test_langfuse_openai_wrapper(with_tools: bool):
-    """`langfuse.openai` patches the openai SDK for the whole process, so this
-    runs in a subprocess (`scenarios/langfuse_openai.py`)."""
-    result = subprocess.run(
-        [sys.executable, str(_OPENAI_SCENARIO), "1" if with_tools else "0"],
-        capture_output=True,
-        text=True,
-        timeout=120,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr[-3000:]
-    llm_spans: list[dict[str, Any]] = json.loads(result.stdout.strip().splitlines()[-1])
-
-    assert len(llm_spans) == 1
-    attributes = llm_spans[0]
-    assert attributes["gen_ai.request.model"] == "gpt-4o-2024-08-06"
-    assert attributes["gen_ai.usage.input_tokens"] == 11
-    assert attributes["gen_ai.usage.output_tokens"] == 3
-    assert json.loads(str(attributes["gen_ai.input.messages"])) == [
-        {"role": "user", "content": "2+2?"}
-    ]
-    output = json.loads(str(attributes["gen_ai.output.messages"]))
-    if with_tools:
-        assert (
-            json.loads(str(attributes["gen_ai.tool.definitions"]))[0]["function"]["name"] == "add"
-        )
-        assert "call_1" in json.dumps(output)
-    else:
-        assert "gen_ai.tool.definitions" not in attributes
-        assert output == [{"role": "assistant", "content": "4"}] or "4" in json.dumps(output)

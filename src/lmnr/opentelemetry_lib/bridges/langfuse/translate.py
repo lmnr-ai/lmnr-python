@@ -14,10 +14,10 @@ from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.util.types import AttributeValue
 
 from lmnr.opentelemetry_lib.bridges.langfuse.attributes import (
-    _OI_LLM_INPUT_MESSAGES,  # pyright: ignore[reportPrivateUsage],
-    _OI_LLM_OUTPUT_MESSAGES,  # pyright: ignore[reportPrivateUsage],
-    _OI_SPAN_KIND,  # pyright: ignore[reportPrivateUsage],
     LANGFUSE_TRACER_NAME,
+    OI_LLM_INPUT_MESSAGES,
+    OI_LLM_OUTPUT_MESSAGES,
+    OI_SPAN_KIND,
 )
 
 # A JSON-like value reassembled from openinference's flat, dotted/indexed span
@@ -448,13 +448,13 @@ def oi_tool_to_genai(raw: dict[str, OIValue]) -> OIValue:
 
 def is_openinference_span(span: ReadableSpan) -> bool:
     attrs = span.attributes or {}
-    if _OI_SPAN_KIND in attrs:
+    if OI_SPAN_KIND in attrs:
         return True
     return any(
         isinstance(k, str)  # pyright: ignore[reportUnnecessaryIsInstance]
         and (
             k.startswith(
-                (_OI_LLM_INPUT_MESSAGES + ".", _OI_LLM_OUTPUT_MESSAGES + ".", "llm.token_count.")
+                (OI_LLM_INPUT_MESSAGES + ".", OI_LLM_OUTPUT_MESSAGES + ".", "llm.token_count.")
             )
         )
         for k in attrs

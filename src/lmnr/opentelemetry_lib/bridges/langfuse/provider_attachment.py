@@ -24,26 +24,35 @@ logger = get_default_logger(__name__)
 
 def remove_span_processor(provider: TracerProvider, processor: SpanProcessor) -> bool:
     """Remove `processor` from `provider`. The SDK has no public API for
-    this, so it walks the private `_span_processors` tuple under its lock."""
+    this, so it walks the private `_span_processors` tuple under its lock.
+    Every branch logs at debug level, since each one depends on OTel SDK
+    internals that may change."""
     active: SynchronousMultiSpanProcessor | None = getattr(provider, "_active_span_processor", None)
     if active is None:
+        logger.debug(
+            "Not removing the bridge processor: %r has no _active_span_processor", provider
+        )
         return False
     lock: Lock | None = getattr(active, "_lock", None)
     current: tuple[SpanProcessor, ...] | None = getattr(active, "_span_processors", None)
     if current is None:
+        logger.debug("Not removing the bridge processor: %r has no _span_processors", type(active))
         return False
     try:
         filtered = tuple(p for p in current if p is not processor)
         if len(filtered) == len(current):
+            logger.debug("Not removing the bridge processor: it is not on %r", provider)
             return False
         if lock is not None:
             with lock:
-                active._span_processors = filtered  # pyright: ignore[reportPrivateUsage]
+                active._span_processors = filtered
         else:
-            active._span_processors = filtered  # pyright: ignore[reportPrivateUsage]
+            logger.debug("Removing the bridge processor from %r without a lock", provider)
+            active._span_processors = filtered
     except Exception:
-        logger.debug("Could not remove span processor from %r", provider, exc_info=True)
+        logger.debug("Could not remove the bridge processor from %r", provider, exc_info=True)
         return False
+    logger.debug("Removed the bridge processor from %r", provider)
     return True
 
 
@@ -126,7 +135,7 @@ class ProviderAttachment:
         if self._original_initialize_instance is not None:
             return
 
-        original = LangfuseResourceManager._initialize_instance  # pyright: ignore[reportPrivateUsage]
+        original = LangfuseResourceManager._initialize_instance
         self._original_initialize_instance = original
         attachment = self
 
@@ -138,7 +147,7 @@ class ProviderAttachment:
                 logger.debug("Langfuse post-init attach failed", exc_info=True)
             return result
 
-        LangfuseResourceManager._initialize_instance = patched  # pyright: ignore[reportAttributeAccessIssue, reportPrivateUsage]
+        LangfuseResourceManager._initialize_instance = patched  # pyright: ignore[reportAttributeAccessIssue]
 
     def unpatch_resource_manager(self) -> None:
         if self._original_initialize_instance is None:
@@ -146,7 +155,7 @@ class ProviderAttachment:
         try:
             from langfuse._client.resource_manager import LangfuseResourceManager
 
-            LangfuseResourceManager._initialize_instance = self._original_initialize_instance  # pyright: ignore[reportPrivateUsage]
+            LangfuseResourceManager._initialize_instance = self._original_initialize_instance
         except Exception:
             logger.debug("Could not restore Langfuse _initialize_instance", exc_info=True)
         finally:

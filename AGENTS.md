@@ -69,6 +69,12 @@ lmnr datasets pull <id>       # Pull dataset
 
 - **Annotations:** start modules with `from __future__ import annotations` and write annotations unquoted, including names imported only under `TYPE_CHECKING`. Quote a type only where Python evaluates it at runtime: `cast("X", ...)`, `TypeVar` bounds, base classes, and `TypeAlias` values. Pydantic models resolve their annotations from module globals, so their field types must be importable at runtime.
 - **Zero import cycles.** `basedpyright src/lmnr` reports **zero** import cycles; keep it that way. Pyright counts function-local imports as edges, so "lazy" does not hide a cycle from it.
+- **Imports go at the top of the file.** Import inside a function only when:
+  - the package may not be installed and the code is only reached when it is (an instrumented or bridged SDK such as `litellm` or `langfuse`; tests that are skipped without it);
+  - a type is needed at runtime where `if TYPE_CHECKING:` doesn't cover it;
+  - the import is heavy and needed only conditionally (e.g. behind an env var).
+  Never for code organisation, and never for always-installed packages (`packaging`, `typing_extensions`, the OTel SDK, test-only dev dependencies inside their own test package).
+- **Don't silence `reportPrivateUsage` in `src/`.** It is a warning there, not an error (`tests/` turns it off), and each one marks a place that reaches into another library's internals, which is the first list to check when an upgrade breaks something. Silence real errors only. To use a module-private constant elsewhere, make it public instead.
 - Inside `src/lmnr`, import `Laminar` from `lmnr.sdk.laminar`, never `from lmnr import Laminar` (the package `__init__` imports everything).
 - Initializer registry injection and the `tracing/wrapper.py` leaf: `src/lmnr/opentelemetry_lib/tracing/AGENTS.md`.
 - **Logging:** always get loggers via `get_default_logger` (`sdk/log.py`); never hand-roll `logging.getLogger(...) + addHandler`, and keep `propagate=False`. Details: `src/lmnr/sdk/AGENTS.md`.
