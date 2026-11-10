@@ -113,7 +113,7 @@ def set_token_stack(stack: tuple[Token[Context], ...]) -> None:
 
 
 # Set while a bridge is enabled (see `bridges/`): Laminar spans then nest under
-# a competitor's span that is active in the global OTel context.
+# a source SDK's span that is active in the global OTel context.
 _inherit_global_context = False
 
 
@@ -126,7 +126,7 @@ def get_current_context() -> Context:
     """Get the current isolated context.
 
     With global-context inheritance on, a span active in the global OTel
-    context that Laminar didn't create (a bridged competitor's span) becomes
+    context that Laminar didn't create (a bridged source SDK's span) becomes
     the current span. Laminar's own spans are attached to the global context
     too, so whenever the global current span is foreign it is the innermost.
     """
@@ -140,7 +140,7 @@ def get_current_context() -> Context:
             and scope is not None
             and scope.name != TRACER_NAME
         ):
-            # Keep the competitor's own context values (e.g. Langfuse's
+            # Keep the source SDK's own context values (e.g. Langfuse's
             # propagated attributes) for the spans it creates under ours.
             context = Context({**context, **global_context})
     return context

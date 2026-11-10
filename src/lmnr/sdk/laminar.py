@@ -334,10 +334,10 @@ class Laminar:
                 (see below) applies to this process. Set to False in a process\
                 whose environment is meant for an agent it runs, so its own\
                 spans are still exported. Defaults to True.
-            bridges (list[Bridge | str] | None, optional): Competitor SDKs to\
-                also send to Laminar, e.g. `bridges=[Bridge.LANGFUSE]` or\
-                `bridges=["langfuse"]`. What the competitor receives is not\
-                changed. Laminar's own instrumentations that would record the\
+            bridges (list[Bridge | str] | None, optional): Third-party\
+                tracing SDKs whose spans to also send to Laminar, e.g.\
+                `bridges=[Bridge.LANGFUSE]` or `bridges=["langfuse"]`. What\
+                the SDK's own backend receives is not changed. Laminar's own instrumentations that would record the\
                 same calls again are left out of the default `instruments` set;\
                 an explicit `instruments` set is honored as is. Defaults to None.
 
@@ -464,7 +464,7 @@ class Laminar:
             # each message is at least 2 attributes: role and content,
             # but the default attribute limit is 128, so raise it.
             # With a bridge, Laminar's provider gets the limit directly instead
-            # (`init_tracing`), so the competitor's provider keeps its own.
+            # (`init_tracing`), so the source SDK's provider keeps its own.
             os.environ["OTEL_ATTRIBUTE_COUNT_LIMIT"] = "10000"
 
         # A debug run wants spans to land in the UI instantly so the agent can

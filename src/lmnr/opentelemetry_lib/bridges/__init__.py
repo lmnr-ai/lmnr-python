@@ -1,4 +1,4 @@
-"""Competitor bridges, enabled with `Laminar.initialize(bridges=[...])`.
+"""Bridges from third-party tracing SDKs, enabled with `Laminar.initialize(bridges=[...])`.
 
 See `base.py` for the contract and `AGENTS.md` for how they fit together.
 """
@@ -39,7 +39,7 @@ def resolve_bridges(bridges: Iterable[Bridge | str] | None) -> list[LaminarBridg
 
 
 def available_bridges(bridges: Iterable[LaminarBridge]) -> list[LaminarBridge]:
-    """The bridges whose competitor SDK is installed in a supported version.
+    """The bridges whose source SDK is installed in a supported version.
     The others are skipped with a warning and have no effect at all."""
     available: list[LaminarBridge] = []
     for bridge in bridges:

@@ -1,11 +1,11 @@
-"""The shape every competitor bridge implements.
+"""The shape every bridge implements.
 
-A bridge sends what a competitor's SDK records (Langfuse, LangSmith,
-Braintrust, ...) to Laminar as well, without changing what the competitor's
-own backend receives. Each one is enabled through
+A bridge sends what a third-party tracing SDK (the source SDK: Langfuse,
+LangSmith, Braintrust, ...) records to Laminar as well, without changing
+what the source SDK's own backend receives. Each one is enabled through
 `Laminar.initialize(bridges=[...])`.
 
-The contract assumes nothing about how a bridge hooks the competitor SDK.
+The contract assumes nothing about how a bridge hooks the source SDK.
 Langfuse is built on OpenTelemetry, so its bridge adds a span processor to
 Langfuse's tracer provider; a bridge for an SDK that isn't (LangSmith,
 Braintrust) can hook it at the network level and record spans with Laminar's
@@ -26,7 +26,7 @@ from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 
 
 class Bridge(str, Enum):
-    """Competitor SDKs that Laminar can bridge from."""
+    """Source SDKs that Laminar can bridge from."""
 
     LANGFUSE = "langfuse"
 
@@ -36,7 +36,7 @@ class BridgeContext:
     """Laminar's tracing pipeline, as built by `Laminar.initialize`."""
 
     #: Laminar's span processor. A bridge that receives finished spans from
-    #: the competitor SDK hands Laminar's copies to it directly.
+    #: the source SDK hands Laminar's copies to it directly.
     span_processor: SpanProcessor
     #: Laminar's tracer provider. A bridge that builds spans itself (from
     #: intercepted requests, say) creates them with
@@ -46,7 +46,7 @@ class BridgeContext:
 
 
 class LaminarBridge(ABC):
-    """A bridge from one competitor SDK into Laminar.
+    """A bridge from one source SDK into Laminar.
 
     Instances are process-wide singletons (see `bridges/__init__.py`):
     `install` runs on every `Laminar.initialize`, `uninstall` on every
@@ -66,7 +66,7 @@ class LaminarBridge(ABC):
 
     @abstractmethod
     def is_available(self) -> bool:
-        """Whether a supported version of the competitor SDK is installed."""
+        """Whether a supported version of the source SDK is installed."""
 
     @abstractmethod
     def install(self, context: BridgeContext) -> bool:
@@ -77,14 +77,14 @@ class LaminarBridge(ABC):
     def uninstall(self) -> None:
         """Undo `install`. Idempotent; must never raise."""
 
-    # Only for competitor SDKs built on OpenTelemetry, whose spans share the
+    # Only for source SDKs built on OpenTelemetry, whose spans share the
     # process's global OTel state with Laminar's. A bridge that hooks its SDK
     # at the network level leaves both False.
 
     #: Keep Laminar's tracer provider off the global OTel slot, so the
-    #: competitor SDK doesn't pick it up as its own.
+    #: source SDK doesn't pick it up as its own.
     requires_private_tracer_provider: bool = False
 
-    #: Nest Laminar spans under the competitor's span that is active in the
+    #: Nest Laminar spans under the source SDK's span that is active in the
     #: global OTel context.
     inherits_global_context: bool = False
