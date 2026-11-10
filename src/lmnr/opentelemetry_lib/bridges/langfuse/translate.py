@@ -11,9 +11,23 @@ from collections.abc import Callable
 from typing import Any, TypeAlias, cast
 
 from opentelemetry.sdk.trace import ReadableSpan
+from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
+    GEN_AI_REQUEST_CHOICE_COUNT,
+    GEN_AI_REQUEST_FREQUENCY_PENALTY,
+    GEN_AI_REQUEST_MAX_TOKENS,
+    GEN_AI_REQUEST_PRESENCE_PENALTY,
+    GEN_AI_REQUEST_SEED,
+    GEN_AI_REQUEST_STOP_SEQUENCES,
+    GEN_AI_REQUEST_TEMPERATURE,
+    GEN_AI_REQUEST_TOP_K,
+    GEN_AI_REQUEST_TOP_P,
+)
 from opentelemetry.util.types import AttributeValue
 
 from lmnr.opentelemetry_lib.bridges.langfuse.attributes import (
+    GEN_AI_REQUEST_REASONING_LEVEL,
+    GEN_AI_REQUEST_REASONING_SUMMARY,
+    GEN_AI_REQUEST_SERVICE_TIER,
     LANGFUSE_TRACER_NAME,
     OI_LLM_INPUT_MESSAGES,
     OI_LLM_OUTPUT_MESSAGES,
@@ -286,6 +300,52 @@ def usage_attributes(
         for name, value in zip(costs, (input_cost, output_cost, total_cost), strict=True):
             if value is not None:
                 out[name] = float(value)
+    return out
+
+
+# Model parameter keys (Langfuse `model_parameters`, openinference
+# `llm.invocation_parameters`) -> the request attributes Laminar's own
+# instrumentations write. The first key present wins (the max-token aliases);
+# the rest stay in the raw attribute.
+_NUMBER_MODEL_PARAMETERS = (
+    ("temperature", GEN_AI_REQUEST_TEMPERATURE),
+    ("top_p", GEN_AI_REQUEST_TOP_P),
+    ("top_k", GEN_AI_REQUEST_TOP_K),
+    ("max_tokens", GEN_AI_REQUEST_MAX_TOKENS),
+    ("max_completion_tokens", GEN_AI_REQUEST_MAX_TOKENS),
+    ("max_output_tokens", GEN_AI_REQUEST_MAX_TOKENS),
+    ("frequency_penalty", GEN_AI_REQUEST_FREQUENCY_PENALTY),
+    ("presence_penalty", GEN_AI_REQUEST_PRESENCE_PENALTY),
+    ("seed", GEN_AI_REQUEST_SEED),
+    ("n", GEN_AI_REQUEST_CHOICE_COUNT),
+)
+_STRING_MODEL_PARAMETERS = (
+    ("reasoning_effort", GEN_AI_REQUEST_REASONING_LEVEL),
+    ("reasoning_summary", GEN_AI_REQUEST_REASONING_SUMMARY),
+    ("service_tier", GEN_AI_REQUEST_SERVICE_TIER),
+)
+
+
+def model_parameter_attributes(params: Any) -> dict[str, AttributeValue]:
+    """Request attributes from a parsed model parameters object."""
+    out: dict[str, AttributeValue] = {}
+    if not isinstance(params, dict):
+        return out
+    details = cast(dict[str, Any], params)
+    for key, attr in _NUMBER_MODEL_PARAMETERS:
+        value = details.get(key)
+        # Python LangChain records an unset `max_tokens` as "Infinity".
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and attr not in out:
+            out[attr] = value
+    for key, attr in _STRING_MODEL_PARAMETERS:
+        value = details.get(key)
+        if isinstance(value, str) and value:
+            out[attr] = value
+    stop = details.get("stop")
+    if isinstance(stop, str):
+        stop = [stop]
+    if isinstance(stop, list) and stop and all(isinstance(s, str) for s in cast(list[Any], stop)):
+        out[GEN_AI_REQUEST_STOP_SEQUENCES] = cast(list[str], stop)
     return out
 
 

@@ -20,6 +20,7 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_OUTPUT_MESSAGES,
     GEN_AI_REQUEST_MODEL,
     GEN_AI_RESPONSE_MODEL,
+    GEN_AI_SYSTEM,
     GEN_AI_TOOL_DEFINITIONS,
     GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS,
     GEN_AI_USAGE_INPUT_TOKENS,
@@ -40,7 +41,9 @@ from lmnr.opentelemetry_lib.bridges.langfuse.attributes import (
     LF_OBSERVATION_COST_DETAILS,
     LF_OBSERVATION_INPUT,
     LF_OBSERVATION_LEVEL,
+    LF_OBSERVATION_METADATA_PREFIX,
     LF_OBSERVATION_MODEL,
+    LF_OBSERVATION_MODEL_PARAMETERS,
     LF_OBSERVATION_OUTPUT,
     LF_OBSERVATION_STATUS_MESSAGE,
     LF_OBSERVATION_TYPE,
@@ -53,10 +56,13 @@ from lmnr.opentelemetry_lib.bridges.langfuse.attributes import (
     LF_TRACE_TAGS,
     LF_TRACE_USER_ID,
     LLM_USAGE_TOTAL_TOKENS,
+    LS_PROVIDER_ALIASES,
     OI_INPUT_VALUE,
     OI_LLM_INPUT_MESSAGES,
+    OI_LLM_INVOCATION_PARAMETERS,
     OI_LLM_MODEL_NAME,
     OI_LLM_OUTPUT_MESSAGES,
+    OI_LLM_PROVIDER,
     OI_LLM_SPAN_KINDS,
     OI_LLM_TOOLS,
     OI_OUTPUT_VALUE,
@@ -84,6 +90,7 @@ from .translate import (
     genai_output_from_langfuse,
     is_langfuse_span,
     is_openinference_span,
+    model_parameter_attributes,
     oi_collect_indexed,
     oi_message_to_genai,
     oi_tool_to_genai,
@@ -158,6 +165,18 @@ def _translate_langfuse(
     if isinstance(model, str) and model:
         new_attrs[GEN_AI_REQUEST_MODEL] = model
         new_attrs[GEN_AI_RESPONSE_MODEL] = model
+
+    # Langfuse records a provider only through LangChain's `ls_provider`
+    # metadata. `langfuse.openai` records none: the client's base URL may point
+    # at any OpenAI-compatible API.
+    provider = attrs.get(f"{LF_OBSERVATION_METADATA_PREFIX}.ls_provider")
+    if isinstance(provider, str) and json_encoded_metadata:
+        provider = parse_json(provider)
+    if isinstance(provider, str) and provider:
+        new_attrs[GEN_AI_SYSTEM] = LS_PROVIDER_ALIASES.get(provider, provider)
+    new_attrs.update(
+        model_parameter_attributes(parse_json(attrs.get(LF_OBSERVATION_MODEL_PARAMETERS)))
+    )
 
     new_attrs.update(
         usage_attributes(
@@ -252,6 +271,14 @@ def _translate_openinference(
     if isinstance(model, str) and model:
         new_attrs[GEN_AI_REQUEST_MODEL] = model
         new_attrs[GEN_AI_RESPONSE_MODEL] = model
+
+    # LiteLLM writes its `custom_llm_provider`, "Unknown" when it has none.
+    provider = attrs.get(OI_LLM_PROVIDER)
+    if isinstance(provider, str) and provider and provider != "Unknown":
+        new_attrs[GEN_AI_SYSTEM] = provider
+    new_attrs.update(
+        model_parameter_attributes(parse_json(attrs.get(OI_LLM_INVOCATION_PARAMETERS)))
+    )
 
     prompt_tokens = attrs.get(OI_TOKEN_PROMPT)
     completion_tokens = attrs.get(OI_TOKEN_COMPLETION)

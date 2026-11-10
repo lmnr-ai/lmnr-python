@@ -511,3 +511,79 @@ def test_observation_metadata_is_not_promoted():
     span = FakeSpan({"langfuse.observation.metadata.ls_provider": "openai"})
     attrs = translate(span)
     assert not any(k.startswith(f"{ASSOCIATION_PROPERTIES}.metadata") for k in attrs)
+
+
+def test_model_parameters_map_to_gen_ai_request_attributes():
+    span = FakeSpan(
+        {
+            "langfuse.observation.type": "generation",
+            "langfuse.observation.model.parameters": json.dumps(
+                {
+                    "temperature": 1,
+                    "top_p": 0.9,
+                    "max_completion_tokens": 100,
+                    "max_output_tokens": 50,
+                    "frequency_penalty": 0,
+                    "seed": 3,
+                    "n": 2,
+                    "stop": "END",
+                    "reasoning_effort": "high",
+                    "reasoning_summary": "auto",
+                    "service_tier": "flex",
+                    "verbosity": "low",
+                }
+            ),
+        }
+    )
+    attrs = translate(span)
+    assert attrs["gen_ai.request.temperature"] == 1
+    assert attrs["gen_ai.request.top_p"] == 0.9
+    assert attrs["gen_ai.request.max_tokens"] == 100
+    assert attrs["gen_ai.request.frequency_penalty"] == 0
+    assert attrs["gen_ai.request.seed"] == 3
+    assert attrs["gen_ai.request.choice.count"] == 2
+    assert attrs["gen_ai.request.stop_sequences"] == ["END"]
+    assert attrs["gen_ai.request.reasoning.level"] == "high"
+    assert attrs["gen_ai.request.reasoning_summary"] == "auto"
+    assert attrs["gen_ai.request.service_tier"] == "flex"
+    # Unmapped keys stay only in the raw attribute.
+    assert not any("verbosity" in k for k in attrs if k.startswith("gen_ai."))
+
+    # LangChain records an unset `max_tokens` as "Infinity".
+    attrs = translate(
+        FakeSpan({"langfuse.observation.model.parameters": '{"max_tokens": "Infinity"}'})
+    )
+    assert "gen_ai.request.max_tokens" not in attrs
+
+
+def test_provider_comes_from_langchain_ls_provider():
+    attrs = translate(
+        FakeSpan({"langfuse.observation.metadata.ls_provider": '"openai"'}),
+        json_encoded_metadata=True,
+    )
+    assert attrs["gen_ai.system"] == "openai"
+    attrs = translate(FakeSpan({"langfuse.observation.metadata.ls_provider": "amazon_bedrock"}))
+    assert attrs["gen_ai.system"] == "bedrock"
+    # `langfuse.openai` records no provider.
+    assert "gen_ai.system" not in translate(FakeSpan({"langfuse.observation.model.name": "gpt-4o"}))
+
+
+def test_openinference_provider_and_invocation_parameters():
+    span = FakeSpan(
+        {
+            "openinference.span.kind": "LLM",
+            "llm.model_name": "claude-sonnet-4",
+            "llm.provider": "anthropic",
+            "llm.invocation_parameters": json.dumps(
+                {"temperature": 0.5, "max_tokens": 256, "reasoning_effort": "low"}
+            ),
+        }
+    )
+    attrs = translate(span)
+    assert attrs["gen_ai.system"] == "anthropic"
+    assert attrs["gen_ai.request.temperature"] == 0.5
+    assert attrs["gen_ai.request.max_tokens"] == 256
+    assert attrs["gen_ai.request.reasoning.level"] == "low"
+    # LiteLLM writes "Unknown" when it has no provider.
+    attrs = translate(FakeSpan({"openinference.span.kind": "LLM", "llm.provider": "Unknown"}))
+    assert "gen_ai.system" not in attrs
