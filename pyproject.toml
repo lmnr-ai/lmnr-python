@@ -36,7 +36,7 @@ dependencies = [
   "pydantic (>=2.0.3,<3.0.0)",
   "python-dotenv (>=1.0,<2.0)",
   "tqdm (>=4.0,<5.0)",
-  "tenacity (>=8.0,<10.0)",
+  "typing-extensions (>=4.4.0,<5.0.0)",
   "wrapt (>=1.14,<3.0.0)",
 ]
 # poetry would auto-generate these based on requires-python, but other build
@@ -93,7 +93,7 @@ dev = [
   "skyvern==1.0.48",
   "temporalio==1.31.0",
   "typesafe-sdk==0.7.0",
-  "vcrpy==8.3.0",
+  "vcrpy==9.4.2",
 ]
 
 [build-system]

@@ -1,0 +1,117 @@
+interactions:
+- request:
+    body: '{"model":"gpt-6-luna","stream":false,"messages":[{"content":"What is the
+      capital of France?","role":"user"}],"response_format":{"type":"json_schema","json_schema":{"name":"_City","description":"dict()
+      -> new empty dictionary\ndict(mapping) -> new dictionary initialized from a
+      mapping object''s\n    (key, value) pairs\ndict(iterable) -> new dictionary
+      initialized as if via:\n    d = {}\n    for k, v in iterable:\n        d[k]
+      = v\ndict(**kwargs) -> new dictionary initialized with the name=value pairs\n    in
+      the keyword argument list.  For example:  dict(one=1, two=2)","strict":false,"schema":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}}}}'
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '678'
+      content-type:
+      - application/json
+      host:
+      - api.openai.com
+      traceparent:
+      - 00-c49b180fd9743a38fc6b9083a31af66d-8130ed0f8c1b8d73-03
+      user-agent:
+      - OpenAI/Python 3.44.0
+      x-stainless-arch:
+      - arm64
+      x-stainless-async:
+      - 'false'
+      x-stainless-helper-method:
+      - chat.completions.parse
+      x-stainless-lang:
+      - python
+      x-stainless-os:
+      - MacOS
+      x-stainless-package-version:
+      - 3.44.0
+      x-stainless-raw-response:
+      - 'true'
+      x-stainless-retry-count:
+      - '0'
+      x-stainless-runtime:
+      - CPython
+      x-stainless-runtime-version:
+      - 3.14.6
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAA/3WSTW/CMAyG7/yKKucyrQPKx3HSpknjMO2ww1ZUhcRtw0JSJe4YQvz3JeGjRYNL
+        pPixnddvvOtFERGczCLCKopsXcv+0yp9/ths3kfFKOUj/fk4mc9HA2rs8uWVkthX6OUKGJ6q7ph2
+        dYBCqwNmBiiC75qMp8NhMh5OpgGsNQfpy8oa+2lfNurYkFVaMLAOfblrFO3C6bUpDr8ufB+fImuw
+        lpbgYqckFzRa+gih1gqLVCGJW8i0QlBB7i4jTOA2I7OMvFEjbEb23VQDRWOpl6gaKTuAKqWR+hGD
+        yMWR7M+yCqGErXI3uXU2uKcs6poEunfnIozZXCgntXHGYY76G0LbZDA49COtoy19mBwhOiWyU5Um
+        8ZV+OQekQtqOUYRRVgFvS1tXA8k3RiBcw7ThQndArzP8f7HXnj4YI1TZEX67fwsYg9rtUl4b4IJd
+        OtKmGfALeSvt/AtBMbFgfty25SjA+J/iUNBGHlaG2K1FWOfuO0swtRFhb/wy9Pa9P3DgD00uAwAA
+    headers:
+      access-control-expose-headers:
+      - X-Request-ID
+      - CF-Ray
+      - CF-Ray
+      alt-svc:
+      - h3=":443"; ma=86400
+      cf-cache-status:
+      - DYNAMIC
+      cf-ray:
+      - a58ef45b3cc09a6a-LHR
+      connection:
+      - keep-alive
+      content-encoding:
+      - gzip
+      content-type:
+      - application/json
+      date:
+      - Wed, 11 Nov 2026 17:18:10 GMT
+      openai-organization:
+      - user-xzaeeoqlanzncr8pomspsknu
+      openai-processing-ms:
+      - '802'
+      openai-project:
+      - proj_aT4OgTR5NJ9iNjg4xWc82hiE
+      openai-version:
+      - '2020-10-01'
+      server:
+      - cloudflare
+      set-cookie:
+      - __cf_bm=FSgbKcvQ9yog2HvBaP20b2BdXquhkuexqvJu7DV5_48-1794417489.160011-1.0.1.1-pFfk803qSVHc8uZfa_TWCpLxxcWqy3wBpI1sIiRjt2a_Ir0f6rIlqTi81uDp20wn1H1waxw6fNxbjqbBzOK54pqXuufj6iJeVHkxNQM8Ncchak1OPAAM96CdwGTbU5xy;
+        HttpOnly; SameSite=None; Partitioned; Secure; Path=/; Domain=api.openai.com;
+        Expires=Wed, 11 Nov 2026 17:48:10 GMT
+      strict-transport-security:
+      - max-age=31536000; includeSubDomains; preload
+      transfer-encoding:
+      - chunked
+      x-content-type-options:
+      - nosniff
+      x-openai-proxy-wasm:
+      - v0.1
+      x-ratelimit-limit-requests:
+      - '30000'
+      x-ratelimit-limit-tokens:
+      - '180000000'
+      x-ratelimit-remaining-requests:
+      - '29999'
+      x-ratelimit-remaining-tokens:
+      - '179999988'
+      x-ratelimit-reset-requests:
+      - 2ms
+      x-ratelimit-reset-tokens:
+      - 0s
+      x-request-id:
+      - req_05469af8ec0f4e92a2f8294143566e6a
+    status:
+      code: 200
+      message: OK
+version: 1
