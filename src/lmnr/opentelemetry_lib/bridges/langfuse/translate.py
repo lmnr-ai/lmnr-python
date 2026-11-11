@@ -58,33 +58,54 @@ def parse_json(raw: Any) -> Any:
         return raw
 
 
+# Responses API request keys `langfuse.openai` records next to `input`.
+_RESPONSES_PROMPT_KEYS = {"input", "instructions", "tools", "tool_choice", "parallel_tool_calls"}
+_TEXT_PART_TYPES = {"text", "input_text", "output_text"}
+# Responses API items that hold an assistant tool call, and their results.
+_RESPONSES_CALL_TYPES = {"function_call", "custom_tool_call"}
+_RESPONSES_CALL_OUTPUT_TYPES = {"function_call_output", "custom_tool_call_output"}
+
+
 def genai_input_from_langfuse(input_raw: Any) -> tuple[list[Any], Any] | None:
     """Split a Langfuse LLM input into (messages, tool_definitions).
 
-    Langfuse's OpenAI integration ships the call input in one of two shapes
-    (see `langfuse.openai._extract_chat_prompt`):
+    Shapes `langfuse.openai` records (`_extract_chat_prompt`,
+    `_extract_responses_prompt`):
 
-    - A bare list of OpenAI-style message dicts (`[{role, content}, ...]`) when
-      the caller passed no `tools`/`functions`.
-    - A dict `{"messages": [...], "tools": [...], "functions": [...],
-      "function_call": ...}` when tools/functions were supplied.
+    - chat: a bare message list, or `{messages, tools|functions, ...}` when the
+      call passed tools;
+    - Responses API: the `input` (string or item list, with `instructions`
+      already prepended as a system message), or `{input, tools, tool_choice,
+      ...}` when the call passed tools.
 
-    Laminar (and the app-server's GenAI parser) want these split into
-    `gen_ai.input.messages` (the message array) and `gen_ai.tool.definitions`
-    (the tool/function array) — dumping the whole dict into `lmnr.span.input`
-    leaves them unparsed in the UI. Returns `(messages, tools_or_none)` when
-    the shape is recognized, or `None` when it isn't (caller falls back to the
-    raw input). Langchain-style inputs share the OpenAI message shape, so the
-    same split applies.
+    A bare string (legacy completions, manual generations) is a user message.
+    Returns None for any other shape; the caller keeps the raw input.
     """
     parsed = parse_json(input_raw)
+    if isinstance(parsed, str):
+        return ([{"role": "user", "content": parsed}], None) if parsed else None
     if isinstance(parsed, list):
-        return parsed, None  # pyright: ignore[reportUnknownVariableType]
-    if isinstance(parsed, dict) and isinstance(cast(dict[str, Any], parsed).get("messages"), list):
-        tools = cast(dict[str, Any], parsed).get("tools")
-        if tools is None:
-            tools = parsed.get("functions")  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
-        return parsed["messages"], tools  # pyright: ignore[reportUnknownVariableType]
+        return cast(list[Any], parsed), None
+    if not isinstance(parsed, dict):
+        return None
+    prompt = cast(dict[str, Any], parsed)
+    tools = prompt.get("tools")
+    if tools is None:
+        tools = prompt.get("functions")
+    if isinstance(prompt.get("messages"), list):
+        return prompt["messages"], tools
+    if "input" in prompt and set(prompt) <= _RESPONSES_PROMPT_KEYS:
+        inp = prompt["input"]
+        if isinstance(inp, str):
+            messages: list[Any] = [{"role": "user", "content": inp}]
+        elif isinstance(inp, list):
+            messages = list(cast(list[Any], inp))
+        else:
+            return None
+        instructions = prompt.get("instructions")
+        if isinstance(instructions, str) and instructions:
+            messages.insert(0, {"role": "system", "content": instructions})
+        return messages, tools
     return None
 
 
@@ -126,113 +147,268 @@ def split_messages_and_tool_defs_langchain(
     return (new_msgs, tool_defs)  # pyright: ignore[reportUnknownVariableType]
 
 
-def genai_output_from_langfuse(output_raw: Any) -> Any | None:
-    """Normalize a Langfuse LLM output into a `gen_ai.output.messages` array.
+def genai_output_from_langfuse(output_raw: Any) -> list[Any] | None:
+    """A Langfuse LLM output as a list, before `normalize_messages`.
 
-    Langfuse's OpenAI integration emits the response as a single message dict
-    (`{role, content, tool_calls, function_call, audio}` — see
-    `_extract_chat_response`). The GenAI convention is an array of such message
-    dicts (one per choice), matching what Laminar's own litellm wrapper stamps.
-    A single dict is wrapped into a one-element list; an already-list value is
-    passed through. Returns `None` for any other shape so the caller falls back
-    to `lmnr.span.output`.
+    `langfuse.openai` records one message dict (chat), a bare string (streamed
+    chat text), or the Responses API output items (a list, or the only item
+    as a dict). Returns None for any other shape; the caller keeps the raw
+    output.
     """
     parsed = parse_json(output_raw)
     if isinstance(parsed, list):
-        return parsed  # pyright: ignore[reportUnknownVariableType]
+        return cast(list[Any], parsed)
     if isinstance(parsed, dict):
         return [parsed]
+    if isinstance(parsed, str) and parsed:
+        return [{"role": "assistant", "content": parsed}]
     return None
 
 
-def convert_openai_tool_calls_to_content_parts(messages: list[Any], is_output: bool) -> list[Any]:
-    """The output of LangChain integration looks a lot like OpenAI's output,
-    i.e. separate tool_calls and content keys. This function extracts the tool
-    calls and converts them to a more generic content-part style.
+def _tool_call_part(call_id: Any, name: Any, arguments: Any) -> dict[str, Any]:
+    return {"type": "tool_call", "id": call_id, "name": name, "arguments": arguments}
 
-    Three assistant-message shapes occur:
 
-    * OpenAI/langchain: string ``content`` + a separate ``tool_calls`` list. The
-      string is wrapped into a text part and the tool calls are appended as
-      content parts.
-    * Anthropic/langchain: list ``content`` that ALREADY embeds the calls as
-      ``{"type": "tool_use", ...}`` blocks, PLUS a redundant top-level
-      ``tool_calls`` list mirroring the same calls. Keep the content blocks and
-      drop the duplicate top-level ``tool_calls`` so the call isn't rendered
-      twice.
-    * OpenAI (from langfuse.openai). Function calls are content blocks of
-      ``{"type": "function", "function": {...}}``. If such are detected,
-      the entire message is best-effort wrapped into an OpenAI choices schema.
-      This is only relevant to the output messages.
-    """
+def _reasoning_text(item: dict[str, Any]) -> str:
+    """Summary (else raw reasoning) text of a Responses API reasoning item."""
+    for key in ("summary", "content"):
+        blocks = item.get(key)
+        if isinstance(blocks, list):
+            texts = [
+                cast(dict[str, Any], b)["text"]
+                for b in cast(list[Any], blocks)
+                if isinstance(b, dict) and isinstance(cast(dict[str, Any], b).get("text"), str)
+            ]
+            if texts:
+                return "\n\n".join(texts)
+    return ""
 
-    def is_assistant(msg: Any) -> bool:
-        return isinstance(msg, dict) and msg.get("role") == "assistant"  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
 
-    def has_inlined_tool_calls(content: Any) -> bool:
-        return isinstance(content, list) and any(
-            isinstance(part, dict) and part.get("type") in ("tool_use", "tool_call")  # pyright: ignore[reportUnknownMemberType]
-            for part in content  # pyright: ignore[reportUnknownVariableType]
+def _normalize_part(part: Any) -> list[Any]:
+    """One content part in Laminar's shape (`text`, `reasoning`, `tool_call`);
+    an empty list drops it. Unknown parts are kept as they are."""
+    if isinstance(part, str):
+        return [{"type": "text", "text": part}]
+    if not isinstance(part, dict):
+        return [part]
+    p = cast(dict[str, Any], part)
+    kind = p.get("type")
+    if kind in _TEXT_PART_TYPES and isinstance(p.get("text"), str):
+        return [{"type": "text", "text": p["text"]}]
+    if kind == "tool_call":
+        # LangChain names the arguments `args`.
+        args = p["arguments"] if "arguments" in p else p.get("args")
+        return [_tool_call_part(p.get("id"), p.get("name"), args)]
+    if kind == "tool_use":
+        return [_tool_call_part(p.get("id"), p.get("name"), p.get("input"))]
+    if kind in _RESPONSES_CALL_TYPES:
+        args = p["arguments"] if "arguments" in p else p.get("input")
+        return [_tool_call_part(p.get("call_id") or p.get("id"), p.get("name"), args)]
+    if kind in ("reasoning", "thinking"):
+        text = p.get("text") if kind == "reasoning" else p.get("thinking")
+        if not isinstance(text, str):
+            text = _reasoning_text(p)
+        return [{"type": "reasoning", "text": text}] if text else []
+    if kind == "redacted_thinking":
+        return []
+    # openinference message contents: `{message_content: {type, text}}`, and
+    # `{message_content: {type: "tool_use"}, tool_call: {...}}` for Anthropic.
+    content = p.get("message_content")
+    if kind is None and isinstance(content, dict):
+        tc = p.get("tool_call")
+        if isinstance(tc, dict):
+            tool_call = cast(dict[str, Any], tc)
+            fn = tool_call.get("function")
+            fn = cast(dict[str, Any], fn) if isinstance(fn, dict) else {}
+            return [_tool_call_part(tool_call.get("id"), fn.get("name"), fn.get("arguments"))]
+        if cast(dict[str, Any], content).get("type") == "tool_use":
+            return []
+        return _normalize_part(content)
+    return [p]
+
+
+def _dedupe_tool_calls(parts: list[Any]) -> list[Any]:
+    """Drop repeated tool calls (same id) within one message: LangChain keeps a
+    call both in the content blocks (Anthropic `tool_use`, Responses
+    `function_call`) and in `tool_calls`."""
+    seen: set[str] = set()
+    out: list[Any] = []
+    for part in parts:
+        if isinstance(part, dict) and cast(dict[str, Any], part).get("type") == "tool_call":
+            call_id = cast(dict[str, Any], part).get("id")
+            if isinstance(call_id, str) and call_id:
+                if call_id in seen:
+                    continue
+                seen.add(call_id)
+        out.append(part)
+    return out
+
+
+def _collapse(parts: list[Any]) -> Any:
+    """Content parts as message content. A single text part becomes a string,
+    so `"hi"` and `[{"type": "text", "text": "hi"}]` hash the same."""
+    if len(parts) == 1 and isinstance(parts[0], dict):
+        only = cast(dict[str, Any], parts[0])
+        if only.get("type") == "text" and set(only) == {"type", "text"}:
+            return only["text"]
+    return parts
+
+
+def _normalize_content(content: Any) -> Any:
+    if isinstance(content, list):
+        return _collapse(
+            _dedupe_tool_calls([p for c in cast(list[Any], content) for p in _normalize_part(c)])
         )
+    return content
 
-    def is_raw_openai_tool_call_format(tc: Any) -> bool:
-        return (  # pyright: ignore[reportUnknownVariableType]
-            isinstance(tc, dict)
-            and tc.get("type") == "function"  # pyright: ignore[reportUnknownMemberType]
-            and isinstance(tc.get("function"), dict)  # pyright: ignore[reportUnknownMemberType]
-        )
 
-    def normalize(msg: dict[str, Any]) -> dict[str, Any]:
-        content = msg.get("content")
-        tool_calls = msg.get("tool_calls")
-        if not isinstance(tool_calls, list):
-            return msg
-        # OpenAI output choice. Guard on a NON-EMPTY tool_calls list:
-        # `all([])` is True, so a plain text completion that carries
-        # `tool_calls: []` would otherwise be wrapped into the choices shape
-        # and break transcript rendering.
-        if (
-            is_output
-            and tool_calls
-            and all(is_raw_openai_tool_call_format(tc) for tc in tool_calls)  # pyright:ignore[reportUnknownVariableType]
-        ):
-            return {"message": msg}
-        # Anthropic: calls already embedded in the content blocks — drop the
-        # redundant mirror to avoid double rendering.
-        if has_inlined_tool_calls(content):
-            return {k: v for k, v in msg.items() if k != "tool_calls"}
-        # OpenAI tool calls as "function" in input convert to tool_call block
-        if not is_output:
-            new_tool_calls = []
-            for tc in tool_calls:  # pyright: ignore[reportUnknownVariableType]
-                if is_raw_openai_tool_call_format(tc):
-                    fn = tc["function"]  # pyright: ignore[reportUnknownVariableType]
-                    new_tool_calls.append(  # pyright: ignore[reportUnknownMemberType]
-                        {
-                            "id": tc.get("id"),  # pyright: ignore[reportUnknownMemberType]
-                            "type": "tool_call",
-                            "name": fn.get("name"),  # pyright: ignore[reportUnknownMemberType]
-                            "arguments": fn.get("arguments"),  # pyright: ignore[reportUnknownMemberType]
-                        }
+def _normalize_message(msg: dict[str, Any], is_output: bool) -> list[dict[str, Any]]:
+    """A chat message as `{role, content, tool_call_id?, name?}`; provider
+    extras (`refusal`, `annotations`, LangChain's `additional_kwargs`, ...)
+    are dropped so a turn's output equals its copy in the next call's history.
+    Anthropic `tool_result` parts become `tool` messages."""
+    role = msg.get("role")
+    if role == "model" or (role is None and is_output):
+        role = "assistant"
+    content = msg.get("content")
+    parts: list[Any] | None = None
+    if isinstance(content, list):
+        parts = [p for c in cast(list[Any], content) for p in _normalize_part(c)]
+
+    calls: list[Any] = []
+    tool_calls = msg.get("tool_calls")
+    if isinstance(tool_calls, list):
+        for tc in cast(list[Any], tool_calls):
+            fn = cast(dict[str, Any], tc).get("function") if isinstance(tc, dict) else None
+            if isinstance(fn, dict):
+                fn = cast(dict[str, Any], fn)
+                calls.append(
+                    _tool_call_part(
+                        cast(dict[str, Any], tc).get("id"), fn.get("name"), fn.get("arguments")
                     )
-                else:
-                    new_tool_calls.append(tc)  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
-            tool_calls = new_tool_calls
+                )
+            elif isinstance(tc, dict) and "type" not in tc and "name" in tc:
+                # LangChain `{id, name, args}`.
+                calls.extend(_normalize_part({**cast(dict[str, Any], tc), "type": "tool_call"}))
+            else:
+                calls.extend(_normalize_part(tc))
+    function_call = msg.get("function_call")
+    if isinstance(function_call, dict):
+        fc = cast(dict[str, Any], function_call)
+        calls.append(_tool_call_part(None, fc.get("name"), fc.get("arguments")))
+    if calls:
+        if parts is None:
+            parts = (
+                [{"type": "text", "text": content}] if isinstance(content, str) and content else []
+            )
+        parts.extend(calls)
 
-        # OpenAI: fold the separate tool_calls into the content parts.
-        new_cnt = (  # pyright: ignore [reportUnknownVariableType]
-            content
-            if isinstance(content, list)
-            else [{"type": "text", "text": content}]
-            if isinstance(content, str) and content != ""
-            else []
-        )
-        return {
-            "role": msg.get("role"),
-            "content": [*new_cnt, *tool_calls],
-        }
+    results: list[dict[str, Any]] = []
+    if parts is not None and role == "user":
+        rest: list[Any] = []
+        for part in parts:
+            if isinstance(part, dict) and cast(dict[str, Any], part).get("type") == "tool_result":
+                p = cast(dict[str, Any], part)
+                results.append(
+                    {
+                        "role": "tool",
+                        "content": _normalize_content(p.get("content")),
+                        "tool_call_id": p.get("tool_use_id"),
+                    }
+                )
+            else:
+                rest.append(part)
+        parts = rest
+        if results and not parts:
+            return results
 
-    return [normalize(msg) if is_assistant(msg) else msg for msg in messages]
+    out: dict[str, Any] = {
+        "role": role,
+        "content": _collapse(_dedupe_tool_calls(parts)) if parts is not None else content,
+    }
+    for key in ("tool_call_id", "name"):
+        if msg.get(key) is not None:
+            out[key] = msg[key]
+    return [*results, out]
+
+
+def normalize_messages(messages: list[Any], is_output: bool) -> list[Any]:
+    """Bring LLM input / output messages to Laminar's shape:
+    `{role, content}`, where content is a string or a list of `text`,
+    `reasoning` and `tool_call` (`{id, name, arguments}`) parts, and a tool
+    result is `{role: "tool", content, tool_call_id}`.
+
+    Covers OpenAI chat (`tool_calls`), Responses API items (`function_call`,
+    `function_call_output`, `reasoning`, `message`), LangChain (`args`),
+    Anthropic (`tool_use`, `tool_result`, `thinking`), Gemini's `model` role
+    and openinference's `message_content` wrappers. Inputs and outputs go
+    through the same rules, so an assistant turn is identical in the call that
+    produced it and in the next call's history (app-server dedups messages by
+    hash).
+
+    Consecutive Responses API items of one assistant turn (reasoning, calls,
+    the assistant message) are merged into one assistant message.
+    """
+    out: list[Any] = []
+    turn: list[Any] | None = None  # parts of the open Responses assistant turn
+    turns: list[dict[str, Any]] = []
+
+    def open_turn() -> list[Any]:
+        nonlocal turn
+        if turn is None:
+            turn = []
+            message = {"role": "assistant", "content": turn}
+            out.append(message)
+            turns.append(message)
+        return turn
+
+    for item in messages:
+        if not isinstance(item, dict):
+            out.append(item)
+            turn = None
+            continue
+        it = cast(dict[str, Any], item)
+        kind = it.get("type")
+        if "role" not in it and (
+            kind in _RESPONSES_CALL_TYPES
+            or kind == "reasoning"
+            or (isinstance(kind, str) and kind.endswith("_call"))
+        ):
+            open_turn().extend(_normalize_part(it))
+            continue
+        if kind in _RESPONSES_CALL_OUTPUT_TYPES:
+            out.append(
+                {
+                    "role": "tool",
+                    "content": _normalize_content(it.get("output")),
+                    "tool_call_id": it.get("call_id"),
+                }
+            )
+            turn = None
+            continue
+        if "role" in it or (is_output and ("content" in it or "tool_calls" in it)):
+            normalized = _normalize_message(it, is_output)
+            last = normalized[-1]
+            if (
+                len(normalized) == 1
+                and last["role"] == "assistant"
+                and (turn is not None or kind == "message")
+            ):
+                content = last["content"]
+                if isinstance(content, list):
+                    open_turn().extend(cast(list[Any], content))
+                elif content is not None:
+                    open_turn().extend(_normalize_part(content))
+                continue
+            out.extend(normalized)
+            turn = None
+            continue
+        out.append(it)
+        turn = None
+
+    for message in turns:
+        message["content"] = _collapse(_dedupe_tool_calls(message["content"]))
+    return out
 
 
 def _sum_fields(details: dict[str, Any], keep: Callable[[str], bool]) -> float | None:
