@@ -323,7 +323,7 @@ async def test_remote_run_links_evaluation_and_trials_to_uploaded_folder(
     await plugin.on_job_end(SimpleNamespace())
 
     task_paths = {
-        dp.metadata["trial_name"]: dp.metadata.get("task_path")
+        (dp.metadata or {})["trial_name"]: (dp.metadata or {}).get("task_path")
         for dp in saved_datapoints(client)
         if isinstance(dp, EvaluationResultDatapoint)
     }
