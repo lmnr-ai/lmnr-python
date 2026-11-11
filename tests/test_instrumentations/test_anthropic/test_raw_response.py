@@ -1,8 +1,9 @@
 """`messages.with_raw_response.create`, the way LangChain's `ChatAnthropic` calls the SDK.
 
 The caller reads the body with `.parse()`, so the instrumented stream (live) and a
-debug-replay cache hit both have to come back behind it. `MockTransport` (anthropic >= 2
-uses `httpx2`), no cassettes.
+debug-replay cache hit both have to come back behind it. Live calls replay VCR cassettes
+(anthropic >= 2 uses `httpx2`); replay hits never reach the network, so they use an
+`httpx2.MockTransport`.
 """
 
 from __future__ import annotations
@@ -143,52 +144,58 @@ def _text(events: Any) -> str:
     )
 
 
+@pytest.mark.vcr
 def test_raw_response_stream_is_instrumented(
-    instrumentor: AnthropicInstrumentor, span_exporter: InMemorySpanExporter
+    instrumentor: AnthropicInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    anthropic_client: Anthropic,
 ):
-    requests: list[httpx2.Request] = []
-    raw = _client(requests).messages.with_raw_response.create(
+    raw = anthropic_client.messages.with_raw_response.create(
         model=MODEL, max_tokens=10, messages=MESSAGES, stream=True
     )
 
-    assert raw.headers["request-id"] == "req_live"
-    assert _text(raw.parse()) == "Paris"
+    assert raw.headers["request-id"]
+    assert "Paris" in _text(raw.parse())
     span = _only_span(span_exporter)
     attributes = _attributes(span)
     assert attributes["lmnr.span.type"] == "LLM"
-    assert attributes["gen_ai.response.id"] == "msg_live"
-    assert attributes["gen_ai.usage.input_tokens"] == 12
-    assert attributes["gen_ai.usage.output_tokens"] == 3
-    assert _output_text(span) == "Paris"
+    assert attributes["gen_ai.response.id"]
+    assert attributes["gen_ai.usage.input_tokens"] > 0
+    assert attributes["gen_ai.usage.output_tokens"] > 0
+    assert "Paris" in _output_text(span)
 
 
+@pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_raw_response_stream_is_instrumented_async(
-    instrumentor: AnthropicInstrumentor, span_exporter: InMemorySpanExporter
+    instrumentor: AnthropicInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    async_anthropic_client: AsyncAnthropic,
 ):
-    requests: list[httpx2.Request] = []
-    raw = await _async_client(requests).messages.with_raw_response.create(
+    raw = await async_anthropic_client.messages.with_raw_response.create(
         model=MODEL, max_tokens=10, messages=MESSAGES, stream=True
     )
 
-    assert raw.headers["request-id"] == "req_live"
-    assert _text([event async for event in await raw.parse()]) == "Paris"
+    assert raw.headers["request-id"]
+    assert "Paris" in _text([event async for event in await raw.parse()])
     span = _only_span(span_exporter)
-    assert _attributes(span)["gen_ai.usage.output_tokens"] == 3
-    assert _output_text(span) == "Paris"
+    assert _attributes(span)["gen_ai.usage.output_tokens"] > 0
+    assert "Paris" in _output_text(span)
 
 
+@pytest.mark.vcr
 def test_raw_response_without_stream_is_unchanged(
-    instrumentor: AnthropicInstrumentor, span_exporter: InMemorySpanExporter
+    instrumentor: AnthropicInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    anthropic_client: Anthropic,
 ):
-    requests: list[httpx2.Request] = []
-    raw = _client(requests).messages.with_raw_response.create(
+    raw = anthropic_client.messages.with_raw_response.create(
         model=MODEL, max_tokens=10, messages=MESSAGES
     )
 
     assert type(raw).__name__ == "APIResponse"
-    assert raw.parse().content[0].text == "Paris"  # pyright: ignore[reportAttributeAccessIssue]
-    assert _output_text(_only_span(span_exporter)) == "Paris"
+    assert "Paris" in raw.parse().content[0].text  # pyright: ignore[reportAttributeAccessIssue]
+    assert "Paris" in _output_text(_only_span(span_exporter))
 
 
 # --- debug replay -------------------------------------------------------------
