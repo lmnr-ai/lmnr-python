@@ -41,8 +41,14 @@ class FakeSpan:
 
 
 def translate(span: FakeSpan, json_encoded_metadata: bool = False) -> dict[str, AttributeValue]:
-    """`span`'s attributes with the bridge's translation applied on top."""
-    return {
-        **span.attributes,
-        **translate_span(cast(ReadableSpan, cast(object, span)), json_encoded_metadata),
-    }
+    """`span`'s attributes as on Laminar's copy: the bridge's translation
+    applied on top, converted source attributes removed."""
+    out = dict(span.attributes)
+    for key, value in translate_span(
+        cast(ReadableSpan, cast(object, span)), json_encoded_metadata
+    ).items():
+        if value is None:
+            _ = out.pop(key, None)
+        else:
+            out[key] = value
+    return out

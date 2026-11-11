@@ -587,3 +587,74 @@ def test_openinference_provider_and_invocation_parameters():
     # LiteLLM writes "Unknown" when it has no provider.
     attrs = translate(FakeSpan({"openinference.span.kind": "LLM", "llm.provider": "Unknown"}))
     assert "gen_ai.system" not in attrs
+
+
+def test_converted_attributes_are_dropped_from_laminar_copy():
+    attrs = translate(
+        FakeSpan(
+            {
+                "langfuse.observation.type": "generation",
+                "langfuse.observation.model.name": "gpt-4o",
+                "langfuse.observation.model.parameters": json.dumps(
+                    {"temperature": 0.2, "verbosity": "low"}
+                ),
+                "langfuse.observation.usage_details": json.dumps({"input": 3, "output": 1}),
+                "langfuse.observation.cost_details": json.dumps({"total": 0.1}),
+                "langfuse.observation.input": json.dumps([{"role": "user", "content": "hi"}]),
+                "langfuse.observation.output": json.dumps({"role": "assistant", "content": "yo"}),
+                "langfuse.observation.metadata.team": "a",
+            }
+        )
+    )
+    for key in (
+        "langfuse.observation.model.name",
+        "langfuse.observation.usage_details",
+        "langfuse.observation.cost_details",
+        "langfuse.observation.input",
+        "langfuse.observation.output",
+    ):
+        assert key not in attrs, key
+    # Parameters with no request attribute stay.
+    assert json.loads(cast(str, attrs["langfuse.observation.model.parameters"])) == {
+        "verbosity": "low"
+    }
+    assert attrs["langfuse.observation.metadata.team"] == "a"
+
+    # Fully mapped parameters are dropped; unmapped-only ones are kept as they are.
+    attrs = translate(FakeSpan({"langfuse.observation.model.parameters": '{"temperature": 1}'}))
+    assert "langfuse.observation.model.parameters" not in attrs
+    attrs = translate(FakeSpan({"langfuse.observation.model.parameters": '{"verbosity": "low"}'}))
+    assert attrs["langfuse.observation.model.parameters"] == '{"verbosity": "low"}'
+
+    # A raw input copied to `lmnr.span.input` is dropped too; one that wasn't
+    # converted (a non-string on a non-LLM span) stays.
+    attrs = translate(FakeSpan({"langfuse.observation.input": '{"q": "hi"}'}))
+    assert attrs[SPAN_INPUT] == '{"q": "hi"}'
+    assert "langfuse.observation.input" not in attrs
+    attrs = translate(FakeSpan({"langfuse.observation.input": ["a", "b"]}))
+    assert attrs["langfuse.observation.input"] == ["a", "b"]
+
+
+def test_converted_openinference_attributes_are_dropped():
+    attrs = translate(
+        FakeSpan(
+            {
+                "openinference.span.kind": "LLM",
+                "llm.model_name": "gpt-4o",
+                "llm.invocation_parameters": '{"temperature": 0.5}',
+                "llm.token_count.prompt": 3,
+                "llm.input_messages.0.message.role": "user",
+                "llm.input_messages.0.message.content": "hi",
+                "input.value": '{"messages": [{"role": "user", "content": "hi"}]}',
+                "langfuse.observation.input": '[{"role": "user", "content": "hi"}]',
+            },
+            scope_name="litellm",
+        )
+    )
+    assert attrs["gen_ai.usage.input_tokens"] == 3
+    assert not any(
+        k.startswith(("llm.input_messages.", "llm.model_name", "llm.token_count", "llm.invocation"))
+        for k in attrs
+    )
+    assert "input.value" not in attrs
+    assert "langfuse.observation.input" not in attrs

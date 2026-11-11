@@ -326,27 +326,36 @@ _STRING_MODEL_PARAMETERS = (
 )
 
 
-def model_parameter_attributes(params: Any) -> dict[str, AttributeValue]:
-    """Request attributes from a parsed model parameters object."""
+def model_parameter_attributes(
+    params: Any,
+) -> tuple[dict[str, AttributeValue], dict[str, Any] | None]:
+    """Request attributes from a parsed model parameters object, and the
+    parameters left unmapped (None when `params` isn't an object)."""
     out: dict[str, AttributeValue] = {}
     if not isinstance(params, dict):
-        return out
-    details = cast(dict[str, Any], params)
+        return out, None
+    rest = dict(cast(dict[str, Any], params))
     for key, attr in _NUMBER_MODEL_PARAMETERS:
-        value = details.get(key)
+        value = rest.get(key)
         # Python LangChain records an unset `max_tokens` as "Infinity".
         if isinstance(value, (int, float)) and not isinstance(value, bool) and attr not in out:
             out[attr] = value
+            del rest[key]
     for key, attr in _STRING_MODEL_PARAMETERS:
-        value = details.get(key)
+        value = rest.get(key)
         if isinstance(value, str) and value:
             out[attr] = value
-    stop = details.get("stop")
-    if isinstance(stop, str):
-        stop = [stop]
-    if isinstance(stop, list) and stop and all(isinstance(s, str) for s in cast(list[Any], stop)):
-        out[GEN_AI_REQUEST_STOP_SEQUENCES] = cast(list[str], stop)
-    return out
+            del rest[key]
+    stop = rest.get("stop")
+    stops = [stop] if isinstance(stop, str) else stop
+    if (
+        isinstance(stops, list)
+        and stops
+        and all(isinstance(s, str) for s in cast(list[Any], stops))
+    ):
+        out[GEN_AI_REQUEST_STOP_SEQUENCES] = cast(list[str], stops)
+        del rest["stop"]
+    return out, rest
 
 
 def oi_collect_indexed(attrs: dict[str, AttributeValue], prefix: str) -> list[dict[str, OIValue]]:

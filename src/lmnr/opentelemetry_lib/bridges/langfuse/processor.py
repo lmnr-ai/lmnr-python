@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from threading import Lock
-from typing import Any, cast
+from typing import Any, TypeAlias, cast
 
 from opentelemetry.context import Context
 from opentelemetry.sdk.trace import Event, ReadableSpan, Span, SpanProcessor
@@ -101,7 +101,24 @@ from .translate import (
 
 logger = get_default_logger(__name__)
 
+_USAGE_TOKEN_KEYS = (
+    GEN_AI_USAGE_INPUT_TOKENS,
+    GEN_AI_USAGE_OUTPUT_TOKENS,
+    LLM_USAGE_TOTAL_TOKENS,
+    GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS,
+    GEN_AI_USAGE_CACHE_WRITE_INPUT_TOKENS,
+    GEN_AI_USAGE_REASONING_OUTPUT_TOKENS,
+)
+_USAGE_COST_KEYS = (GEN_AI_USAGE_INPUT_COST, GEN_AI_USAGE_OUTPUT_COST, GEN_AI_USAGE_COST)
+
 _DISABLED = "lmnr.internal.disabled"
+
+
+# A translation: attributes to set on Laminar's copy of the span. None removes
+# the attribute from the copy: a `langfuse.*` / openinference value already
+# carried by the Laminar attributes it was converted to. Laminar would
+# otherwise store (and bill) every payload twice.
+Translated: TypeAlias = dict[str, AttributeValue | None]
 
 
 def _metadata_value(value: Any, json_encoded: bool) -> AttributeValue:
@@ -114,7 +131,7 @@ def _metadata_value(value: Any, json_encoded: bool) -> AttributeValue:
 
 def _promote_trace_attributes(
     attrs: dict[str, AttributeValue],
-    new_attrs: dict[str, AttributeValue],
+    new_attrs: Translated,
     json_encoded_metadata: bool,
 ) -> None:
     """Map trace-level session / user / tags / metadata to Laminar
@@ -147,10 +164,20 @@ def _promote_trace_attributes(
             )
 
 
+def _convert_model_parameters(
+    attrs: dict[str, AttributeValue], key: str, new_attrs: Translated
+) -> None:
+    mapped, rest = model_parameter_attributes(parse_json(attrs.get(key)))
+    new_attrs.update(mapped)
+    if rest is not None and mapped:
+        # Only the parameters that have no request attribute stay.
+        new_attrs[key] = json_dumps(rest) if rest else None
+
+
 def _translate_langfuse(
     attrs: dict[str, AttributeValue], json_encoded_metadata: bool
-) -> dict[str, AttributeValue]:
-    new_attrs: dict[str, AttributeValue] = {}
+) -> Translated:
+    new_attrs: Translated = {}
 
     is_llm = False
     obs_type = attrs.get(LF_OBSERVATION_TYPE)
@@ -165,6 +192,7 @@ def _translate_langfuse(
     if isinstance(model, str) and model:
         new_attrs[GEN_AI_REQUEST_MODEL] = model
         new_attrs[GEN_AI_RESPONSE_MODEL] = model
+        new_attrs[LF_OBSERVATION_MODEL] = None
 
     # Langfuse records a provider only through LangChain's `ls_provider`
     # metadata. `langfuse.openai` records none: the client's base URL may point
@@ -174,31 +202,25 @@ def _translate_langfuse(
         provider = parse_json(provider)
     if isinstance(provider, str) and provider:
         new_attrs[GEN_AI_SYSTEM] = LS_PROVIDER_ALIASES.get(provider, provider)
-    new_attrs.update(
-        model_parameter_attributes(parse_json(attrs.get(LF_OBSERVATION_MODEL_PARAMETERS)))
-    )
+    _convert_model_parameters(attrs, LF_OBSERVATION_MODEL_PARAMETERS, new_attrs)
 
-    new_attrs.update(
-        usage_attributes(
-            parse_json(attrs.get(LF_OBSERVATION_USAGE_DETAILS)),
-            parse_json(attrs.get(LF_OBSERVATION_COST_DETAILS)),
-            tokens=(
-                GEN_AI_USAGE_INPUT_TOKENS,
-                GEN_AI_USAGE_OUTPUT_TOKENS,
-                LLM_USAGE_TOTAL_TOKENS,
-                GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS,
-                GEN_AI_USAGE_CACHE_WRITE_INPUT_TOKENS,
-                GEN_AI_USAGE_REASONING_OUTPUT_TOKENS,
-            ),
-            costs=(GEN_AI_USAGE_INPUT_COST, GEN_AI_USAGE_OUTPUT_COST, GEN_AI_USAGE_COST),
-        )
+    usage = usage_attributes(
+        parse_json(attrs.get(LF_OBSERVATION_USAGE_DETAILS)),
+        parse_json(attrs.get(LF_OBSERVATION_COST_DETAILS)),
+        tokens=_USAGE_TOKEN_KEYS,
+        costs=_USAGE_COST_KEYS,
     )
+    new_attrs.update(usage)
+    if any(k in usage for k in _USAGE_TOKEN_KEYS):
+        new_attrs[LF_OBSERVATION_USAGE_DETAILS] = None
+    if any(k in usage for k in _USAGE_COST_KEYS):
+        new_attrs[LF_OBSERVATION_COST_DETAILS] = None
 
     # LLM input/output becomes GenAI messages so the transcript view renders;
-    # anything else (or an unrecognized LLM shape) stays a raw blob.
-    input_raw = attrs.get(LF_OBSERVATION_INPUT)
-    if input_raw is None:
-        input_raw = attrs.get(LF_TRACE_INPUT)
+    # anything else (or an unrecognized LLM shape) stays a raw blob. Either way
+    # the `langfuse.*` key it came from is dropped.
+    input_key = LF_OBSERVATION_INPUT if LF_OBSERVATION_INPUT in attrs else LF_TRACE_INPUT
+    input_raw = attrs.get(input_key)
     input_handled = False
     if is_llm and input_raw is not None:
         split = genai_input_from_langfuse(input_raw)
@@ -214,10 +236,12 @@ def _translate_langfuse(
             input_handled = True
     if not input_handled and isinstance(input_raw, str) and input_raw and SPAN_INPUT not in attrs:
         new_attrs[SPAN_INPUT] = input_raw
+        input_handled = True
+    if input_handled:
+        new_attrs[input_key] = None
 
-    output_raw = attrs.get(LF_OBSERVATION_OUTPUT)
-    if output_raw is None:
-        output_raw = attrs.get(LF_TRACE_OUTPUT)
+    output_key = LF_OBSERVATION_OUTPUT if LF_OBSERVATION_OUTPUT in attrs else LF_TRACE_OUTPUT
+    output_raw = attrs.get(output_key)
     output_handled = False
     if is_llm and output_raw is not None:
         messages = genai_output_from_langfuse(output_raw)
@@ -236,6 +260,9 @@ def _translate_langfuse(
         and SPAN_OUTPUT not in attrs
     ):
         new_attrs[SPAN_OUTPUT] = output_raw
+        output_handled = True
+    if output_handled:
+        new_attrs[output_key] = None
 
     _promote_trace_attributes(attrs, new_attrs, json_encoded_metadata)
     return new_attrs
@@ -243,10 +270,10 @@ def _translate_langfuse(
 
 def _translate_openinference(
     attrs: dict[str, AttributeValue], json_encoded_metadata: bool
-) -> dict[str, AttributeValue]:
+) -> Translated:
     """Translate openinference's flat indexed `llm.*` attributes (groq /
     google_genai instrumentations, LiteLLM's `langfuse_otel` callback)."""
-    new_attrs: dict[str, AttributeValue] = {}
+    new_attrs: Translated = {}
 
     # LiteLLM's `langfuse_otel` callback forces `openinference.span.kind=TOOL`
     # on any completion that passes `tools=[...]`, so a TOOL kind is only
@@ -271,68 +298,92 @@ def _translate_openinference(
     if isinstance(model, str) and model:
         new_attrs[GEN_AI_REQUEST_MODEL] = model
         new_attrs[GEN_AI_RESPONSE_MODEL] = model
+        new_attrs[OI_LLM_MODEL_NAME] = None
 
     # LiteLLM writes its `custom_llm_provider`, "Unknown" when it has none.
     provider = attrs.get(OI_LLM_PROVIDER)
     if isinstance(provider, str) and provider and provider != "Unknown":
         new_attrs[GEN_AI_SYSTEM] = provider
-    new_attrs.update(
-        model_parameter_attributes(parse_json(attrs.get(OI_LLM_INVOCATION_PARAMETERS)))
-    )
+    _convert_model_parameters(attrs, OI_LLM_INVOCATION_PARAMETERS, new_attrs)
 
     prompt_tokens = attrs.get(OI_TOKEN_PROMPT)
     completion_tokens = attrs.get(OI_TOKEN_COMPLETION)
     total_tokens = attrs.get(OI_TOKEN_TOTAL)
     if isinstance(prompt_tokens, (int, float)):
         new_attrs[GEN_AI_USAGE_INPUT_TOKENS] = int(prompt_tokens)
+        new_attrs[OI_TOKEN_PROMPT] = None
     if isinstance(completion_tokens, (int, float)):
         new_attrs[GEN_AI_USAGE_OUTPUT_TOKENS] = int(completion_tokens)
+        new_attrs[OI_TOKEN_COMPLETION] = None
     if isinstance(total_tokens, (int, float)):
         new_attrs[LLM_USAGE_TOTAL_TOKENS] = int(total_tokens)
+        new_attrs[OI_TOKEN_TOTAL] = None
     elif isinstance(prompt_tokens, (int, float)) or isinstance(completion_tokens, (int, float)):
         new_attrs[LLM_USAGE_TOTAL_TOKENS] = int(
             (cast(int | float, prompt_tokens) or 0) + (cast(int | float, completion_tokens) or 0)
         )
+
+    def drop_family(prefix: str) -> None:
+        for k in attrs:
+            if k.startswith(prefix + "."):
+                new_attrs[k] = None
 
     input_messages = [
         oi_message_to_genai(m) for m in oi_collect_indexed(attrs, OI_LLM_INPUT_MESSAGES)
     ]
     if input_messages:
         new_attrs[GEN_AI_INPUT_MESSAGES] = json_dumps(input_messages)
+        drop_family(OI_LLM_INPUT_MESSAGES)
     output_messages = [
         oi_message_to_genai(m) for m in oi_collect_indexed(attrs, OI_LLM_OUTPUT_MESSAGES)
     ]
     if output_messages:
         new_attrs[GEN_AI_OUTPUT_MESSAGES] = json_dumps(output_messages)
+        drop_family(OI_LLM_OUTPUT_MESSAGES)
 
     tools = [oi_tool_to_genai(t) for t in oi_collect_indexed(attrs, OI_LLM_TOOLS)]
     tools = [t for t in tools if t]
     if tools:
         new_attrs[GEN_AI_TOOL_DEFINITIONS] = json_dumps(tools)
+        drop_family(OI_LLM_TOOLS)
 
-    # LiteLLM's hybrid spans also carry `langfuse.observation.input/output`.
-    if not input_messages:
-        in_val = attrs.get(OI_INPUT_VALUE)
+    # LiteLLM's hybrid spans also carry `input.value` and
+    # `langfuse.observation.input/output`: the same payload again.
+    if input_messages:
+        new_attrs[OI_INPUT_VALUE] = None
+        new_attrs[LF_OBSERVATION_INPUT] = None
+    else:
+        in_key = OI_INPUT_VALUE
+        in_val = attrs.get(in_key)
         if not (isinstance(in_val, str) and in_val):
-            in_val = attrs.get(LF_OBSERVATION_INPUT)
+            in_key = LF_OBSERVATION_INPUT
+            in_val = attrs.get(in_key)
         if isinstance(in_val, str) and in_val and SPAN_INPUT not in attrs:
             new_attrs[SPAN_INPUT] = in_val
-    if not output_messages:
-        out_val = attrs.get(OI_OUTPUT_VALUE)
+            new_attrs[in_key] = None
+    if output_messages:
+        new_attrs[OI_OUTPUT_VALUE] = None
+        new_attrs[LF_OBSERVATION_OUTPUT] = None
+    else:
+        out_key = OI_OUTPUT_VALUE
+        out_val = attrs.get(out_key)
         if not (isinstance(out_val, str) and out_val):
-            out_val = attrs.get(LF_OBSERVATION_OUTPUT)
+            out_key = LF_OBSERVATION_OUTPUT
+            out_val = attrs.get(out_key)
         if isinstance(out_val, str) and out_val and SPAN_OUTPUT not in attrs:
             new_attrs[SPAN_OUTPUT] = out_val
+            new_attrs[out_key] = None
 
+    # Keys the span never had need no removal.
+    for k in [k for k, v in new_attrs.items() if v is None and k not in attrs]:
+        del new_attrs[k]
     _promote_trace_attributes(attrs, new_attrs, json_encoded_metadata)
     return new_attrs
 
 
-def translate_span(
-    span: ReadableSpan, json_encoded_metadata: bool = False
-) -> dict[str, AttributeValue]:
-    """Laminar attributes to add on top of `span`'s own. Pure: never touches
-    `span`.
+def translate_span(span: ReadableSpan, json_encoded_metadata: bool = False) -> Translated:
+    """Laminar attributes to add on top of `span`'s own, and (as None) the
+    ones to remove from Laminar's copy. Pure: never touches `span`.
 
     openinference is checked first: LiteLLM's hybrid spans carry both layouts
     but no `langfuse.observation.type`, and their model / tokens / messages
@@ -446,7 +497,11 @@ class LangfuseBridgeSpanProcessor(SpanProcessor):
                     forward = False
             attributes: dict[str, AttributeValue] = {**(span.attributes or {}), **added}
             if forward:
-                attributes.update(translate_span(span, self._json_encoded_metadata))
+                for key, value in translate_span(span, self._json_encoded_metadata).items():
+                    if value is None:
+                        _ = attributes.pop(key, None)
+                    else:
+                        attributes[key] = value
                 attributes[SPAN_BRIDGE_NAME] = Bridge.LANGFUSE.value
                 if self._bridge_version:
                     attributes[SPAN_BRIDGE_VERSION] = self._bridge_version

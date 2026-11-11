@@ -100,6 +100,10 @@ def test_langfuse_export_is_unchanged_by_the_bridge(laminar: Laminar, bridge: La
     assert _normalized(with_bridge) == _normalized(without_bridge)
     for span in with_bridge.spans:
         assert not any(k.startswith(("lmnr.", "gen_ai.")) for k in span["attributes"])
+    # Only Laminar's copy drops the converted `langfuse.*` attributes.
+    exported = next(s for s in with_bridge.spans if s["name"] == "generate")["attributes"]
+    assert "langfuse.observation.input" in exported
+    assert "langfuse.observation.usage_details" in exported
 
 
 def test_bridged_spans_are_translated(
@@ -125,6 +129,15 @@ def test_bridged_spans_are_translated(
     assert list(generation[f"{ASSOCIATION_PROPERTIES}.tags"]) == ["tag-1"]  # pyright: ignore[reportArgumentType]
     assert generation[f"{ASSOCIATION_PROPERTIES}.metadata.team"] == "a"
     assert generation[SPAN_BRIDGE_NAME] == "langfuse"
+    # Converted attributes aren't stored twice.
+    for key in (
+        "langfuse.observation.input",
+        "langfuse.observation.output",
+        "langfuse.observation.usage_details",
+        "langfuse.observation.cost_details",
+        "langfuse.observation.model.name",
+    ):
+        assert key not in generation, key
     assert generation[SPAN_BRIDGE_VERSION] == get_package_version("langfuse")
 
     assert (spans["lookup"].attributes or {})[SPAN_TYPE] == "TOOL"
