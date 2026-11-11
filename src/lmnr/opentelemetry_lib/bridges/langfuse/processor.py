@@ -136,8 +136,15 @@ def _metadata_value(value: Any, json_encoded: bool) -> AttributeValue:
 
 
 def _first_string(*values: Any) -> str | None:
-    """The first non-empty string, like Langfuse's server."""
-    return next((v for v in values if isinstance(v, str) and v), None)
+    """The first non-empty id, like Langfuse's server. A number counts, as
+    its text: langfuse 5 JSON-encodes a metadata `12345` as `"12345"`, which
+    decodes to an int, and Langfuse's server keeps such a value as text."""
+    for value in values:
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            value = str(value)
+        if isinstance(value, str) and value:
+            return value
+    return None
 
 
 def _tags(value: Any) -> list[str] | None:

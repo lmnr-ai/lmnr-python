@@ -605,6 +605,25 @@ def test_langfuse_metadata_keys_in_one_json_object_are_read():
     assert f"{ASSOCIATION_PROPERTIES}.metadata.langfuse_session_id" not in attrs
 
 
+def test_numeric_session_and_user_ids_are_kept_as_text():
+    """langfuse 5 JSON-encodes metadata, so a numeric id decodes to a number;
+    Langfuse's server keeps it as text, and so does the bridge."""
+    attrs = translate(
+        FakeSpan(
+            {
+                "langfuse.observation.metadata.langfuse_session_id": "12345",
+                "langfuse.observation.metadata.langfuse_user_id": "7",
+            }
+        ),
+        json_encoded_metadata=True,
+    )
+    assert attrs[f"{ASSOCIATION_PROPERTIES}.session_id"] == "12345"
+    assert attrs[f"{ASSOCIATION_PROPERTIES}.user_id"] == "7"
+
+    attrs = translate(FakeSpan({"session.id": 42, "langfuse.trace.metadata.x": "y"}))
+    assert attrs[f"{ASSOCIATION_PROPERTIES}.session_id"] == "42"
+
+
 def test_session_and_user_precedence_follows_langfuse():
     attrs = translate(
         FakeSpan(
