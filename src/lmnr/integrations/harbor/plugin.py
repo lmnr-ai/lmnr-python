@@ -12,6 +12,7 @@ recorded step. Verifier rewards become evaluation scores.
 """
 
 import asyncio
+import os
 import re
 import uuid
 from dataclasses import dataclass
@@ -154,6 +155,7 @@ class LaminarPlugin:
         self._uploads: list[asyncio.Task[Any]] = []
         self._seen_reward_keys: list[str] = []
         self._next_index: int = 0
+        self._evals_root: Path | None = None
 
     # Harbor JobPlugin protocol
 
@@ -265,6 +267,7 @@ class LaminarPlugin:
             {"name": agent.name or agent.import_path, "model": agent.model_name}
             for agent in config.agents
         ]
+        hosted_metadata = self._hosted_metadata()
         evaluation = await self._client.evals.init(
             name=self.evaluation_name or config.job_name,
             group_name=self._resolved_group_name,
@@ -274,10 +277,37 @@ class LaminarPlugin:
                 "harbor_job_name": config.job_name,
                 "agents": agents,
             },
+            hosted_metadata=hosted_metadata,
         )
         self._eval_id = evaluation.get("id")
         self._project_id = str(evaluation.get("projectId"))
         logger.info(f"Laminar evaluation: {self.evaluation_url}")
+
+    def _hosted_metadata(self) -> dict[str, str] | None:
+        """Links the evaluation to the evals folder of a remote run
+        (`lmnr-cli eval run --remote`), whose orchestrator sets both variables
+        and runs Harbor from the suite dir."""
+        upload_id = os.environ.get("LMNR_EVAL_UPLOAD_ID")
+        root = os.environ.get("LMNR_EVALS_ROOT")
+        if not upload_id or not root:
+            return None
+        evals_root = Path(root).resolve()
+        suite_path = _relative_path(Path.cwd(), evals_root)
+        if suite_path is None:
+            return None
+        # Trials get task paths only when the evaluation is linked to the upload.
+        self._evals_root = evals_root
+        return {"uploadId": upload_id, "suitePath": suite_path}
+
+    def _task_path(self, event: "TrialHookEvent") -> str | None:
+        """The task dir relative to a remote run's evals root. Tasks Harbor
+        fetched from git or a registry live outside it and have none."""
+        if self._evals_root is None:
+            return None
+        try:
+            return _relative_path(Path(event.config.task.get_local_path()), self._evals_root)
+        except Exception:
+            return None
 
     # Trial hooks
 
@@ -335,6 +365,9 @@ class LaminarPlugin:
                     "model": agent.model_name,
                 },
             )
+            task_path = self._task_path(event)
+            if task_path is not None:
+                state.metadata["task_path"] = task_path
             self._next_index += 1
             self._trials[event.trial_name] = state
         else:
@@ -622,6 +655,14 @@ class LaminarPlugin:
         if self.fail_fast:
             raise error
         logger.warning(f"{message}: {error}")
+
+
+def _relative_path(path: Path, root: Path) -> str | None:
+    """`path` relative to `root` in POSIX form, or None outside it."""
+    try:
+        return path.resolve().relative_to(root).as_posix()
+    except ValueError:
+        return None
 
 
 def _default_group_name(job: "Job") -> str | None:
