@@ -120,27 +120,6 @@ _USAGE_COST_KEYS = (GEN_AI_USAGE_INPUT_COST, GEN_AI_USAGE_OUTPUT_COST, GEN_AI_US
 
 _DISABLED = "lmnr.internal.disabled"
 
-_METADATA_PREFIXES = (LF_TRACE_METADATA_PREFIX + ".", LF_OBSERVATION_METADATA_PREFIX + ".")
-# In Langfuse's server's order of precedence.
-_SESSION_ID_KEYS = (
-    LF_TRACE_COMPAT_SESSION_ID,
-    LF_TRACE_SESSION_ID,
-    f"{LF_OBSERVATION_METADATA_PREFIX}.{LF_METADATA_SESSION_ID}",
-    f"{LF_TRACE_METADATA_PREFIX}.{LF_METADATA_SESSION_ID}",
-)
-_USER_ID_KEYS = (
-    LF_TRACE_COMPAT_USER_ID,
-    LF_TRACE_USER_ID,
-    f"{LF_OBSERVATION_METADATA_PREFIX}.{LF_METADATA_USER_ID}",
-    f"{LF_TRACE_METADATA_PREFIX}.{LF_METADATA_USER_ID}",
-)
-_TAGS_KEYS = (
-    LF_TRACE_TAGS,
-    f"{LF_OBSERVATION_METADATA_PREFIX}.{LF_METADATA_TAGS}",
-    f"{LF_TRACE_METADATA_PREFIX}.{LF_METADATA_TAGS}",
-)
-
-
 # A translation: attributes to set on Laminar's copy of the span. None removes
 # the attribute from the copy: a `langfuse.*` / openinference value already
 # carried by the Laminar attributes it was converted to. Laminar would
@@ -156,18 +135,9 @@ def _metadata_value(value: Any, json_encoded: bool) -> AttributeValue:
     return json_dumps(value)
 
 
-def _first_string(
-    attrs: dict[str, AttributeValue], keys: tuple[str, ...], json_encoded_metadata: bool
-) -> str | None:
-    """The first non-empty string among `keys`, like Langfuse's server. Values
-    under a metadata prefix are decoded when the SDK JSON-encodes them."""
-    for key in keys:
-        value = attrs.get(key)
-        if json_encoded_metadata and key.startswith(_METADATA_PREFIXES):
-            value = parse_json(value)
-        if isinstance(value, str) and value:
-            return value
-    return None
+def _first_string(*values: Any) -> str | None:
+    """The first non-empty string, like Langfuse's server."""
+    return next((v for v in values if isinstance(v, str) and v), None)
 
 
 def _tags(value: Any) -> list[str] | None:
@@ -219,22 +189,39 @@ def _promote_trace_attributes(
     Observation metadata becomes trace metadata on the root span only, as in
     Langfuse; elsewhere it stays raw (mostly LangChain's `ls_*` keys).
     """
-    session_id = _first_string(attrs, _SESSION_ID_KEYS, json_encoded_metadata)
+    # Both metadata forms (one JSON object and `.*` keys), decoded. The
+    # `langfuse_*` keys are read from them, so a key left out of Laminar's
+    # metadata below always became the session, user or tags.
+    trace_metadata = _metadata(attrs, LF_TRACE_METADATA_PREFIX, json_encoded_metadata)
+    observation_metadata = _metadata(attrs, LF_OBSERVATION_METADATA_PREFIX, json_encoded_metadata)
+
+    # In Langfuse's server's order of precedence.
+    session_id = _first_string(
+        attrs.get(LF_TRACE_COMPAT_SESSION_ID),
+        attrs.get(LF_TRACE_SESSION_ID),
+        observation_metadata.get(LF_METADATA_SESSION_ID),
+        trace_metadata.get(LF_METADATA_SESSION_ID),
+    )
     if session_id:
         new_attrs[f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}"] = session_id
-    user_id = _first_string(attrs, _USER_ID_KEYS, json_encoded_metadata)
+    user_id = _first_string(
+        attrs.get(LF_TRACE_COMPAT_USER_ID),
+        attrs.get(LF_TRACE_USER_ID),
+        observation_metadata.get(LF_METADATA_USER_ID),
+        trace_metadata.get(LF_METADATA_USER_ID),
+    )
     if user_id:
         new_attrs[f"{ASSOCIATION_PROPERTIES}.{USER_ID}"] = user_id
-
-    for key in _TAGS_KEYS:
-        tags = _tags(attrs.get(key))
-        if tags:
+    for value in (
+        attrs.get(LF_TRACE_TAGS),
+        observation_metadata.get(LF_METADATA_TAGS),
+        trace_metadata.get(LF_METADATA_TAGS),
+    ):
+        if tags := _tags(value):
             new_attrs[f"{ASSOCIATION_PROPERTIES}.tags"] = tags
             break
 
-    metadata = _metadata(attrs, LF_TRACE_METADATA_PREFIX, json_encoded_metadata)
-    if is_root:
-        metadata.update(_metadata(attrs, LF_OBSERVATION_METADATA_PREFIX, json_encoded_metadata))
+    metadata = {**trace_metadata, **(observation_metadata if is_root else {})}
     for k, v in metadata.items():
         if k not in LF_METADATA_TRACE_KEYS:
             new_attrs[f"{ASSOCIATION_PROPERTIES}.metadata.{k}"] = v

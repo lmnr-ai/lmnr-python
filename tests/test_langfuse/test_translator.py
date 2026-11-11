@@ -580,6 +580,31 @@ def test_langfuse_metadata_keys_set_session_user_tags():
     assert attrs[f"{ASSOCIATION_PROPERTIES}.tags"] == ["t3"]
 
 
+def test_langfuse_metadata_keys_in_one_json_object_are_read():
+    """The same keys in the one-JSON-object metadata form (LiteLLM's
+    `trace_metadata`) are read too, so a key left out of Laminar's metadata is
+    never lost."""
+    attrs = translate(
+        FakeSpan(
+            {
+                "langfuse.trace.metadata": json.dumps(
+                    {
+                        "langfuse_session_id": "s3",
+                        "langfuse_user_id": "u3",
+                        "langfuse_tags": ["t4"],
+                        "k": "v",
+                    }
+                )
+            }
+        )
+    )
+    assert attrs[f"{ASSOCIATION_PROPERTIES}.session_id"] == "s3"
+    assert attrs[f"{ASSOCIATION_PROPERTIES}.user_id"] == "u3"
+    assert attrs[f"{ASSOCIATION_PROPERTIES}.tags"] == ["t4"]
+    assert attrs[f"{ASSOCIATION_PROPERTIES}.metadata.k"] == "v"
+    assert f"{ASSOCIATION_PROPERTIES}.metadata.langfuse_session_id" not in attrs
+
+
 def test_session_and_user_precedence_follows_langfuse():
     attrs = translate(
         FakeSpan(
