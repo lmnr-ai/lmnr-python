@@ -295,6 +295,50 @@ async def test_job_reports_trials_as_evaluation(
 
 
 @pytest.mark.asyncio
+async def test_remote_run_links_evaluation_and_trials_to_uploaded_folder(
+    client: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    # A remote run's orchestrator extracts the evals folder at LMNR_EVALS_ROOT
+    # and runs Harbor from the suite dir.
+    root = tmp_path / "evals"
+    suite_dir = root / "support"
+    suite_dir.mkdir(parents=True)
+    monkeypatch.setenv("LMNR_EVALS_ROOT", str(root))
+    monkeypatch.setenv("LMNR_EVAL_UPLOAD_ID", "upload-1")
+    monkeypatch.chdir(suite_dir)
+    job = FakeJob(tmp_path / "job")
+    inside = make_task_dir(suite_dir, "refund")
+    outside = make_task_dir(tmp_path / "registry-cache", "fetched")
+    plugin = LaminarPlugin(project_api_key="test_key")
+
+    await plugin.on_job_start(job)
+    assert client.evals.init.call_args.kwargs["hosted_metadata"] == {
+        "uploadId": "upload-1",
+        "suitePath": "support",
+    }
+    for task_dir, trial in [(inside, "refund__a"), (outside, "fetched__b")]:
+        event = make_event(job, task_dir, trial, rewards={"reward": 1.0})
+        await job.emit("start", event)
+        await job.emit("end", event)
+    await plugin.on_job_end(SimpleNamespace())
+
+    task_paths = {
+        dp.metadata["trial_name"]: dp.metadata.get("task_path")
+        for dp in saved_datapoints(client)
+        if isinstance(dp, EvaluationResultDatapoint)
+    }
+    # Tasks Harbor fetched from elsewhere aren't in the uploaded folder.
+    assert task_paths == {"refund__a": "support/tasks/refund", "fetched__b": None}
+
+
+@pytest.mark.asyncio
+async def test_local_run_has_no_hosted_metadata(client: MagicMock, tmp_path: Path):
+    plugin = LaminarPlugin(project_api_key="test_key")
+    await plugin.on_job_start(FakeJob(tmp_path / "job"))
+    assert client.evals.init.call_args.kwargs["hosted_metadata"] is None
+
+
+@pytest.mark.asyncio
 async def test_trajectory_becomes_llm_and_tool_spans(
     span_exporter: InMemorySpanExporter, client: MagicMock, tmp_path: Path
 ):

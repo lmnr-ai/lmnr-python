@@ -34,7 +34,8 @@ class Evals(BaseResource):
         self,
         name: str | None = None,
         group_name: str | None = None,
-        metadata: dict[str, Any] | None = None,  # ,
+        metadata: dict[str, Any] | None = None,
+        hosted_metadata: dict[str, Any] | None = None,
     ) -> InitEvaluationResponse:
         """Initialize a new evaluation.
 
@@ -42,6 +43,9 @@ class Evals(BaseResource):
             name (str | None, optional): Name of the evaluation. Defaults to None.
             group_name (str | None, optional): Group name for the evaluation. Defaults to None.
             metadata (dict[str, Any] | None, optional): Metadata to associate with. Defaults to None.
+            hosted_metadata (dict[str, Any] | None, optional): Links the evaluation to the
+                evals folder of a remote Harbor run (`uploadId`, `suitePath`). Set by the
+                Laminar Harbor plugin. Defaults to None.
 
         Returns:
             InitEvaluationResponse: The response from the initialization request.
@@ -54,6 +58,7 @@ class Evals(BaseResource):
                 "name": name,
                 "groupName": group_name,
                 "metadata": metadata,
+                **({"hostedMetadata": hosted_metadata} if hosted_metadata else {}),
             },
             headers=self._headers(),
         )
