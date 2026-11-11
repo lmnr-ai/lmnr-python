@@ -25,7 +25,7 @@
 ## Function input capture (`get_input_from_func_args`, LAM-2532)
 
 - **Pair arguments with `inspect.signature(func).bind_partial`, never by index.** `@observe` and several instrumentors (kernel, skyvern, cua_computer, claude_agent, browser_use) record span input through it. The old index-based pairing gave `*args` only its first value and handed the rest to the following keyword-only params (`def merge(a, b, /, *rest, sep)` recorded `sep` as the 4th positional).
-- Recorded shape: `*args` is a list under its own name; `**kwargs` is flattened to the top level next to the named params (long-standing shape, kept on purpose); params left at their default are omitted. `tests/test_observe.py::test_observe_input_matches_python_binding` compares against Python's own binding.
+- Recorded shape: `*args` is a list under its own name (`[]` when empty); `**kwargs` is flattened to the top level next to the named params (long-standing shape, kept on purpose); params left at their default are recorded with the default (`apply_defaults()`), so a secret passed as a default lands in the span unless it's in `ignore_inputs`. Pinned by `tests/test_observe.py::test_observe_input_binds_args_like_python`.
 - A call that doesn't match the signature (it raises `TypeError` when it runs) falls back to positional pairing, so the error span still shows what was passed.
 
 ## Evals memory model (LAM-1909)

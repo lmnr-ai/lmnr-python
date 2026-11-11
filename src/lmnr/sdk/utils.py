@@ -234,8 +234,10 @@ def get_input_from_func_args(
     try:
         # Let Python pair the arguments with the parameters, so `*args` gets
         # every extra positional and keyword-only params keep their own values.
-        # Params left at their default are not recorded.
         bound = signature.bind_partial(*normalized_args, **normalized_kwargs)
+        # Record params left at their default too, since they shape the call as
+        # much as the passed ones. An empty `*args` is recorded as `[]`.
+        bound.apply_defaults()
     except TypeError:
         # The call doesn't match the signature (it will raise when it runs),
         # so record what was passed as best we can.

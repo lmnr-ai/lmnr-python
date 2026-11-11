@@ -1,8 +1,7 @@
-import inspect
 import json
 import os
 import uuid
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Callable, Generator
 from typing import Any, cast
 
 import pytest
@@ -433,54 +432,67 @@ async def test_observe_skip_input_keys_async(span_exporter: InMemorySpanExporter
     }
 
 
+@observe()
 def _search(query: str, *docs: str) -> None: ...
 
 
+@observe()
 def _merge(a: int, b: int, /, *rest: int, sep: str = ", ") -> None: ...
 
 
+@observe()
 def _everything(a: int, b: int = 2, *args: int, c: int, d: int = 4, **kwargs: int) -> None: ...
 
 
-def _expected_input(fn: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:
-    """Python's own binding, with `**kwargs` recorded next to the named params."""
-    signature = inspect.signature(fn)
-    expected: dict[str, Any] = {}
-    for name, value in signature.bind(*args, **kwargs).arguments.items():
-        kind = signature.parameters[name].kind
-        if kind is inspect.Parameter.VAR_KEYWORD:
-            expected.update(value)
-        elif kind is inspect.Parameter.VAR_POSITIONAL:
-            # `*args` is a tuple, which JSON records as a list
-            expected[name] = list(cast(tuple[Any, ...], value))
-        else:
-            expected[name] = value
-    return expected
-
-
 @pytest.mark.parametrize(
-    ("fn", "args", "kwargs"),
+    ("call", "expected_input"),
     [
-        (_search, ("q", "d1", "d2", "d3"), {}),
-        (_search, ("q",), {}),
-        (_merge, (1, 2, 3, 4), {"sep": "-"}),
-        (_merge, (1, 2), {}),
-        (_everything, (1, 2, 3, 4), {"c": 5, "e": 6}),
-        (_everything, (1,), {"c": 5, "d": 7}),
-        (_everything, (), {"a": 1, "c": 5}),
+        pytest.param(
+            lambda: _search("q", "d1", "d2", "d3"),
+            {"query": "q", "docs": ["d1", "d2", "d3"]},
+            id="var-positional",
+        ),
+        pytest.param(
+            lambda: _search("q"),
+            {"query": "q", "docs": []},
+            id="empty-var-positional",
+        ),
+        pytest.param(
+            lambda: _merge(1, 2, 3, 4, sep="-"),
+            {"a": 1, "b": 2, "rest": [3, 4], "sep": "-"},
+            id="keyword-only-after-var-positional",
+        ),
+        pytest.param(
+            lambda: _merge(1, 2),
+            {"a": 1, "b": 2, "rest": [], "sep": ", "},
+            id="keyword-only-default",
+        ),
+        pytest.param(
+            lambda: _everything(1, 2, 3, 4, c=5, e=6),
+            {"a": 1, "b": 2, "args": [3, 4], "c": 5, "d": 4, "e": 6},
+            id="all-kinds",
+        ),
+        pytest.param(
+            lambda: _everything(1, c=5, d=7),
+            {"a": 1, "b": 2, "args": [], "c": 5, "d": 7},
+            id="positional-default",
+        ),
+        pytest.param(
+            lambda: _everything(a=1, c=5),
+            {"a": 1, "b": 2, "args": [], "c": 5, "d": 4},
+            id="all-by-keyword",
+        ),
     ],
 )
-def test_observe_input_matches_python_binding(
+def test_observe_input_binds_args_like_python(
     span_exporter: InMemorySpanExporter,
-    fn: Any,
-    args: tuple[Any, ...],
-    kwargs: dict[str, Any],
+    call: Callable[[], None],
+    expected_input: dict[str, Any],
 ):
-    _ = observe()(fn)(*args, **kwargs)
+    call()
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
-    expected = _expected_input(fn, *args, **kwargs)
-    assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.input"])) == expected
+    assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.input"])) == expected_input
 
 
 def test_observe_input_var_positional_method(span_exporter: InMemorySpanExporter):
