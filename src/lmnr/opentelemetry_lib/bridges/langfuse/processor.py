@@ -85,12 +85,12 @@ from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.utils import json_dumps
 
 from .translate import (
-    convert_openai_tool_calls_to_content_parts,
     genai_input_from_langfuse,
     genai_output_from_langfuse,
     is_langfuse_span,
     is_openinference_span,
     model_parameter_attributes,
+    normalize_messages,
     oi_collect_indexed,
     oi_message_to_genai,
     oi_tool_to_genai,
@@ -227,8 +227,7 @@ def _translate_langfuse(
         if split is not None:
             messages, tools = split
             messages, lc_tools = split_messages_and_tool_defs_langchain(messages)
-            messages = convert_openai_tool_calls_to_content_parts(messages, False)
-            new_attrs[GEN_AI_INPUT_MESSAGES] = json_dumps(messages)
+            new_attrs[GEN_AI_INPUT_MESSAGES] = json_dumps(normalize_messages(messages, False))
             if tools:
                 new_attrs[GEN_AI_TOOL_DEFINITIONS] = json_dumps(tools)
             elif lc_tools:
@@ -246,12 +245,7 @@ def _translate_langfuse(
     if is_llm and output_raw is not None:
         messages = genai_output_from_langfuse(output_raw)
         if messages is not None:
-            if isinstance(messages, list):
-                messages = convert_openai_tool_calls_to_content_parts(
-                    messages,
-                    True,  # pyright: ignore[reportUnknownArgumentType]
-                )
-            new_attrs[GEN_AI_OUTPUT_MESSAGES] = json_dumps(messages)
+            new_attrs[GEN_AI_OUTPUT_MESSAGES] = json_dumps(normalize_messages(messages, True))
             output_handled = True
     if (
         not output_handled
@@ -332,13 +326,13 @@ def _translate_openinference(
         oi_message_to_genai(m) for m in oi_collect_indexed(attrs, OI_LLM_INPUT_MESSAGES)
     ]
     if input_messages:
-        new_attrs[GEN_AI_INPUT_MESSAGES] = json_dumps(input_messages)
+        new_attrs[GEN_AI_INPUT_MESSAGES] = json_dumps(normalize_messages(input_messages, False))
         drop_family(OI_LLM_INPUT_MESSAGES)
     output_messages = [
         oi_message_to_genai(m) for m in oi_collect_indexed(attrs, OI_LLM_OUTPUT_MESSAGES)
     ]
     if output_messages:
-        new_attrs[GEN_AI_OUTPUT_MESSAGES] = json_dumps(output_messages)
+        new_attrs[GEN_AI_OUTPUT_MESSAGES] = json_dumps(normalize_messages(output_messages, True))
         drop_family(OI_LLM_OUTPUT_MESSAGES)
 
     tools = [oi_tool_to_genai(t) for t in oi_collect_indexed(attrs, OI_LLM_TOOLS)]
