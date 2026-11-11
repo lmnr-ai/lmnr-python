@@ -3,7 +3,6 @@ import types
 from typing import Any, cast
 
 import pydantic
-from httpx import URL
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_REQUEST_FREQUENCY_PENALTY,
     GEN_AI_REQUEST_MAX_TOKENS,
@@ -79,7 +78,8 @@ def _set_api_attributes(span: Span):
         if hasattr(openai, "base_url")
         else getattr(openai, "api_base", "https://api.openai.com")
     )
-    if isinstance(base_url, URL):
+    # httpx.URL before openai 3.x, httpx2.URL from it.
+    if base_url is not None and not isinstance(base_url, str):
         base_url = str(base_url)
 
     set_span_attribute(span, "gen_ai.request.base_url", base_url)

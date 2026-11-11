@@ -3,7 +3,7 @@ import os
 from typing import Any, cast
 from unittest.mock import patch
 
-import httpx
+import httpx2
 import pytest
 from openai import AsyncOpenAI, AuthenticationError, OpenAI
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
@@ -173,8 +173,8 @@ def test_completion_context_propagation(
     span_exporter: InMemorySpanExporter,
     vllm_openai_client: OpenAI,
 ):
-    send_spy = spy_decorator(httpx.Client.send)
-    with patch.object(httpx.Client, "send", send_spy):
+    send_spy = spy_decorator(httpx2.Client.send)
+    with patch.object(httpx2.Client, "send", send_spy):
         _ = vllm_openai_client.completions.create(
             # model="davinci-002",
             model="meta-llama/Llama-3.2-1B-Instruct",
@@ -201,8 +201,8 @@ async def test_async_completion_context_propagation(
     span_exporter: InMemorySpanExporter,
     async_vllm_openai_client: AsyncOpenAI,
 ):
-    send_spy = spy_decorator(httpx.AsyncClient.send)
-    with patch.object(httpx.AsyncClient, "send", send_spy):
+    send_spy = spy_decorator(httpx2.AsyncClient.send)
+    with patch.object(httpx2.AsyncClient, "send", send_spy):
         _ = await async_vllm_openai_client.completions.create(
             model="meta-llama/Llama-3.2-1B-Instruct",
             prompt="Tell me a joke about opentelemetry",
@@ -254,7 +254,7 @@ def test_completion_exception(
         str, event_attributes["exception.stacktrace"]
     )
     assert "openai.AuthenticationError" in cast(str, event_attributes["exception.stacktrace"])
-    assert "invalid_api_key" in cast(str, event_attributes["exception.stacktrace"])
+    assert "Incorrect API key provided" in cast(str, event_attributes["exception.stacktrace"])
     assert attributes.get("error.type") == "AuthenticationError"
 
 
@@ -292,5 +292,5 @@ async def test_async_completion_exception(
         str, event_attributes["exception.stacktrace"]
     )
     assert "openai.AuthenticationError" in cast(str, event_attributes["exception.stacktrace"])
-    assert "invalid_api_key" in cast(str, event_attributes["exception.stacktrace"])
+    assert "Incorrect API key provided" in cast(str, event_attributes["exception.stacktrace"])
     assert attributes.get("error.type") == "AuthenticationError"

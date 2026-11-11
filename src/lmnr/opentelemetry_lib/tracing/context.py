@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from typing import Any, cast
 
+from opentelemetry import context as context_api
 from opentelemetry import trace
 from opentelemetry.context import Context, create_key, get_value, set_value
 from typing_extensions import override
@@ -13,6 +14,7 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
     METADATA,
     SESSION_ID,
     TRACE_TYPE,
+    TRACER_NAME,
     USER_ID,
 )
 from lmnr.sdk.log import get_default_logger
@@ -110,9 +112,38 @@ def set_token_stack(stack: tuple[Token[Context], ...]) -> None:
     _set_token = _isolated_token_stack.set(stack)
 
 
+# Set while a bridge is enabled (see `bridges/`): Laminar spans then nest under
+# a source SDK's span that is active in the global OTel context.
+_inherit_global_context = False
+
+
+def set_inherit_global_context(value: bool) -> None:
+    global _inherit_global_context
+    _inherit_global_context = value
+
+
 def get_current_context() -> Context:
-    """Get the current isolated context."""
-    return _ISOLATED_RUNTIME_CONTEXT.get_current()
+    """Get the current isolated context.
+
+    With global-context inheritance on, a span active in the global OTel
+    context that Laminar didn't create (a bridged source SDK's span) becomes
+    the current span. Laminar's own spans are attached to the global context
+    too, so whenever the global current span is foreign it is the innermost.
+    """
+    context = _ISOLATED_RUNTIME_CONTEXT.get_current()
+    if _inherit_global_context:
+        global_context = context_api.get_current()
+        global_span = trace.get_current_span(global_context)
+        scope = getattr(global_span, "instrumentation_scope", None)
+        if (
+            global_span.get_span_context().is_valid
+            and scope is not None
+            and scope.name != TRACER_NAME
+        ):
+            # Keep the source SDK's own context values (e.g. Langfuse's
+            # propagated attributes) for the spans it creates under ours.
+            context = Context({**context, **global_context})
+    return context
 
 
 def attach_context(context: Context) -> Token[Context]:

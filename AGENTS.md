@@ -32,7 +32,7 @@ lmnr datasets pull <id>       # Pull dataset
 ```
 
 - CI: `lint.yml` (ruff check + format check), `typecheck.yml` (basedpyright), `run-tests.yml` (pytest).
-- `run-tests.yml` has two `uv run --with <pkg>==X ...` overlay steps. `openai==3.26.0` is a temporary workaround (litellm caps `openai<3`). `mcp==1.30.0` is permanent while mcp 1.x is supported: the dev pin is mcp 2.x and the 1.x instrumentation is a separate set of wrappers (`instrumentation/mcp/AGENTS.md`). Do not add more overlays without a reason of the same kind.
+- `run-tests.yml` has `uv run --with <pkg>==X ...` overlay steps. `mcp==1.30.0` is permanent while mcp 1.x is supported: the dev pin is mcp 2.x and the 1.x instrumentation is a separate set of wrappers (`instrumentation/mcp/AGENTS.md`). The two `langfuse` overlays (4.x, 3.x) are permanent too: the Langfuse bridge supports three majors and the dev pin can only hold one (`bridges/langfuse/AGENTS.md`). Do not add more overlays without a reason of the same kind.
 - The husky pre-commit hook (`.husky/pre-commit`) runs `ruff check --fix` + `ruff format` on staged Python files and fails the commit if ruff changed anything; re-stage and commit again.
 
 ## Tooling
@@ -69,6 +69,12 @@ lmnr datasets pull <id>       # Pull dataset
 
 - **Annotations:** start modules with `from __future__ import annotations` and write annotations unquoted, including names imported only under `TYPE_CHECKING`. Quote a type only where Python evaluates it at runtime: `cast("X", ...)`, `TypeVar` bounds, base classes, and `TypeAlias` values. Pydantic models resolve their annotations from module globals, so their field types must be importable at runtime.
 - **Zero import cycles.** `basedpyright src/lmnr` reports **zero** import cycles; keep it that way. Pyright counts function-local imports as edges, so "lazy" does not hide a cycle from it.
+- **Imports go at the top of the file.** Import inside a function only when:
+  - the package may not be installed and the code is only reached when it is (an instrumented or bridged SDK such as `litellm` or `langfuse`; tests that are skipped without it);
+  - a type is needed at runtime where `if TYPE_CHECKING:` doesn't cover it;
+  - the import is heavy and needed only conditionally (e.g. behind an env var).
+  Never for code organisation, and never for always-installed packages (`packaging`, `typing_extensions`, the OTel SDK, test-only dev dependencies inside their own test package).
+- **Don't silence `reportPrivateUsage` in `src/`.** It is a warning there, not an error (`tests/` turns it off), and each one marks a place that reaches into another library's internals, which is the first list to check when an upgrade breaks something. Silence real errors only. To use a module-private constant elsewhere, make it public instead.
 - Inside `src/lmnr`, import `Laminar` from `lmnr.sdk.laminar`, never `from lmnr import Laminar` (the package `__init__` imports everything).
 - Initializer registry injection and the `tracing/wrapper.py` leaf: `src/lmnr/opentelemetry_lib/tracing/AGENTS.md`.
 - **Logging:** always get loggers via `get_default_logger` (`sdk/log.py`); never hand-roll `logging.getLogger(...) + addHandler`, and keep `propagate=False`. Details: `src/lmnr/sdk/AGENTS.md`.
@@ -108,6 +114,8 @@ LMNR_TRAJECTORY_FORCE_EXPORT  # With LMNR_TRAJECTORY_PATH: also export spans to 
 - `src/lmnr/sdk/AGENTS.md` - logging, HTTP error reporting, `json_dumps` / bytes, eval trace type
 - `src/lmnr/sdk/debug/AGENTS.md` - debug mode / replay, TS parity
 - `src/lmnr/sdk/trajectory/AGENTS.md` - lmnr-atif spec location, version bumps, schema/doc/fixture sync, harbor validation
+- `src/lmnr/opentelemetry_lib/bridges/AGENTS.md` - `bridges=` option, the `LaminarBridge` contract shared with the TS SDK
+- `src/lmnr/opentelemetry_lib/bridges/langfuse/AGENTS.md` - Langfuse bridge: copy-on-end (never mutate Langfuse's spans), private provider, export-filter mirroring, usage/metadata shapes per langfuse major, version overlays in CI
 - `src/lmnr/opentelemetry_lib/tracing/AGENTS.md` - import-cycle wiring, tracing singleton + provider reuse, default instrument set, span batching / export, release stamp, trajectory file (`LMNR_TRAJECTORY_PATH`), payload size limit
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/AGENTS.md` - instrumentor structure, error status (exception events), GenAI message attributes
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/anthropic/AGENTS.md` - structured output, `with_raw_response`, native OTel spans (dropped unless content mode), stream manager + error spans, anthropic 2.x / `httpx2`
@@ -119,7 +127,6 @@ LMNR_TRAJECTORY_FORCE_EXPORT  # With LMNR_TRAJECTORY_PATH: also export spans to 
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/google_genai/AGENTS.md` - native Gemini shape, bytes serialization
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/groq/AGENTS.md` - native OpenAI-shape messages, cached / reasoning usage, stream accumulation, `MockTransport` tests
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/langchain/AGENTS.md` - callback handler, hand-off of LLM runs to provider instrumentors, LLM-run suppression flag, LangGraph topology, OpenAI traceparent
-- `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/langfuse/AGENTS.md` - Langfuse bridge
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/litellm/AGENTS.md`
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/mcp/AGENTS.md` - 1.x vs 2.x wrapper sets (picked by installed major), 2.x native-span replacement (middleware, `send_discover`, dispatcher `otel_span`), `_meta` trace propagation, 1.x CI overlay, what was dropped from OpenLLMetry
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/microsoft_agent_framework/AGENTS.md`

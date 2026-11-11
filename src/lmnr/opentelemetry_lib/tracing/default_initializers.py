@@ -32,7 +32,6 @@ def register_default_initializers() -> None:
             Instruments.GROQ: initializers.GroqInstrumentorInitializer(),
             Instruments.KERNEL: initializers.KernelInstrumentorInitializer(),
             Instruments.LANGCHAIN: initializers.LangchainInstrumentorInitializer(),
-            Instruments.LANGFUSE: initializers.LangfuseInstrumentorInitializer(),
             Instruments.LANGGRAPH: initializers.LanggraphInstrumentorInitializer(),
             Instruments.LITELLM: initializers.LitellmInstrumentorInitializer(),
             Instruments.MCP: initializers.MCPInstrumentorInitializer(),
