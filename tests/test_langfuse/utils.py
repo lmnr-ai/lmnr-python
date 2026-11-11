@@ -33,11 +33,13 @@ class FakeSpan:
         self,
         attributes: dict[str, AttributeValue | dict[str, int]],
         scope_name: str = "langfuse-sdk",
+        is_root: bool = False,
     ):
         self.attributes: dict[str, AttributeValue] = cast(Any, dict(attributes))
         scope = MagicMock()
         scope.name = scope_name
         self.instrumentation_scope: MagicMock | None = scope
+        self.parent: MagicMock | None = None if is_root else MagicMock()
 
 
 def translate(span: FakeSpan, json_encoded_metadata: bool = False) -> dict[str, AttributeValue]:

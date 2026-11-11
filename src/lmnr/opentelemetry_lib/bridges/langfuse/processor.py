@@ -37,7 +37,12 @@ from lmnr.opentelemetry_lib.bridges.langfuse.attributes import (
     GEN_AI_USAGE_COST,
     GEN_AI_USAGE_INPUT_COST,
     GEN_AI_USAGE_OUTPUT_COST,
+    LF_AS_ROOT,
     LF_LLM_OBSERVATION_TYPES,
+    LF_METADATA_SESSION_ID,
+    LF_METADATA_TAGS,
+    LF_METADATA_TRACE_KEYS,
+    LF_METADATA_USER_ID,
     LF_OBSERVATION_COST_DETAILS,
     LF_OBSERVATION_INPUT,
     LF_OBSERVATION_LEVEL,
@@ -49,6 +54,8 @@ from lmnr.opentelemetry_lib.bridges.langfuse.attributes import (
     LF_OBSERVATION_TYPE,
     LF_OBSERVATION_USAGE_DETAILS,
     LF_TOOL_OBSERVATION_TYPES,
+    LF_TRACE_COMPAT_SESSION_ID,
+    LF_TRACE_COMPAT_USER_ID,
     LF_TRACE_INPUT,
     LF_TRACE_METADATA_PREFIX,
     LF_TRACE_OUTPUT,
@@ -113,7 +120,6 @@ _USAGE_COST_KEYS = (GEN_AI_USAGE_INPUT_COST, GEN_AI_USAGE_OUTPUT_COST, GEN_AI_US
 
 _DISABLED = "lmnr.internal.disabled"
 
-
 # A translation: attributes to set on Laminar's copy of the span. None removes
 # the attribute from the copy: a `langfuse.*` / openinference value already
 # carried by the Laminar attributes it was converted to. Laminar would
@@ -129,39 +135,103 @@ def _metadata_value(value: Any, json_encoded: bool) -> AttributeValue:
     return json_dumps(value)
 
 
+def _first_string(*values: Any) -> str | None:
+    """The first non-empty id, like Langfuse's server. A number counts, as
+    its text: langfuse 5 JSON-encodes a metadata `12345` as `"12345"`, which
+    decodes to an int, and Langfuse's server keeps such a value as text."""
+    for value in values:
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            value = str(value)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
+def _tags(value: Any) -> list[str] | None:
+    """Tags the way Langfuse's server reads them: a list, a JSON list (LiteLLM's
+    `langfuse_otel`, the `langfuse_tags` metadata key), a comma-separated
+    string, or one tag."""
+    parsed = parse_json(value)
+    # A JSON list in a JSON-encoded (langfuse 5) metadata value.
+    if isinstance(parsed, str) and parsed.strip().startswith("["):
+        parsed = parse_json(parsed)
+    if isinstance(parsed, (list, tuple)):
+        tags = [str(tag) for tag in cast(list[Any], parsed) if tag is not None]
+    elif isinstance(value, str):
+        text = parsed if isinstance(parsed, str) else value
+        tags = [tag.strip() for tag in text.split(",") if tag.strip()]
+    else:
+        return None
+    return list(dict.fromkeys(tags)) or None
+
+
+def _metadata(
+    attrs: dict[str, AttributeValue], prefix: str, json_encoded_metadata: bool
+) -> dict[str, AttributeValue]:
+    """`prefix` as one JSON object and `prefix.*` keys, the latter winning."""
+    metadata: dict[str, AttributeValue] = {}
+    parsed = parse_json(attrs.get(prefix))
+    if isinstance(parsed, dict):
+        for k, v in cast(dict[str, Any], parsed).items():
+            metadata[k] = _metadata_value(v, False)
+    for k, v in attrs.items():
+        if k.startswith(prefix + "."):
+            metadata[k[len(prefix) + 1 :]] = _metadata_value(v, json_encoded_metadata)
+    return metadata
+
+
 def _promote_trace_attributes(
     attrs: dict[str, AttributeValue],
     new_attrs: Translated,
     json_encoded_metadata: bool,
+    is_root: bool,
 ) -> None:
-    """Map trace-level session / user / tags / metadata to Laminar
-    association properties. Observation-level metadata is left raw: it is
-    mostly integration noise (LangChain's `ls_*` keys)."""
-    session_id = attrs.get(LF_TRACE_SESSION_ID)
-    if isinstance(session_id, str) and session_id:
+    """Map Langfuse's trace session / user / tags / metadata to Laminar
+    association properties, from the same attributes Langfuse's server reads
+    them from: the `propagate_attributes` / `update_current_trace` keys, the
+    older `langfuse.session.id` / `langfuse.user.id`, and the
+    `langfuse_session_id` / `langfuse_user_id` / `langfuse_tags` metadata keys
+    of the `langfuse.openai` integration.
+
+    Observation metadata becomes trace metadata on the root span only, as in
+    Langfuse; elsewhere it stays raw (mostly LangChain's `ls_*` keys).
+    """
+    # Both metadata forms (one JSON object and `.*` keys), decoded. The
+    # `langfuse_*` keys are read from them, so a key left out of Laminar's
+    # metadata below always became the session, user or tags.
+    trace_metadata = _metadata(attrs, LF_TRACE_METADATA_PREFIX, json_encoded_metadata)
+    observation_metadata = _metadata(attrs, LF_OBSERVATION_METADATA_PREFIX, json_encoded_metadata)
+
+    # In Langfuse's server's order of precedence.
+    session_id = _first_string(
+        attrs.get(LF_TRACE_COMPAT_SESSION_ID),
+        attrs.get(LF_TRACE_SESSION_ID),
+        observation_metadata.get(LF_METADATA_SESSION_ID),
+        trace_metadata.get(LF_METADATA_SESSION_ID),
+    )
+    if session_id:
         new_attrs[f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}"] = session_id
-    user_id = attrs.get(LF_TRACE_USER_ID)
-    if isinstance(user_id, str) and user_id:
+    user_id = _first_string(
+        attrs.get(LF_TRACE_COMPAT_USER_ID),
+        attrs.get(LF_TRACE_USER_ID),
+        observation_metadata.get(LF_METADATA_USER_ID),
+        trace_metadata.get(LF_METADATA_USER_ID),
+    )
+    if user_id:
         new_attrs[f"{ASSOCIATION_PROPERTIES}.{USER_ID}"] = user_id
+    for value in (
+        attrs.get(LF_TRACE_TAGS),
+        observation_metadata.get(LF_METADATA_TAGS),
+        trace_metadata.get(LF_METADATA_TAGS),
+    ):
+        if tags := _tags(value):
+            new_attrs[f"{ASSOCIATION_PROPERTIES}.tags"] = tags
+            break
 
-    tags = attrs.get(LF_TRACE_TAGS)
-    if isinstance(tags, (list, tuple)) and tags:
-        new_attrs[f"{ASSOCIATION_PROPERTIES}.tags"] = [str(tag) for tag in tags]
-
-    for k, v in attrs.items():
-        if k == LF_TRACE_METADATA_PREFIX:
-            # Unflattened form: one JSON object.
-            parsed = parse_json(v)
-            if isinstance(parsed, dict):
-                for mk, mv in cast(dict[str, Any], parsed).items():
-                    new_attrs[f"{ASSOCIATION_PROPERTIES}.metadata.{mk}"] = _metadata_value(
-                        mv, False
-                    )
-        elif k.startswith(LF_TRACE_METADATA_PREFIX + "."):
-            sub = k[len(LF_TRACE_METADATA_PREFIX) + 1 :]
-            new_attrs[f"{ASSOCIATION_PROPERTIES}.metadata.{sub}"] = _metadata_value(
-                v, json_encoded_metadata
-            )
+    metadata = {**trace_metadata, **(observation_metadata if is_root else {})}
+    for k, v in metadata.items():
+        if k not in LF_METADATA_TRACE_KEYS:
+            new_attrs[f"{ASSOCIATION_PROPERTIES}.metadata.{k}"] = v
 
 
 def _convert_model_parameters(
@@ -175,7 +245,7 @@ def _convert_model_parameters(
 
 
 def _translate_langfuse(
-    attrs: dict[str, AttributeValue], json_encoded_metadata: bool
+    attrs: dict[str, AttributeValue], json_encoded_metadata: bool, is_root: bool
 ) -> Translated:
     new_attrs: Translated = {}
 
@@ -258,12 +328,12 @@ def _translate_langfuse(
     if output_handled:
         new_attrs[output_key] = None
 
-    _promote_trace_attributes(attrs, new_attrs, json_encoded_metadata)
+    _promote_trace_attributes(attrs, new_attrs, json_encoded_metadata, is_root)
     return new_attrs
 
 
 def _translate_openinference(
-    attrs: dict[str, AttributeValue], json_encoded_metadata: bool
+    attrs: dict[str, AttributeValue], json_encoded_metadata: bool, is_root: bool
 ) -> Translated:
     """Translate openinference's flat indexed `llm.*` attributes (groq /
     google_genai instrumentations, LiteLLM's `langfuse_otel` callback)."""
@@ -367,7 +437,7 @@ def _translate_openinference(
     # Keys the span never had need no removal.
     for k in [k for k, v in new_attrs.items() if v is None and k not in attrs]:
         del new_attrs[k]
-    _promote_trace_attributes(attrs, new_attrs, json_encoded_metadata)
+    _promote_trace_attributes(attrs, new_attrs, json_encoded_metadata, is_root)
     return new_attrs
 
 
@@ -382,11 +452,14 @@ def translate_span(span: ReadableSpan, json_encoded_metadata: bool = False) -> T
     attrs = dict(span.attributes or {})
     if not attrs:
         return {}
+    # Langfuse's server treats a span as the trace root (whose observation
+    # metadata is also trace metadata) when it has no parent or is forced to.
+    is_root = span.parent is None or str(attrs.get(LF_AS_ROOT)).lower() == "true"
     try:
         if is_openinference_span(span):
-            return _translate_openinference(attrs, json_encoded_metadata)
+            return _translate_openinference(attrs, json_encoded_metadata, is_root)
         if is_langfuse_span(span):
-            return _translate_langfuse(attrs, json_encoded_metadata)
+            return _translate_langfuse(attrs, json_encoded_metadata, is_root)
     except Exception:
         logger.debug("Langfuse attribute translation failed", exc_info=True)
     return {}
