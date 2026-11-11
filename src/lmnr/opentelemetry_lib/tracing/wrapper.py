@@ -8,6 +8,7 @@ from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
 
+from lmnr.opentelemetry_lib.tracing.attributes import TRACER_NAME
 from lmnr.opentelemetry_lib.tracing.context import clear_context
 from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
@@ -17,8 +18,6 @@ from lmnr.sdk.types import SessionRecordingOptions
 # This module is the leaf that holds the tracing singleton. It must NOT import
 # `tracing/__init__` or `tracing/instruments` (and so none of the instrumentors),
 # otherwise `tracing/tracer.py` -> here would close an import cycle.
-
-TRACER_NAME = "lmnr.tracer"
 
 LOG = get_default_logger(__name__)
 

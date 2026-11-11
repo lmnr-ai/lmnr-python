@@ -1,6 +1,6 @@
 """Responses-API streaming: `responses.create(stream=True)` and `responses.stream()`.
 
-VCR-recorded tests cover the live span; httpx `MockTransport` tests cover what a
+VCR-recorded tests cover the live span; httpx2 `MockTransport` tests cover what a
 cassette can't express (API errors, debug-replay cache HITs / MISSes).
 """
 
@@ -10,7 +10,7 @@ import json
 from collections.abc import Iterator
 from typing import Any, cast
 
-import httpx
+import httpx2
 import pytest
 from openai import AsyncOpenAI, BadRequestError, OpenAI
 from openai.types.responses import FunctionToolParam, Response, ResponseStreamEvent
@@ -276,35 +276,35 @@ def _events(response: Response) -> list[ResponseStreamEvent]:
     return events
 
 
-def _transport(requests: list[httpx.Request], status: int = 200) -> httpx.MockTransport:
-    def handler(request: httpx.Request) -> httpx.Response:
+def _transport(requests: list[httpx2.Request], status: int = 200) -> httpx2.MockTransport:
+    def handler(request: httpx2.Request) -> httpx2.Response:
         requests.append(request)
         if status != 200:
-            return httpx.Response(
+            return httpx2.Response(
                 status, json={"error": {"message": "bad input", "type": "invalid_request_error"}}
             )
-        return httpx.Response(
+        return httpx2.Response(
             200,
             content=_sse(_events(_response())),
             headers={"content-type": "text/event-stream"},
         )
 
-    return httpx.MockTransport(handler)
+    return httpx2.MockTransport(handler)
 
 
-def _client(requests: list[httpx.Request], status: int = 200) -> OpenAI:
+def _client(requests: list[httpx2.Request], status: int = 200) -> OpenAI:
     return OpenAI(
         api_key="test",
         max_retries=0,
-        http_client=httpx.Client(transport=_transport(requests, status)),
+        http_client=httpx2.Client(transport=_transport(requests, status)),
     )
 
 
-def _async_client(requests: list[httpx.Request], status: int = 200) -> AsyncOpenAI:
+def _async_client(requests: list[httpx2.Request], status: int = 200) -> AsyncOpenAI:
     return AsyncOpenAI(
         api_key="test",
         max_retries=0,
-        http_client=httpx.AsyncClient(transport=_transport(requests, status)),
+        http_client=httpx2.AsyncClient(transport=_transport(requests, status)),
     )
 
 
@@ -312,7 +312,7 @@ def test_responses_streaming_api_error_propagates(
     instrumentor: OpenAIInstrumentor,
     span_exporter: InMemorySpanExporter,
 ):
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
     with pytest.raises(BadRequestError):
         _ = _client(requests, status=400).responses.create(
             model="gpt-4.1-nano", input="What is the capital of France?", stream=True
@@ -329,7 +329,7 @@ async def test_responses_api_error_propagates_async(
     instrumentor: OpenAIInstrumentor,
     span_exporter: InMemorySpanExporter,
 ):
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
     with pytest.raises(BadRequestError):
         _ = await _async_client(requests, status=400).responses.create(
             model="gpt-4.1-nano", input="What is the capital of France?"
@@ -342,7 +342,7 @@ def test_responses_streaming_mock_preserves_events(
     instrumentor: OpenAIInstrumentor,
     span_exporter: InMemorySpanExporter,
 ):
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
     stream = _client(requests).responses.create(
         model="gpt-4.1-nano", input="What is the capital of France?", stream=True
     )
@@ -358,16 +358,16 @@ def test_responses_streaming_mock_iteration_error(
     instrumentor: OpenAIInstrumentor,
     span_exporter: InMemorySpanExporter,
 ):
-    def handler(request: httpx.Request) -> httpx.Response:
+    def handler(request: httpx2.Request) -> httpx2.Response:
         events = _events(_response())
         # Cut the stream off mid-way with an `error` event: the SDK raises on it.
         body = _sse(events[:4]) + b'event: error\ndata: {"error": {"message": "boom"}}\n\n'
-        return httpx.Response(200, content=body, headers={"content-type": "text/event-stream"})
+        return httpx2.Response(200, content=body, headers={"content-type": "text/event-stream"})
 
     client = OpenAI(
         api_key="test",
         max_retries=0,
-        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+        http_client=httpx2.Client(transport=httpx2.MockTransport(handler)),
     )
     stream = client.responses.create(
         model="gpt-4.1-nano", input="What is the capital of France?", stream=True
@@ -385,7 +385,7 @@ def test_responses_stream_helper_early_exit_ends_span(
     instrumentor: OpenAIInstrumentor,
     span_exporter: InMemorySpanExporter,
 ):
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
     with _client(requests).responses.stream(
         model="gpt-4.1-nano", input="What is the capital of France?"
     ) as stream:
@@ -407,7 +407,7 @@ async def test_responses_stream_helper_early_exit_ends_span_async(
     instrumentor: OpenAIInstrumentor,
     span_exporter: InMemorySpanExporter,
 ):
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
     async with _async_client(requests).responses.stream(
         model="gpt-4.1-nano", input="What is the capital of France?"
     ) as stream:
@@ -457,7 +457,7 @@ def test_replay_hit_serves_cached_stream(
     replay_outcome: list[CacheOutcome],
 ):
     replay_outcome.append(_hit())
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
     stream = _client(requests).responses.create(
         model="gpt-4.1-nano", input="What is the capital of France?", stream=True
     )
@@ -481,7 +481,7 @@ def test_replay_hit_serves_cached_stream_helper(
     replay_outcome: list[CacheOutcome],
 ):
     replay_outcome.append(_hit())
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
     with _client(requests).responses.stream(
         model="gpt-4.1-nano", input="What is the capital of France?"
     ) as stream:
@@ -501,7 +501,7 @@ async def test_replay_hit_serves_cached_stream_async(
     replay_outcome: list[CacheOutcome],
 ):
     replay_outcome.append(_hit())
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
     stream = await _async_client(requests).responses.create(
         model="gpt-4.1-nano", input="What is the capital of France?", stream=True
     )
@@ -522,7 +522,7 @@ async def test_replay_hit_serves_cached_stream_helper_async(
     replay_outcome: list[CacheOutcome],
 ):
     replay_outcome.append(_hit())
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
     async with _async_client(requests).responses.stream(
         model="gpt-4.1-nano", input="What is the capital of France?"
     ) as stream:
@@ -541,7 +541,7 @@ def test_replay_miss_traces_live_stream(
     replay_outcome: list[CacheOutcome],
 ):
     replay_outcome.append(CacheOutcome(kind="miss"))
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
     stream = _client(requests).responses.create(
         model="gpt-4.1-nano", input="What is the capital of France?", stream=True
     )
@@ -570,7 +570,7 @@ def test_replay_hit_with_raw_response_runs_live(
     # `with_raw_response` callers expect an `APIResponse` wrapper the cache can't
     # produce, so a HIT falls through to the live call.
     replay_outcome.append(_hit())
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
     raw = _client(requests).responses.with_raw_response.create(
         model="gpt-4.1-nano", input="What is the capital of France?", stream=True
     )
@@ -593,7 +593,7 @@ def test_tracing_failure_returns_untraced_stream(
     # A bug in a tracing helper must not reach the caller: the live stream is
     # returned unwrapped and the span that was already opened is ended.
     monkeypatch.setattr(responses_wrappers, "TracedResponseStream", _raise)
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
     stream = _client(requests).responses.create(
         model="gpt-4.1-nano", input="What is the capital of France?", stream=True
     )
@@ -611,7 +611,7 @@ def test_replay_probe_failure_runs_live(
     monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.setattr(replay, "cache_outcome_for", _raise)
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
     stream = _client(requests).responses.create(
         model="gpt-4.1-nano", input="What is the capital of France?", stream=True
     )
@@ -630,7 +630,7 @@ async def test_replay_cached_rebuild_failure_runs_live_async(
 ):
     replay_outcome.append(_hit())
     monkeypatch.setattr(OpenAIRolloutWrapper, "cached_response_to_responses", _raise)
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
     stream = await _async_client(requests).responses.create(
         model="gpt-4.1-nano", input="What is the capital of France?", stream=True
     )

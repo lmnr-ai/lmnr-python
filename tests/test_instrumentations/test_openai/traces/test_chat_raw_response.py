@@ -2,7 +2,7 @@
 
 The caller reads the body with `.parse()`, so the instrumented stream (live) and a
 debug-replay cache hit both have to come back behind it. Plain streaming cache hits
-are covered here too. httpx `MockTransport`, no cassettes.
+are covered here too. httpx2 `MockTransport`, no cassettes.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import json
 from collections.abc import Iterator
 from typing import Any, cast
 
-import httpx
+import httpx2
 import pytest
 from openai import AsyncOpenAI, OpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionMessageParam
@@ -71,30 +71,30 @@ def _sse(text: str) -> bytes:
     ).encode()
 
 
-def _transport(requests: list[httpx.Request]) -> httpx.MockTransport:
-    def handler(request: httpx.Request) -> httpx.Response:
+def _transport(requests: list[httpx2.Request]) -> httpx2.MockTransport:
+    def handler(request: httpx2.Request) -> httpx2.Response:
         requests.append(request)
         headers = {"x-request-id": "req_live"}
         if json.loads(request.content).get("stream"):
-            return httpx.Response(
+            return httpx2.Response(
                 200, content=_sse("Paris"), headers={**headers, "content-type": "text/event-stream"}
             )
-        return httpx.Response(200, json=_completion("Paris", "chatcmpl_live"), headers=headers)
+        return httpx2.Response(200, json=_completion("Paris", "chatcmpl_live"), headers=headers)
 
-    return httpx.MockTransport(handler)
+    return httpx2.MockTransport(handler)
 
 
-def _client(requests: list[httpx.Request]) -> OpenAI:
+def _client(requests: list[httpx2.Request]) -> OpenAI:
     return OpenAI(
-        api_key="test", max_retries=0, http_client=httpx.Client(transport=_transport(requests))
+        api_key="test", max_retries=0, http_client=httpx2.Client(transport=_transport(requests))
     )
 
 
-def _async_client(requests: list[httpx.Request]) -> AsyncOpenAI:
+def _async_client(requests: list[httpx2.Request]) -> AsyncOpenAI:
     return AsyncOpenAI(
         api_key="test",
         max_retries=0,
-        http_client=httpx.AsyncClient(transport=_transport(requests)),
+        http_client=httpx2.AsyncClient(transport=_transport(requests)),
     )
 
 
@@ -120,7 +120,7 @@ def _text(chunks: Any) -> str:
 def test_raw_response_stream_is_instrumented(
     instrumentor: OpenAIInstrumentor, span_exporter: InMemorySpanExporter
 ):
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
     raw = _client(requests).chat.completions.with_raw_response.create(
         model=MODEL, messages=MESSAGES, stream=True
     )
@@ -139,7 +139,7 @@ def test_raw_response_stream_is_instrumented(
 async def test_raw_response_stream_is_instrumented_async(
     instrumentor: OpenAIInstrumentor, span_exporter: InMemorySpanExporter
 ):
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
     raw = await _async_client(requests).chat.completions.with_raw_response.create(
         model=MODEL, messages=MESSAGES, stream=True
     )
@@ -152,7 +152,7 @@ async def test_raw_response_stream_is_instrumented_async(
 def test_raw_response_without_stream_is_unchanged(
     instrumentor: OpenAIInstrumentor, span_exporter: InMemorySpanExporter
 ):
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
     raw = _client(requests).chat.completions.with_raw_response.create(
         model=MODEL, messages=MESSAGES
     )
@@ -196,7 +196,7 @@ def test_replay_hit_with_raw_response(
     replay_outcome: list[CacheOutcome],
 ):
     replay_outcome.append(_hit())
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
     raw = _client(requests).chat.completions.with_raw_response.create(
         model=MODEL, messages=MESSAGES
     )
@@ -217,7 +217,7 @@ def test_replay_hit_with_raw_response_stream(
     replay_outcome: list[CacheOutcome],
 ):
     replay_outcome.append(_hit())
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
     raw = _client(requests).chat.completions.with_raw_response.create(
         model=MODEL, messages=MESSAGES, stream=True
     )
@@ -236,7 +236,7 @@ async def test_replay_hit_with_raw_response_async(
     replay_outcome: list[CacheOutcome],
 ):
     replay_outcome.append(_hit())
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
     raw = await _async_client(requests).chat.completions.with_raw_response.create(
         model=MODEL, messages=MESSAGES
     )
@@ -254,7 +254,7 @@ def test_replay_hit_stream(
     # Not raw-response specific: a cached stream used to be a generator, which
     # `ChatStream` (a wrapt proxy that sets `_span` on what it wraps) rejected.
     replay_outcome.append(_hit())
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
     stream = _client(requests).chat.completions.create(model=MODEL, messages=MESSAGES, stream=True)
 
     assert _text(stream) == "Rome"
@@ -271,7 +271,7 @@ async def test_replay_hit_stream_async(
     replay_outcome: list[CacheOutcome],
 ):
     replay_outcome.append(_hit())
-    requests: list[httpx.Request] = []
+    requests: list[httpx2.Request] = []
     stream = await _async_client(requests).chat.completions.create(
         model=MODEL, messages=MESSAGES, stream=True
     )

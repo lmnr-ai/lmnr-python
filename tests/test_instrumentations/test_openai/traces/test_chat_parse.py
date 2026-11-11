@@ -177,7 +177,7 @@ def test_parsed_completion_exception(
         str, event_attributes["exception.stacktrace"]
     )
     assert "openai.AuthenticationError" in cast(str, event_attributes["exception.stacktrace"])
-    assert "invalid_api_key" in cast(str, event_attributes["exception.stacktrace"])
+    assert "Incorrect API key provided" in cast(str, event_attributes["exception.stacktrace"])
     assert attributes.get("error.type") == "AuthenticationError"
 
 
@@ -219,5 +219,5 @@ async def test_async_parsed_completion_exception(
         str, event_attributes["exception.stacktrace"]
     )
     assert "openai.AuthenticationError" in cast(str, event_attributes["exception.stacktrace"])
-    assert "invalid_api_key" in cast(str, event_attributes["exception.stacktrace"])
+    assert "Incorrect API key provided" in cast(str, event_attributes["exception.stacktrace"])
     assert attributes.get("error.type") == "AuthenticationError"

@@ -1,24 +1,37 @@
 """Pure functions that convert Langfuse / OpenInference span shapes into
 Laminar / OTel GenAI shapes.
 
-No `SpanProcessor` state lives here — see `processor.py` for the
-`SpanProcessor` that calls into these.
+No `SpanProcessor` state lives here; `processor.py` calls into these.
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from typing import Any, TypeAlias, cast
 
 from opentelemetry.sdk.trace import ReadableSpan
-from opentelemetry.trace import Span
+from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
+    GEN_AI_REQUEST_CHOICE_COUNT,
+    GEN_AI_REQUEST_FREQUENCY_PENALTY,
+    GEN_AI_REQUEST_MAX_TOKENS,
+    GEN_AI_REQUEST_PRESENCE_PENALTY,
+    GEN_AI_REQUEST_SEED,
+    GEN_AI_REQUEST_STOP_SEQUENCES,
+    GEN_AI_REQUEST_TEMPERATURE,
+    GEN_AI_REQUEST_TOP_K,
+    GEN_AI_REQUEST_TOP_P,
+)
 from opentelemetry.util.types import AttributeValue
 
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse.attributes import (
-    _OI_LLM_INPUT_MESSAGES,  # pyright: ignore[reportPrivateUsage],
-    _OI_LLM_OUTPUT_MESSAGES,  # pyright: ignore[reportPrivateUsage],
-    _OI_SPAN_KIND,  # pyright: ignore[reportPrivateUsage],
+from lmnr.opentelemetry_lib.bridges.langfuse.attributes import (
+    GEN_AI_REQUEST_REASONING_LEVEL,
+    GEN_AI_REQUEST_REASONING_SUMMARY,
+    GEN_AI_REQUEST_SERVICE_TIER,
     LANGFUSE_TRACER_NAME,
+    OI_LLM_INPUT_MESSAGES,
+    OI_LLM_OUTPUT_MESSAGES,
+    OI_SPAN_KIND,
 )
 
 # A JSON-like value reassembled from openinference's flat, dotted/indexed span
@@ -222,24 +235,127 @@ def convert_openai_tool_calls_to_content_parts(messages: list[Any], is_output: b
     return [normalize(msg) if is_assistant(msg) else msg for msg in messages]
 
 
-def usage_field(usage: Any, *keys: str) -> int | None:
-    if not isinstance(usage, dict):
-        return None
-    for k in keys:
-        v = usage.get(k)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
-        if isinstance(v, (int, float)):
-            return int(v)
-    return None
+def _sum_fields(details: dict[str, Any], keep: Callable[[str], bool]) -> float | None:
+    values = [v for k, v in details.items() if keep(k) and isinstance(v, (int, float))]
+    return sum(values) if values else None
 
 
-def cost_field(cost: Any, *keys: str) -> float | None:
-    if not isinstance(cost, dict):
-        return None
-    for k in keys:
-        v = cost.get(k)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
-        if isinstance(v, (int, float)):
-            return float(v)
-    return None
+def _is_input_key(k: str) -> bool:
+    return k in ("input", "prompt_tokens", "input_tokens") or (
+        k.startswith("input_") and k != "input_tokens"
+    )
+
+
+def _is_output_key(k: str) -> bool:
+    return k in ("output", "completion_tokens", "output_tokens") or (
+        k.startswith("output_") and k != "output_tokens"
+    )
+
+
+def usage_attributes(
+    usage: Any,
+    cost: Any,
+    tokens: tuple[str, str, str, str, str, str],
+    costs: tuple[str, str, str],
+) -> dict[str, AttributeValue]:
+    """Map Langfuse `usage_details` / `cost_details` to GenAI usage attributes.
+
+    Langfuse's details are additive: `input` excludes cached tokens, which come
+    as separate `input_*` keys (`input_cached_tokens`, `input_cache_read`,
+    `input_cache_creation`, ...), and the same for `output_*` (reasoning).
+    Laminar's `gen_ai.usage.input_tokens` includes cached tokens, so the totals
+    are sums. `tokens` is (input, output, total, cache read, cache write,
+    reasoning) attribute names; `costs` is (input, output, total).
+    """
+    out: dict[str, AttributeValue] = {}
+    if isinstance(usage, dict):
+        details = cast(dict[str, Any], usage)
+        input_tokens = _sum_fields(details, _is_input_key)
+        output_tokens = _sum_fields(details, _is_output_key)
+        total_tokens = _sum_fields(details, lambda k: k in ("total", "total_tokens"))
+        cache_read = _sum_fields(
+            details, lambda k: k.startswith("input_") and ("cache_read" in k or "cached" in k)
+        )
+        cache_write = _sum_fields(
+            details,
+            lambda k: k.startswith("input_") and ("cache_creation" in k or "cache_write" in k),
+        )
+        reasoning = _sum_fields(details, lambda k: k.startswith("output_") and "reasoning" in k)
+        if total_tokens is None and (input_tokens is not None or output_tokens is not None):
+            total_tokens = (input_tokens or 0) + (output_tokens or 0)
+        for name, value in zip(
+            tokens,
+            (input_tokens, output_tokens, total_tokens, cache_read, cache_write, reasoning),
+            strict=True,
+        ):
+            if value is not None:
+                out[name] = int(value)
+    if isinstance(cost, dict):
+        details = cast(dict[str, Any], cost)
+        input_cost = _sum_fields(details, lambda k: k == "input" or k.startswith("input_"))
+        output_cost = _sum_fields(details, lambda k: k == "output" or k.startswith("output_"))
+        total_cost = _sum_fields(details, lambda k: k == "total")
+        if total_cost is None and (input_cost is not None or output_cost is not None):
+            total_cost = (input_cost or 0.0) + (output_cost or 0.0)
+        for name, value in zip(costs, (input_cost, output_cost, total_cost), strict=True):
+            if value is not None:
+                out[name] = float(value)
+    return out
+
+
+# Model parameter keys (Langfuse `model_parameters`, openinference
+# `llm.invocation_parameters`) -> the request attributes Laminar's own
+# instrumentations write. The first key present wins (the max-token aliases);
+# the rest stay in the raw attribute.
+_NUMBER_MODEL_PARAMETERS = (
+    ("temperature", GEN_AI_REQUEST_TEMPERATURE),
+    ("top_p", GEN_AI_REQUEST_TOP_P),
+    ("top_k", GEN_AI_REQUEST_TOP_K),
+    ("max_tokens", GEN_AI_REQUEST_MAX_TOKENS),
+    ("max_completion_tokens", GEN_AI_REQUEST_MAX_TOKENS),
+    ("max_output_tokens", GEN_AI_REQUEST_MAX_TOKENS),
+    ("frequency_penalty", GEN_AI_REQUEST_FREQUENCY_PENALTY),
+    ("presence_penalty", GEN_AI_REQUEST_PRESENCE_PENALTY),
+    ("seed", GEN_AI_REQUEST_SEED),
+    ("n", GEN_AI_REQUEST_CHOICE_COUNT),
+)
+_STRING_MODEL_PARAMETERS = (
+    ("reasoning_effort", GEN_AI_REQUEST_REASONING_LEVEL),
+    ("reasoning_summary", GEN_AI_REQUEST_REASONING_SUMMARY),
+    ("service_tier", GEN_AI_REQUEST_SERVICE_TIER),
+)
+
+
+def model_parameter_attributes(
+    params: Any,
+) -> tuple[dict[str, AttributeValue], dict[str, Any] | None]:
+    """Request attributes from a parsed model parameters object, and the
+    parameters left unmapped (None when `params` isn't an object)."""
+    out: dict[str, AttributeValue] = {}
+    if not isinstance(params, dict):
+        return out, None
+    rest = dict(cast(dict[str, Any], params))
+    for key, attr in _NUMBER_MODEL_PARAMETERS:
+        value = rest.get(key)
+        # Python LangChain records an unset `max_tokens` as "Infinity".
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and attr not in out:
+            out[attr] = value
+            del rest[key]
+    for key, attr in _STRING_MODEL_PARAMETERS:
+        value = rest.get(key)
+        if isinstance(value, str) and value:
+            out[attr] = value
+            del rest[key]
+    stop = rest.get("stop")
+    stops = [stop] if isinstance(stop, str) else stop
+    if (
+        isinstance(stops, list)
+        and stops
+        and all(isinstance(s, str) for s in cast(list[Any], stops))
+    ):
+        out[GEN_AI_REQUEST_STOP_SEQUENCES] = cast(list[str], stops)
+        del rest["stop"]
+    return out, rest
 
 
 def oi_collect_indexed(attrs: dict[str, AttributeValue], prefix: str) -> list[dict[str, OIValue]]:
@@ -401,45 +517,17 @@ def oi_tool_to_genai(raw: dict[str, OIValue]) -> OIValue:
 
 def is_openinference_span(span: ReadableSpan) -> bool:
     attrs = span.attributes or {}
-    if _OI_SPAN_KIND in attrs:
+    if OI_SPAN_KIND in attrs:
         return True
     return any(
         isinstance(k, str)  # pyright: ignore[reportUnnecessaryIsInstance]
         and (
             k.startswith(
-                (_OI_LLM_INPUT_MESSAGES + ".", _OI_LLM_OUTPUT_MESSAGES + ".", "llm.token_count.")
+                (OI_LLM_INPUT_MESSAGES + ".", OI_LLM_OUTPUT_MESSAGES + ".", "llm.token_count.")
             )
         )
         for k in attrs
     )
-
-
-def is_llm_span(span: Span) -> bool:
-    """True if `span` is already typed as an LLM span.
-
-    Used to gate LiteLLM's primary-span forcing: when the active parent is
-    Laminar's own `litellm.completion` LLM span (present when
-    `Instruments.LITELLM` runs alongside the bridge), letting LiteLLM fold its
-    `gen_ai.*` attrs onto that parent is the correct deduplicated shape, so we
-    must NOT redirect it into a second nested `litellm_request` LLM span.
-    Reads the live (still-recording) span's attributes defensively — any
-    unexpected span shape falls back to False (fold not LLM → safe to force).
-    """
-    try:
-        attrs = getattr(span, "attributes", None) or {}  # pyright: ignore[reportUnknownVariableType]
-        if attrs.get("lmnr.span.type") == "LLM":  # pyright: ignore[reportUnknownMemberType]
-            return True
-        if attrs.get(_OI_SPAN_KIND) == "LLM":  # pyright: ignore[reportUnknownMemberType]
-            return True
-        return any(
-            isinstance(k, str)
-            and (
-                k == "gen_ai.request.model" or k == "gen_ai.response.model" or k == "gen_ai.system"
-            )
-            for k in attrs  # pyright: ignore[reportUnknownVariableType]
-        )
-    except Exception:  # pylint: disable=broad-exception-caught
-        return False
 
 
 def is_langfuse_span(span: ReadableSpan) -> bool:

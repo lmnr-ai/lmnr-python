@@ -2,7 +2,7 @@ import json
 from typing import Any, cast
 from unittest.mock import patch
 
-import httpx
+import httpx2
 import openai
 import pytest
 from openai import AsyncOpenAI, AuthenticationError, OpenAI
@@ -114,8 +114,8 @@ def test_embeddings_context_propagation(
     span_exporter: InMemorySpanExporter,
     vllm_openai_client: OpenAI,
 ):
-    send_spy = spy_decorator(httpx.Client.send)
-    with patch.object(httpx.Client, "send", send_spy):
+    send_spy = spy_decorator(httpx2.Client.send)
+    with patch.object(httpx2.Client, "send", send_spy):
         _ = vllm_openai_client.embeddings.create(
             input="Tell me a joke about opentelemetry",
             model="intfloat/e5-mistral-7b-instruct",
@@ -138,8 +138,8 @@ async def test_async_embeddings_context_propagation(
     span_exporter: InMemorySpanExporter,
     async_vllm_openai_client: AsyncOpenAI,
 ):
-    send_spy = spy_decorator(httpx.AsyncClient.send)
-    with patch.object(httpx.AsyncClient, "send", send_spy):
+    send_spy = spy_decorator(httpx2.AsyncClient.send)
+    with patch.object(httpx2.AsyncClient, "send", send_spy):
         _ = await async_vllm_openai_client.embeddings.create(
             input="Tell me a joke about opentelemetry",
             model="intfloat/e5-mistral-7b-instruct",
