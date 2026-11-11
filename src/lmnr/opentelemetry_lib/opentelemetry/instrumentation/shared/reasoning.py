@@ -21,8 +21,9 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
 
 # OpenAI / Groq / LiteLLM `reasoning_effort`, OpenAI Responses `reasoning.effort`
 GEN_AI_REQUEST_REASONING_LEVEL = "gen_ai.request.reasoning.level"
-# OpenAI Responses echoes the effort actually applied (a default when unset)
-GEN_AI_RESPONSE_REASONING_EFFORT = "gen_ai.response.reasoning_effort"
+# OpenAI Responses echoes the effort actually applied (a default when unset);
+# named after the request-side `gen_ai.request.reasoning.level`.
+GEN_AI_RESPONSE_REASONING_LEVEL = "gen_ai.response.reasoning.level"
 # Anthropic `thinking.type` (enabled / adaptive / disabled / ...)
 GEN_AI_REQUEST_THINKING_TYPE = "gen_ai.request.thinking_type"
 # Anthropic `thinking.budget_tokens`, Gemini `thinking_config.thinking_budget`

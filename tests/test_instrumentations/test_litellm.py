@@ -1881,7 +1881,7 @@ def test_litellm_responses_reasoning_effort(span_exporter: InMemorySpanExporter,
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert (spans[0].attributes or {})["gen_ai.request.reasoning.level"] == "low"
-    assert (spans[0].attributes or {})["gen_ai.response.reasoning_effort"] == "low"
+    assert (spans[0].attributes or {})["gen_ai.response.reasoning.level"] == "low"
     # Recorded `usage.output_tokens_details.reasoning_tokens`, a subset of output tokens
     assert (spans[0].attributes or {})["gen_ai.usage.reasoning.output_tokens"] == (
         192 if stream else 128

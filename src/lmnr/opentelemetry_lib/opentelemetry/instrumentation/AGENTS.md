@@ -29,7 +29,7 @@
   - `gen_ai.request.thinking_type` / `gen_ai.request.thinking_budget`: Anthropic `thinking.type` / `.budget_tokens`.
   - `gen_ai.request.effort`: Anthropic `output_config.effort`.
   - `gen_ai.request.thinking_budget` / `gen_ai.request.thinking_level`: Gemini `thinking_config.*`, or flat on LangChain's `ChatGoogleGenerativeAI` params.
-- `gen_ai.response.reasoning_effort` comes from the Responses API's echoed `reasoning.effort` (OpenAI and LiteLLM responses). That is the effort actually applied, including the default when the request left it unset.
+- `gen_ai.response.reasoning.level` (formerly `gen_ai.response.reasoning_effort`, renamed to match the request key) comes from the Responses API's echoed `reasoning.effort` (OpenAI and LiteLLM responses). That is the effort actually applied, including the default when the request left it unset.
 - **The helper must never raise into the caller.**
   - It is `@dont_throw`, and every read goes through `_get` / `_as_str` / `_as_int`, which return None for anything unexpected: SDK sentinels (`NOT_GIVEN`), mocks, wrong types, and `bool` budgets.
   - Call it as its own statement so a failure can't skip the attributes after it.
