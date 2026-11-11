@@ -291,10 +291,12 @@ class LaminarPlugin:
         root = os.environ.get("LMNR_EVALS_ROOT")
         if not upload_id or not root:
             return None
-        self._evals_root = Path(root).resolve()
-        suite_path = _relative_path(Path.cwd(), self._evals_root)
+        evals_root = Path(root).resolve()
+        suite_path = _relative_path(Path.cwd(), evals_root)
         if suite_path is None:
             return None
+        # Trials get task paths only when the evaluation is linked to the upload.
+        self._evals_root = evals_root
         return {"uploadId": upload_id, "suitePath": suite_path}
 
     def _task_path(self, event: "TrialHookEvent") -> str | None:

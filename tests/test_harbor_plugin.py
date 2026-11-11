@@ -339,6 +339,33 @@ async def test_local_run_has_no_hosted_metadata(client: MagicMock, tmp_path: Pat
 
 
 @pytest.mark.asyncio
+async def test_unlinked_evaluation_records_no_task_paths(
+    client: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    # Harbor running outside the evals root can't be linked to the upload, so
+    # its trials' task paths would point at an upload the evaluation lacks.
+    root = tmp_path / "evals"
+    root.mkdir()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.setenv("LMNR_EVALS_ROOT", str(root))
+    monkeypatch.setenv("LMNR_EVAL_UPLOAD_ID", "upload-1")
+    monkeypatch.chdir(elsewhere)
+    job = FakeJob(tmp_path / "job")
+    task_dir = make_task_dir(root, "refund")
+    plugin = LaminarPlugin(project_api_key="test_key")
+
+    await plugin.on_job_start(job)
+    event = make_event(job, task_dir, "refund__a", rewards={"reward": 1.0})
+    await job.emit("start", event)
+    await job.emit("end", event)
+    await plugin.on_job_end(SimpleNamespace())
+
+    assert client.evals.init.call_args.kwargs["hosted_metadata"] is None
+    assert all("task_path" not in (dp.metadata or {}) for dp in saved_datapoints(client))
+
+
+@pytest.mark.asyncio
 async def test_trajectory_becomes_llm_and_tool_spans(
     span_exporter: InMemorySpanExporter, client: MagicMock, tmp_path: Path
 ):
