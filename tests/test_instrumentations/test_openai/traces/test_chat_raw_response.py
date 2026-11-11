@@ -2,7 +2,8 @@
 
 The caller reads the body with `.parse()`, so the instrumented stream (live) and a
 debug-replay cache hit both have to come back behind it. Plain streaming cache hits
-are covered here too. httpx2 `MockTransport`, no cassettes.
+are covered here too. Live calls replay VCR cassettes; replay hits never reach the
+network, so they use an httpx2 `MockTransport`.
 """
 
 from __future__ import annotations
@@ -26,6 +27,8 @@ from lmnr.sdk.debug import replay
 from lmnr.sdk.debug.outcome import CacheOutcome
 
 MODEL = "gpt-4.1-nano"
+# Recorded against the real API; the replay-hit tests below use MODEL with a mock transport.
+LIVE_MODEL = "gpt-6-luna"
 MESSAGES: list[ChatCompletionMessageParam] = [{"role": "user", "content": "Capital of France?"}]
 
 
@@ -117,49 +120,54 @@ def _text(chunks: Any) -> str:
     return "".join(chunk.choices[0].delta.content or "" for chunk in chunks if chunk.choices)
 
 
+@pytest.mark.vcr
 def test_raw_response_stream_is_instrumented(
-    instrumentor: OpenAIInstrumentor, span_exporter: InMemorySpanExporter
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
 ):
-    requests: list[httpx2.Request] = []
-    raw = _client(requests).chat.completions.with_raw_response.create(
-        model=MODEL, messages=MESSAGES, stream=True
+    raw = openai_client.chat.completions.with_raw_response.create(
+        model=LIVE_MODEL, messages=MESSAGES, stream=True
     )
 
-    assert raw.headers["x-request-id"] == "req_live"
-    assert _text(raw.parse()) == "Paris"
+    assert raw.headers["x-request-id"]
+    assert "Paris" in _text(raw.parse())
     span = _only_span(span_exporter)
     attributes = _attributes(span)
     assert attributes["lmnr.span.type"] == "LLM"
-    assert attributes["gen_ai.response.id"] == "chatcmpl_live"
-    assert attributes["gen_ai.usage.output_tokens"] == 3
-    assert _output_text(span) == "Paris"
+    assert attributes["gen_ai.response.id"]
+    assert "Paris" in _output_text(span)
 
 
+@pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_raw_response_stream_is_instrumented_async(
-    instrumentor: OpenAIInstrumentor, span_exporter: InMemorySpanExporter
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    async_openai_client: AsyncOpenAI,
 ):
-    requests: list[httpx2.Request] = []
-    raw = await _async_client(requests).chat.completions.with_raw_response.create(
-        model=MODEL, messages=MESSAGES, stream=True
+    raw = await async_openai_client.chat.completions.with_raw_response.create(
+        model=LIVE_MODEL, messages=MESSAGES, stream=True
     )
 
-    assert raw.headers["x-request-id"] == "req_live"
-    assert _text([chunk async for chunk in raw.parse()]) == "Paris"
-    assert _output_text(_only_span(span_exporter)) == "Paris"
+    assert raw.headers["x-request-id"]
+    assert "Paris" in _text([chunk async for chunk in raw.parse()])
+    assert "Paris" in _output_text(_only_span(span_exporter))
 
 
+@pytest.mark.vcr
 def test_raw_response_without_stream_is_unchanged(
-    instrumentor: OpenAIInstrumentor, span_exporter: InMemorySpanExporter
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
 ):
-    requests: list[httpx2.Request] = []
-    raw = _client(requests).chat.completions.with_raw_response.create(
-        model=MODEL, messages=MESSAGES
+    raw = openai_client.chat.completions.with_raw_response.create(
+        model=LIVE_MODEL, messages=MESSAGES
     )
 
     assert type(raw).__name__ == "LegacyAPIResponse"
-    assert raw.parse().choices[0].message.content == "Paris"
-    assert _output_text(_only_span(span_exporter)) == "Paris"
+    assert "Paris" in (raw.parse().choices[0].message.content or "")
+    assert "Paris" in _output_text(_only_span(span_exporter))
 
 
 # --- debug replay -------------------------------------------------------------

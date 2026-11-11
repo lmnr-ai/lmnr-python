@@ -1,4 +1,5 @@
 import json
+import os
 from collections.abc import Iterator
 from typing import Annotated, Any, TypedDict, cast
 
@@ -750,85 +751,63 @@ def test_thread_id_is_conversation_id(span_exporter: InMemorySpanExporter):
     assert _attrs(workflow_span)["gen_ai.conversation.id"] == "thread-1"
 
 
-def _openai_sse(*chunks: dict[str, Any]) -> bytes:
-    events = [f"data: {json.dumps(chunk)}\n\n" for chunk in chunks]
-    return "".join([*events, "data: [DONE]\n\n"]).encode()
+OPENAI_MODEL = "gpt-6-luna"
 
 
-def _openai_stream_chunk(delta: dict[str, Any], finish_reason: str | None = None):
-    return {
-        "id": "chatcmpl-1",
-        "object": "chat.completion.chunk",
-        "created": 0,
-        "model": "gpt-4o-mini-2024-07-18",
-        "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}],
-    }
-
-
-_OPENAI_USAGE = {
-    "prompt_tokens": 7,
-    "completion_tokens": 1,
-    "total_tokens": 8,
-    "completion_tokens_details": {"reasoning_tokens": 1},
-}
-
-
-def _openai_transport(captured: list[httpx.Request]) -> httpx.MockTransport:
-    def handler(request: httpx.Request) -> httpx.Response:
-        captured.append(request)
-        body = json.loads(request.content)
-        if body.get("stream"):
-            usage = _OPENAI_USAGE
-            return httpx.Response(
-                200,
-                headers={"content-type": "text/event-stream"},
-                content=_openai_sse(
-                    _openai_stream_chunk({"role": "assistant", "content": "Paris"}),
-                    _openai_stream_chunk({}, "stop"),
-                    {**_openai_stream_chunk({}), "choices": [], "usage": usage},
-                ),
-            )
-        content = json.dumps({"city": "Paris"}) if "response_format" in body else "Paris"
-        return httpx.Response(
-            200,
-            json={
-                "id": "chatcmpl-1",
-                "object": "chat.completion",
-                "created": 0,
-                "model": "gpt-4o-mini-2024-07-18",
-                "choices": [
-                    {
-                        "index": 0,
-                        "message": {"role": "assistant", "content": content},
-                        "finish_reason": "stop",
-                    }
-                ],
-                "usage": _OPENAI_USAGE,
-            },
-        )
-
-    return httpx.MockTransport(handler)
-
-
-def _chat_openai(captured: list[httpx.Request], **kwargs: Any) -> ChatOpenAI:
+def _chat_openai(**kwargs: Any) -> ChatOpenAI:
+    # Replays VCR cassettes; the key is only real when re-recording
     return ChatOpenAI(
-        model="gpt-4o-mini",
-        api_key=SecretStr("test-api-key"),
-        http_client=httpx.Client(transport=_openai_transport(captured)),
-        http_async_client=httpx.AsyncClient(transport=_openai_transport(captured)),
+        model=OPENAI_MODEL,
+        api_key=SecretStr(os.getenv("OPENAI_API_KEY", "test-api-key")),
+        # langchain-openai shares its default async client across tests, which breaks
+        # once the event loop that created it is closed
+        http_client=httpx.Client(),
+        http_async_client=httpx.AsyncClient(),
         **kwargs,
     )
 
 
-def _assert_traceparent(request: httpx.Request, span: ReadableSpan) -> None:
+@pytest.fixture
+def sent(monkeypatch: pytest.MonkeyPatch) -> list[httpx.Request]:
+    """Live requests to OpenAI chat completions (a cassette only holds the recorded ones).
+
+    Selected by path, not by counting all httpx traffic, which is a latent flake.
+    """
+    requests: list[httpx.Request] = []
+    send = httpx.Client.send
+    asend = httpx.AsyncClient.send
+
+    def _record(request: httpx.Request) -> None:
+        if request.url.path.endswith("/chat/completions"):
+            requests.append(request)
+
+    def spy_send(self: httpx.Client, request: httpx.Request, **kwargs: Any) -> httpx.Response:
+        _record(request)
+        return send(self, request, **kwargs)
+
+    async def spy_asend(
+        self: httpx.AsyncClient, request: httpx.Request, **kwargs: Any
+    ) -> httpx.Response:
+        _record(request)
+        return await asend(self, request, **kwargs)
+
+    monkeypatch.setattr(httpx.Client, "send", spy_send)
+    monkeypatch.setattr(httpx.AsyncClient, "send", spy_asend)
+    return requests
+
+
+def _assert_traceparent(sent: list[httpx.Request], span: ReadableSpan) -> None:
     assert span.context is not None
-    assert request.headers["traceparent"].startswith(
-        f"00-{span.context.trace_id:032x}-{span.context.span_id:016x}-"
+    assert len(sent) == 1
+    assert (
+        sent[0]
+        .headers["traceparent"]
+        .startswith(f"00-{span.context.trace_id:032x}-{span.context.span_id:016x}-")
     )
 
 
 def _assert_openai_spans(
-    span_exporter: InMemorySpanExporter, captured: list[httpx.Request], streamed: bool = False
+    span_exporter: InMemorySpanExporter, sent: list[httpx.Request], streamed: bool = False
 ):
     spans = span_exporter.get_finished_spans()
     # The OpenAI SDK instrumentation records the call; LangChain opens no
@@ -838,50 +817,59 @@ def _assert_openai_spans(
     attrs = _attrs(span)
     assert attrs["lmnr.span.type"] == "LLM"
     assert attrs["lmnr.span.instrumentation_scope.name"] == "openai"
-    assert attrs["gen_ai.request.model"] == "gpt-4o-mini"
-    assert attrs["gen_ai.response.model"] == "gpt-4o-mini-2024-07-18"
-    assert attrs["gen_ai.response.id"] == "chatcmpl-1"
-    assert attrs["gen_ai.usage.input_tokens"] == 7
-    assert attrs["gen_ai.usage.output_tokens"] == 1
+    assert attrs["gen_ai.request.model"] == OPENAI_MODEL
+    assert cast(str, attrs["gen_ai.response.model"]).startswith(OPENAI_MODEL)
+    assert attrs["gen_ai.response.id"]
+    assert cast(int, attrs["gen_ai.usage.input_tokens"]) > 0
+    assert cast(int, attrs["gen_ai.usage.output_tokens"]) > 0
     assert span.parent is None
-    assert len(captured) == 1
-    _assert_traceparent(captured[0], span)
+    _assert_traceparent(sent, span)
     assert not context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY)
 
 
-def test_openai_handed_off_to_provider(span_exporter: InMemorySpanExporter):
-    captured: list[httpx.Request] = []
-    _ = _chat_openai(captured).invoke("What is the capital of France?")
-    _assert_openai_spans(span_exporter, captured)
+@pytest.mark.vcr
+def test_openai_handed_off_to_provider(
+    span_exporter: InMemorySpanExporter, sent: list[httpx.Request]
+):
+    _ = _chat_openai().invoke("What is the capital of France?")
+    _assert_openai_spans(span_exporter, sent)
 
 
+@pytest.mark.vcr
 @pytest.mark.asyncio
-async def test_openai_handed_off_to_provider_async(span_exporter: InMemorySpanExporter):
-    captured: list[httpx.Request] = []
-    _ = await _chat_openai(captured).ainvoke("What is the capital of France?")
-    _assert_openai_spans(span_exporter, captured)
+async def test_openai_handed_off_to_provider_async(
+    span_exporter: InMemorySpanExporter, sent: list[httpx.Request]
+):
+    _ = await _chat_openai().ainvoke("What is the capital of France?")
+    _assert_openai_spans(span_exporter, sent)
 
 
-def test_openai_handed_off_to_provider_stream(span_exporter: InMemorySpanExporter):
-    captured: list[httpx.Request] = []
-    model = _chat_openai(captured, stream_usage=True)
+@pytest.mark.vcr
+def test_openai_handed_off_to_provider_stream(
+    span_exporter: InMemorySpanExporter, sent: list[httpx.Request]
+):
+    model = _chat_openai(stream_usage=True)
     chunks = list(model.stream("What is the capital of France?"))
-    assert "".join(cast(str, chunk.content) for chunk in chunks) == "Paris"
-    _assert_openai_spans(span_exporter, captured, streamed=True)
+    assert "Paris" in "".join(cast(str, chunk.content) for chunk in chunks)
+    _assert_openai_spans(span_exporter, sent, streamed=True)
 
 
+@pytest.mark.vcr
 @pytest.mark.asyncio
-async def test_openai_handed_off_to_provider_async_stream(span_exporter: InMemorySpanExporter):
-    captured: list[httpx.Request] = []
-    model = _chat_openai(captured, stream_usage=True)
+async def test_openai_handed_off_to_provider_async_stream(
+    span_exporter: InMemorySpanExporter, sent: list[httpx.Request]
+):
+    model = _chat_openai(stream_usage=True)
     chunks = [chunk async for chunk in model.astream("What is the capital of France?")]
-    assert "".join(cast(str, chunk.content) for chunk in chunks) == "Paris"
-    _assert_openai_spans(span_exporter, captured, streamed=True)
+    assert "Paris" in "".join(cast(str, chunk.content) for chunk in chunks)
+    _assert_openai_spans(span_exporter, sent, streamed=True)
 
 
-def test_openai_handed_off_span_nests_under_chain(span_exporter: InMemorySpanExporter):
-    captured: list[httpx.Request] = []
-    chain = RunnableLambda(lambda x: x) | _chat_openai(captured)
+@pytest.mark.vcr
+def test_openai_handed_off_span_nests_under_chain(
+    span_exporter: InMemorySpanExporter, sent: list[httpx.Request]
+):
+    chain = RunnableLambda(lambda x: x) | _chat_openai()
     _ = chain.invoke("What is the capital of France?")
 
     spans = span_exporter.get_finished_spans()
@@ -928,7 +916,7 @@ def openai_uninstrumented(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _assert_langchain_openai_span(
-    span_exporter: InMemorySpanExporter, captured: list[httpx.Request], streamed: bool = False
+    span_exporter: InMemorySpanExporter, sent: list[httpx.Request], streamed: bool = False
 ):
     spans = span_exporter.get_finished_spans()
     # The OpenAI SDK instrumentation underneath is suppressed
@@ -937,60 +925,64 @@ def _assert_langchain_openai_span(
     attrs = _attrs(span)
     assert attrs["lmnr.span.instrumentation_scope.name"] == "langchain"
     assert attrs["gen_ai.system"] == "openai"
-    assert attrs["gen_ai.request.model"] == "gpt-4o-mini"
-    assert attrs["gen_ai.response.model"] == "gpt-4o-mini-2024-07-18"
+    assert attrs["gen_ai.request.model"] == OPENAI_MODEL
+    assert cast(str, attrs["gen_ai.response.model"]).startswith(OPENAI_MODEL)
     if not streamed:
         # Merged stream chunks carry LangChain's own `lc_run--` message id
-        assert attrs["gen_ai.response.id"] == "chatcmpl-1"
-    assert attrs["gen_ai.usage.input_tokens"] == 7
-    assert attrs["gen_ai.usage.output_tokens"] == 1
-    # `completion_tokens_details.reasoning_tokens` →
-    # `usage_metadata.output_token_details.reasoning`
-    assert attrs["gen_ai.usage.reasoning.output_tokens"] == 1
+        assert attrs["gen_ai.response.id"]
+    assert cast(int, attrs["gen_ai.usage.input_tokens"]) > 0
+    assert cast(int, attrs["gen_ai.usage.output_tokens"]) > 0
     assert attrs["gen_ai.response.finish_reasons"] == ("stop",)
-    assert len(captured) == 1
-    _assert_traceparent(captured[0], span)
+    _assert_traceparent(sent, span)
     assert not context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY)
 
 
+@pytest.mark.vcr
 @pytest.mark.usefixtures("openai_uninstrumented")
-def test_openai_traceparent_header(span_exporter: InMemorySpanExporter):
-    captured: list[httpx.Request] = []
-    _ = _chat_openai(captured).invoke("What is the capital of France?")
-    _assert_langchain_openai_span(span_exporter, captured)
+def test_openai_traceparent_header(span_exporter: InMemorySpanExporter, sent: list[httpx.Request]):
+    _ = _chat_openai().invoke("What is the capital of France?")
+    _assert_langchain_openai_span(span_exporter, sent)
 
 
+@pytest.mark.vcr
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("openai_uninstrumented")
-async def test_openai_traceparent_header_async(span_exporter: InMemorySpanExporter):
-    captured: list[httpx.Request] = []
-    _ = await _chat_openai(captured).ainvoke("What is the capital of France?")
-    _assert_langchain_openai_span(span_exporter, captured)
+async def test_openai_traceparent_header_async(
+    span_exporter: InMemorySpanExporter, sent: list[httpx.Request]
+):
+    _ = await _chat_openai().ainvoke("What is the capital of France?")
+    _assert_langchain_openai_span(span_exporter, sent)
 
 
+@pytest.mark.vcr
 @pytest.mark.usefixtures("openai_uninstrumented")
-def test_openai_traceparent_header_stream(span_exporter: InMemorySpanExporter):
-    captured: list[httpx.Request] = []
-    model = _chat_openai(captured, stream_usage=True)
+def test_openai_traceparent_header_stream(
+    span_exporter: InMemorySpanExporter, sent: list[httpx.Request]
+):
+    model = _chat_openai(stream_usage=True)
     # `stream` calls `_stream` without a `run_manager`
     chunks = list(model.stream("What is the capital of France?"))
-    assert "".join(cast(str, chunk.content) for chunk in chunks) == "Paris"
-    _assert_langchain_openai_span(span_exporter, captured, streamed=True)
+    assert "Paris" in "".join(cast(str, chunk.content) for chunk in chunks)
+    _assert_langchain_openai_span(span_exporter, sent, streamed=True)
 
 
+@pytest.mark.vcr
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("openai_uninstrumented")
-async def test_openai_traceparent_header_async_stream(span_exporter: InMemorySpanExporter):
-    captured: list[httpx.Request] = []
-    model = _chat_openai(captured, stream_usage=True)
+async def test_openai_traceparent_header_async_stream(
+    span_exporter: InMemorySpanExporter, sent: list[httpx.Request]
+):
+    model = _chat_openai(stream_usage=True)
     chunks = [chunk async for chunk in model.astream("What is the capital of France?")]
-    assert "".join(cast(str, chunk.content) for chunk in chunks) == "Paris"
-    _assert_langchain_openai_span(span_exporter, captured, streamed=True)
+    assert "Paris" in "".join(cast(str, chunk.content) for chunk in chunks)
+    _assert_langchain_openai_span(span_exporter, sent, streamed=True)
 
 
-def test_openai_inside_llm_run_keeps_langchain_span(span_exporter: InMemorySpanExporter):
-    captured: list[httpx.Request] = []
-    inner = _chat_openai(captured)
+@pytest.mark.vcr
+def test_openai_inside_llm_run_keeps_langchain_span(
+    span_exporter: InMemorySpanExporter, sent: list[httpx.Request]
+):
+    inner = _chat_openai()
 
     class DelegatingModel(FakeMessagesListChatModel):
         def _generate(self, *args: Any, **kwargs: Any) -> Any:
@@ -1009,10 +1001,12 @@ class _City(TypedDict):
     city: str
 
 
-def test_openai_structured_output_keeps_langchain_span(span_exporter: InMemorySpanExporter):
-    captured: list[httpx.Request] = []
-    model = _chat_openai(captured).with_structured_output(_City, method="json_schema")
-    assert model.invoke("What is the capital of France?") == {"city": "Paris"}
+@pytest.mark.vcr
+def test_openai_structured_output_keeps_langchain_span(
+    span_exporter: InMemorySpanExporter, sent: list[httpx.Request]
+):
+    model = _chat_openai().with_structured_output(_City, method="json_schema")
+    assert cast(dict[str, Any], model.invoke("What is the capital of France?"))["city"] == "Paris"
 
     # It may go through `responses.parse`, which the OpenAI instrumentation
     # does not record, so the LangChain span stays

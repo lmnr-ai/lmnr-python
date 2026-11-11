@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import os
 import threading
 import time
 from typing import cast
@@ -415,39 +416,17 @@ def test_threadpool_parallel_spans_with_openai(span_exporter: InMemorySpanExport
             assert span.parent is not None
 
 
+@pytest.mark.vcr
 def test_threadpool_parallel_spans_with_langchain(span_exporter: InMemorySpanExporter):
     """Test multiple parallel ThreadPoolExecutor spans live in separate traces
     including auto-instrumented LangChain spans. LangChain hands the call off to
     the OpenAI instrumentation, so the LLM span is `openai.chat`."""
-    import httpx
     from langchain_openai import ChatOpenAI
-
-    def handler(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            200,
-            json={
-                "id": "chatcmpl_test",
-                "object": "chat.completion",
-                "created": 0,
-                "model": "gpt-4o-mini",
-                "choices": [
-                    {
-                        "index": 0,
-                        "message": {
-                            "role": "assistant",
-                            "content": "The capital of France is Paris.",
-                        },
-                        "finish_reason": "stop",
-                    }
-                ],
-            },
-        )
 
     def task_worker(task_id: str) -> str:
         openai_client = ChatOpenAI(
-            model="gpt-4o-mini",
-            api_key=SecretStr("test-api-key"),
-            http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+            model="gpt-6-luna",
+            api_key=SecretStr(os.getenv("OPENAI_API_KEY", "test-api-key")),
         )
         with Laminar.start_as_current_span("task_worker"):
             time.sleep(0.01)
