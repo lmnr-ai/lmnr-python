@@ -51,7 +51,7 @@ class AsyncRolloutSessions(BaseAsyncResource):
         the caller can build the debugger URL; None if the body can't be parsed.
 
         Raises:
-            httpx.HTTPStatusError: If the request fails.
+            httpx2.HTTPStatusError: If the request fails.
         """
         response = await self._client.post(
             f"{self._base_url}/v1/rollouts/{session_id}",
@@ -69,7 +69,7 @@ class AsyncRolloutSessions(BaseAsyncResource):
         """Delete a debug session.
 
         Raises:
-            httpx.HTTPStatusError: If the request fails.
+            httpx2.HTTPStatusError: If the request fails.
         """
         response = await self._client.delete(
             f"{self._base_url}/v1/rollouts/{session_id}",
@@ -90,7 +90,7 @@ class AsyncRolloutSessions(BaseAsyncResource):
         set, in which case it raises. Any other non-OK status raises.
 
         Raises:
-            httpx.HTTPStatusError: If the request fails (non-404).
+            httpx2.HTTPStatusError: If the request fails (non-404).
         """
         response = await self._client.post(
             f"{self._base_url}/v1/rollouts/{session_id}/blocks",
@@ -124,7 +124,7 @@ class AsyncRolloutSessions(BaseAsyncResource):
         when there are none / the body can't be parsed.
 
         Raises:
-            httpx.HTTPStatusError: If the request fails.
+            httpx2.HTTPStatusError: If the request fails.
         """
         response = await self._client.get(
             f"{self._base_url}/v1/rollouts/{session_id}/blocks",

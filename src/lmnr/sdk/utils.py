@@ -12,7 +12,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any, cast
 
 import dotenv
-import httpx
+import httpx2
 import orjson
 import pydantic
 from opentelemetry.trace import Tracer
@@ -427,7 +427,7 @@ def default_json(o: object) -> str | dict[Any, Any] | list[Any]:
 MAX_ERROR_BODY_CHARS = 2000
 
 
-def describe_response(response: httpx.Response | None) -> str:
+def describe_response(response: httpx2.Response | None) -> str:
     """Render an HTTP error response as a readable one-liner.
 
     Error bodies are not always JSON — app-server returns plain text for

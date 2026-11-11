@@ -1,20 +1,20 @@
 """Base class for resource objects."""
 
-import httpx
+import httpx2
 
 
 class BaseResource:
     """Base class for all API resources."""
 
-    def __init__(self, client: httpx.Client, base_url: str, project_api_key: str):
+    def __init__(self, client: httpx2.Client, base_url: str, project_api_key: str):
         """Initialize the resource.
 
         Args:
-            client (httpx.Client): HTTP client instance
+            client (httpx2.Client): HTTP client instance
             base_url (str): Base URL for the API
             project_api_key (str): Project API key
         """
-        self._client: httpx.Client = client
+        self._client: httpx2.Client = client
         self._base_url: str = base_url
         self._project_api_key: str | None = project_api_key
 

@@ -31,7 +31,7 @@ class AsyncSql(BaseAsyncResource):
             List[dict[str, Any]]: Query results as list of dictionaries
 
         Raises:
-            httpx.HTTPStatusError: If the request fails
+            httpx2.HTTPStatusError: If the request fails
         """
         payload = {
             "query": sql,

@@ -18,7 +18,7 @@ import inspect
 from collections.abc import Mapping
 from typing import Any, cast
 
-import httpx
+import httpx2
 
 RAW_RESPONSE_HEADER = "X-Stainless-Raw-Response"
 
@@ -64,8 +64,8 @@ class RawResponse:
         return self._parsed
 
     @property
-    def headers(self) -> httpx.Headers:
-        return self._raw.headers if self._raw is not None else httpx.Headers()
+    def headers(self) -> httpx2.Headers:
+        return self._raw.headers if self._raw is not None else httpx2.Headers()
 
     def __getattr__(self, name: str) -> Any:
         if self._raw is None:

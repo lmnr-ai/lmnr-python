@@ -51,7 +51,7 @@ class RolloutSessions(BaseResource):
         the caller can build the debugger URL; None if the body can't be parsed.
 
         Raises:
-            httpx.HTTPStatusError: If the request fails.
+            httpx2.HTTPStatusError: If the request fails.
         """
         response = self._client.post(
             f"{self._base_url}/v1/rollouts/{session_id}",
@@ -69,7 +69,7 @@ class RolloutSessions(BaseResource):
         """Delete a debug session.
 
         Raises:
-            httpx.HTTPStatusError: If the request fails.
+            httpx2.HTTPStatusError: If the request fails.
         """
         response = self._client.delete(
             f"{self._base_url}/v1/rollouts/{session_id}",
@@ -100,7 +100,7 @@ class RolloutSessions(BaseResource):
         parsed.
 
         Raises:
-            httpx.HTTPStatusError: If the request fails (non-404).
+            httpx2.HTTPStatusError: If the request fails (non-404).
         """
         response = self._client.post(
             f"{self._base_url}/v1/rollouts/{session_id}/blocks",
@@ -135,7 +135,7 @@ class RolloutSessions(BaseResource):
         session has no blocks or the body can't be parsed.
 
         Raises:
-            httpx.HTTPStatusError: If the request fails.
+            httpx2.HTTPStatusError: If the request fails.
         """
         response = self._client.get(
             f"{self._base_url}/v1/rollouts/{session_id}/blocks",

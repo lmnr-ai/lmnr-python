@@ -641,7 +641,7 @@ class Laminar:
             from lmnr.sdk.debug.config import is_truthy
 
             # Debug mode off: bail before constructing the clients (and their
-            # httpx pools), which would otherwise leak unclosed on every normal
+            # httpx2 pools), which would otherwise leak unclosed on every normal
             # initialize(). This is the same LMNR_DEBUG gate build_debug_config()
             # applies first; checking it directly avoids a redundant config build
             # here (which would mint a throwaway session uuid and re-read the
@@ -695,7 +695,7 @@ class Laminar:
                 # the local run still owns the process; this stays as a defensive
                 # fallback for that residual race — close ours either way, since
                 # the existing runtime retains ITS clients and leaving ours open
-                # leaks httpx pools.
+                # leaks httpx2 pools.
                 client.close()
                 cls._close_debug_async_client(async_client)
                 return
@@ -839,7 +839,7 @@ class Laminar:
                 # clients WE built here are orphaned. Close them only when we
                 # built them — never close clients we borrowed from `existing`,
                 # which the live runtime still uses. Leaving built ones open
-                # leaks httpx pools.
+                # leaks httpx2 pools.
                 if built_clients:
                     client.close()
                     cls._close_debug_async_client(async_client)

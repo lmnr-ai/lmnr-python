@@ -22,7 +22,7 @@ dependencies = [
   # https://github.com/grpc/grpc/issues/41672
   "blake3 (>=1.0.0,<2.0.0)",
   "grpcio>=1",
-  "httpx (>=0.24.0,<1.0.0)",
+  "httpx2 (>=2.0.0,<3.0.0)",
   "lmnr-claude-code-proxy>=0.2.0",
   "opentelemetry-api (>=1.39.0, <2.0.0)",
   "opentelemetry-sdk (>=1.39.0, <2.0.0)",

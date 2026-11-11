@@ -1,7 +1,7 @@
 import sys
 from typing import cast
 
-import httpx
+import httpx2
 from packaging import version
 from typing_extensions import TypedDict
 
@@ -33,7 +33,7 @@ def get_latest_pypi_version() -> str:
     Returns the version string or raises an exception if unable to fetch.
     """
     try:
-        response = httpx.get("https://pypi.org/pypi/lmnr/json")
+        response = httpx2.get("https://pypi.org/pypi/lmnr/json")
         _ = response.raise_for_status()
 
         releases: dict[str, list[ReleaseInfo]] = cast(PyPIJSONAPIResponse, response.json())[

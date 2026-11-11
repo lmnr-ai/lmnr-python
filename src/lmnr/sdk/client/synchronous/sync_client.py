@@ -6,7 +6,7 @@ import re
 from types import TracebackType
 from typing import Self
 
-import httpx
+import httpx2
 
 from lmnr.sdk.client.synchronous.resources import (
     BrowserEvents,
@@ -23,7 +23,7 @@ from lmnr.sdk.utils import from_env
 class LaminarClient:
     __base_url: str
     __project_api_key: str
-    __client: httpx.Client
+    __client: httpx2.Client
 
     def __init__(
         self,
@@ -45,7 +45,7 @@ class LaminarClient:
                 Defaults to None. If none is provided, the default port (443) will
                 be used.
             timeout (int, optional): global timeout seconds for the HTTP client.\
-                Applied to all httpx operations, i.e. connect, read, get_from_pool, etc.
+                Applied to all httpx2 operations, i.e. connect, read, get_from_pool, etc.
                 Defaults to 3600.
         """
         # If port is already in the base URL, use it as is
@@ -64,7 +64,7 @@ class LaminarClient:
                 + "variable or pass project_api_key to the initializer."
             )
         self.__project_api_key = resolved_key
-        self.__client = httpx.Client(
+        self.__client = httpx2.Client(
             headers=self._headers(),
             timeout=timeout,
             # Context: If the server responds with a 413, the connection becomes
@@ -83,7 +83,7 @@ class LaminarClient:
             # setting keepalive_expiry to 0. Other alternative: migrate to
             # requests + aiohttp.
             #
-            # limits=httpx.Limits(
+            # limits=httpx2.Limits(
             #     max_keepalive_connections=0,
             #     keepalive_expiry=0,
             # ),
