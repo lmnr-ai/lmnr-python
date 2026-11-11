@@ -658,3 +658,30 @@ def test_converted_openinference_attributes_are_dropped():
     )
     assert "input.value" not in attrs
     assert "langfuse.observation.input" not in attrs
+
+
+def test_hybrid_fallback_drops_both_input_and_output_copies():
+    """Without indexed messages, `input.value` becomes `lmnr.span.input`, and
+    the `langfuse.observation.input` copy of the same payload goes too."""
+    attrs = translate(
+        FakeSpan(
+            {
+                "openinference.span.kind": "LLM",
+                "llm.model_name": "gpt-4o",
+                "input.value": '{"q": "hi"}',
+                "langfuse.observation.input": '{"q": "hi"}',
+                "output.value": '{"a": "yo"}',
+                "langfuse.observation.output": '{"a": "yo"}',
+            },
+            scope_name="litellm",
+        )
+    )
+    assert attrs[SPAN_INPUT] == '{"q": "hi"}'
+    assert attrs[SPAN_OUTPUT] == '{"a": "yo"}'
+    for key in (
+        "input.value",
+        "langfuse.observation.input",
+        "output.value",
+        "langfuse.observation.output",
+    ):
+        assert key not in attrs, key

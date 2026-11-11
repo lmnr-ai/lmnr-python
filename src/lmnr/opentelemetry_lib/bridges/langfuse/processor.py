@@ -348,31 +348,27 @@ def _translate_openinference(
         drop_family(OI_LLM_TOOLS)
 
     # LiteLLM's hybrid spans also carry `input.value` and
-    # `langfuse.observation.input/output`: the same payload again.
-    if input_messages:
-        new_attrs[OI_INPUT_VALUE] = None
-        new_attrs[LF_OBSERVATION_INPUT] = None
-    else:
-        in_key = OI_INPUT_VALUE
-        in_val = attrs.get(in_key)
+    # `langfuse.observation.input/output`: the same payload again. Once one of
+    # them is converted (to messages, or copied to `lmnr.span.input/output`),
+    # both are dropped.
+    if not input_messages:
+        in_val = attrs.get(OI_INPUT_VALUE)
         if not (isinstance(in_val, str) and in_val):
-            in_key = LF_OBSERVATION_INPUT
-            in_val = attrs.get(in_key)
+            in_val = attrs.get(LF_OBSERVATION_INPUT)
         if isinstance(in_val, str) and in_val and SPAN_INPUT not in attrs:
             new_attrs[SPAN_INPUT] = in_val
-            new_attrs[in_key] = None
-    if output_messages:
-        new_attrs[OI_OUTPUT_VALUE] = None
-        new_attrs[LF_OBSERVATION_OUTPUT] = None
-    else:
-        out_key = OI_OUTPUT_VALUE
-        out_val = attrs.get(out_key)
+    if input_messages or SPAN_INPUT in new_attrs:
+        new_attrs[OI_INPUT_VALUE] = None
+        new_attrs[LF_OBSERVATION_INPUT] = None
+    if not output_messages:
+        out_val = attrs.get(OI_OUTPUT_VALUE)
         if not (isinstance(out_val, str) and out_val):
-            out_key = LF_OBSERVATION_OUTPUT
-            out_val = attrs.get(out_key)
+            out_val = attrs.get(LF_OBSERVATION_OUTPUT)
         if isinstance(out_val, str) and out_val and SPAN_OUTPUT not in attrs:
             new_attrs[SPAN_OUTPUT] = out_val
-            new_attrs[out_key] = None
+    if output_messages or SPAN_OUTPUT in new_attrs:
+        new_attrs[OI_OUTPUT_VALUE] = None
+        new_attrs[LF_OBSERVATION_OUTPUT] = None
 
     # Keys the span never had need no removal.
     for k in [k for k, v in new_attrs.items() if v is None and k not in attrs]:
