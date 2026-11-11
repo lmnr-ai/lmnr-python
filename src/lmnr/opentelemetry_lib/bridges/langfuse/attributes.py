@@ -12,6 +12,20 @@ LF_TRACE_TAGS = "langfuse.trace.tags"
 LF_TRACE_METADATA_PREFIX = "langfuse.trace.metadata"
 LF_TRACE_USER_ID = "user.id"
 LF_TRACE_SESSION_ID = "session.id"
+# Older names Langfuse's server still reads (before `user.id` / `session.id`).
+LF_TRACE_COMPAT_USER_ID = "langfuse.user.id"
+LF_TRACE_COMPAT_SESSION_ID = "langfuse.session.id"
+# Set on a span Langfuse must treat as the trace root despite its parent.
+LF_AS_ROOT = "langfuse.internal.as_root"
+
+# Metadata keys Langfuse's server reads as trace session / user / tags, from
+# observation or trace metadata. The `langfuse.openai` integration documents
+# them (`metadata={"langfuse_session_id": ...}`) and records them as plain
+# observation metadata.
+LF_METADATA_SESSION_ID = "langfuse_session_id"
+LF_METADATA_USER_ID = "langfuse_user_id"
+LF_METADATA_TAGS = "langfuse_tags"
+LF_METADATA_TRACE_KEYS = {LF_METADATA_SESSION_ID, LF_METADATA_USER_ID, LF_METADATA_TAGS}
 
 LF_OBSERVATION_TYPE = "langfuse.observation.type"
 LF_OBSERVATION_INPUT = "langfuse.observation.input"

@@ -515,6 +515,114 @@ def test_observation_metadata_is_not_promoted():
     assert not any(k.startswith(f"{ASSOCIATION_PROPERTIES}.metadata") for k in attrs)
 
 
+def test_root_observation_metadata_is_trace_metadata():
+    """Langfuse's server merges the root span's observation metadata into the
+    trace metadata, the observation's values winning."""
+    attrs: dict[str, Any] = {
+        "langfuse.trace.metadata.team": "a",
+        "langfuse.trace.metadata.env": "prod",
+        "langfuse.observation.metadata.team": "b",
+        "langfuse.observation.metadata.customer": "acme",
+    }
+    promoted = translate(FakeSpan(attrs, is_root=True))
+    assert promoted[f"{ASSOCIATION_PROPERTIES}.metadata.team"] == "b"
+    assert promoted[f"{ASSOCIATION_PROPERTIES}.metadata.env"] == "prod"
+    assert promoted[f"{ASSOCIATION_PROPERTIES}.metadata.customer"] == "acme"
+    # And kept raw, like every metadata attribute.
+    assert promoted["langfuse.observation.metadata.customer"] == "acme"
+
+    # `langfuse.internal.as_root` makes a span with a parent the root.
+    forced = translate(FakeSpan({**attrs, "langfuse.internal.as_root": True}))
+    assert forced[f"{ASSOCIATION_PROPERTIES}.metadata.customer"] == "acme"
+
+    child = translate(FakeSpan(attrs))
+    assert child[f"{ASSOCIATION_PROPERTIES}.metadata.team"] == "a"
+    assert f"{ASSOCIATION_PROPERTIES}.metadata.customer" not in child
+
+
+def test_langfuse_metadata_keys_set_session_user_tags():
+    """`langfuse.openai` documents `metadata={"langfuse_session_id": ...}` and
+    records it as plain observation metadata; Langfuse's server reads those
+    keys as the trace's session / user / tags."""
+    attrs = translate(
+        FakeSpan(
+            {
+                "langfuse.observation.type": "generation",
+                "langfuse.observation.metadata.langfuse_session_id": "s1",
+                "langfuse.observation.metadata.langfuse_user_id": "u1",
+                "langfuse.observation.metadata.langfuse_tags": '["t1", "t2"]',
+                "langfuse.observation.metadata.k": "v",
+            },
+            is_root=True,
+        )
+    )
+    assert attrs[f"{ASSOCIATION_PROPERTIES}.session_id"] == "s1"
+    assert attrs[f"{ASSOCIATION_PROPERTIES}.user_id"] == "u1"
+    assert attrs[f"{ASSOCIATION_PROPERTIES}.tags"] == ["t1", "t2"]
+    assert attrs[f"{ASSOCIATION_PROPERTIES}.metadata.k"] == "v"
+    # Consumed as session / user / tags, so not repeated as metadata.
+    for key in ("langfuse_session_id", "langfuse_user_id", "langfuse_tags"):
+        assert f"{ASSOCIATION_PROPERTIES}.metadata.{key}" not in attrs
+
+    # langfuse 5 JSON-encodes each value; trace metadata works the same.
+    attrs = translate(
+        FakeSpan(
+            {
+                "langfuse.trace.metadata.langfuse_session_id": '"s2"',
+                "langfuse.trace.metadata.langfuse_user_id": '"u2"',
+                "langfuse.trace.metadata.langfuse_tags": '["t3"]',
+            }
+        ),
+        json_encoded_metadata=True,
+    )
+    assert attrs[f"{ASSOCIATION_PROPERTIES}.session_id"] == "s2"
+    assert attrs[f"{ASSOCIATION_PROPERTIES}.user_id"] == "u2"
+    assert attrs[f"{ASSOCIATION_PROPERTIES}.tags"] == ["t3"]
+
+
+def test_session_and_user_precedence_follows_langfuse():
+    attrs = translate(
+        FakeSpan(
+            {
+                "langfuse.session.id": "compat-session",
+                "session.id": "session",
+                "langfuse.user.id": "compat-user",
+                "user.id": "user",
+                "langfuse.observation.metadata.langfuse_session_id": "metadata-session",
+            }
+        )
+    )
+    assert attrs[f"{ASSOCIATION_PROPERTIES}.session_id"] == "compat-session"
+    assert attrs[f"{ASSOCIATION_PROPERTIES}.user_id"] == "compat-user"
+
+    attrs = translate(
+        FakeSpan(
+            {
+                "session.id": "session",
+                "langfuse.observation.metadata.langfuse_session_id": "metadata-session",
+            }
+        )
+    )
+    assert attrs[f"{ASSOCIATION_PROPERTIES}.session_id"] == "session"
+
+
+def test_trace_tags_accept_the_shapes_langfuse_does():
+    def tags(value: Any) -> Any:
+        return translate(FakeSpan({"langfuse.trace.tags": value})).get(
+            f"{ASSOCIATION_PROPERTIES}.tags"
+        )
+
+    assert tags(("a", "b", "a")) == ["a", "b"]
+    # LiteLLM's `langfuse_otel` callback writes a JSON list.
+    assert tags('["a", "b"]') == ["a", "b"]
+    assert tags("a, b") == ["a", "b"]
+    assert tags("a") == ["a"]
+    # A JSON list passed as a string, then JSON-encoded by langfuse 5.
+    assert tags(json.dumps('["a", "b"]')) == ["a", "b"]
+    assert tags(()) is None
+    assert tags("") is None
+
+
 def test_model_parameters_map_to_gen_ai_request_attributes():
     span = FakeSpan(
         {

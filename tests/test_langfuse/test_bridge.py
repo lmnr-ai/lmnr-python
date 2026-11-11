@@ -153,6 +153,34 @@ def test_bridged_spans_are_translated(
     assert len(list(generation[SPAN_IDS_PATH])) == 2  # pyright: ignore[reportArgumentType]
 
 
+def test_langfuse_openai_metadata_keys_reach_laminar(
+    laminar: Laminar, bridge: LangfuseBridge, langfuse_client: Any
+):
+    """What `langfuse.openai` records for `metadata={"langfuse_session_id": ...}`:
+    plain observation metadata on a root generation."""
+    assert bridge.install(laminar.context)
+    with langfuse_client.start_as_current_observation(
+        name="OpenAI-generation",
+        as_type="generation",
+        metadata={
+            "langfuse_session_id": "session-2",
+            "langfuse_user_id": "user-2",
+            "langfuse_tags": ["tag-2"],
+            "customer": "acme",
+        },
+    ):
+        pass
+    langfuse_client.flush()
+
+    generation = dict(laminar.spans()["OpenAI-generation"].attributes or {})
+    assert generation[f"{ASSOCIATION_PROPERTIES}.session_id"] == "session-2"
+    assert generation[f"{ASSOCIATION_PROPERTIES}.user_id"] == "user-2"
+    assert list(generation[f"{ASSOCIATION_PROPERTIES}.tags"]) == ["tag-2"]  # pyright: ignore[reportArgumentType]
+    # A root observation's metadata is trace metadata in Langfuse.
+    assert generation[f"{ASSOCIATION_PROPERTIES}.metadata.customer"] == "acme"
+    assert f"{ASSOCIATION_PROPERTIES}.metadata.langfuse_session_id" not in generation
+
+
 def test_clients_created_after_install_are_bridged(laminar: Laminar, bridge: LangfuseBridge):
     assert bridge.install(laminar.context)
     client = _new_client(RecordingExporter())
