@@ -1,3 +1,4 @@
+import inspect
 import json
 import os
 import uuid
@@ -429,6 +430,84 @@ async def test_observe_skip_input_keys_async(span_exporter: InMemorySpanExporter
     assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.input"])) == {
         "_b": 2,
         "_c": 3,
+    }
+
+
+def _search(query: str, *docs: str) -> None: ...
+
+
+def _merge(a: int, b: int, /, *rest: int, sep: str = ", ") -> None: ...
+
+
+def _everything(a: int, b: int = 2, *args: int, c: int, d: int = 4, **kwargs: int) -> None: ...
+
+
+def _expected_input(fn: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:
+    """Python's own binding, with `**kwargs` recorded next to the named params."""
+    signature = inspect.signature(fn)
+    expected: dict[str, Any] = {}
+    for name, value in signature.bind(*args, **kwargs).arguments.items():
+        kind = signature.parameters[name].kind
+        if kind is inspect.Parameter.VAR_KEYWORD:
+            expected.update(value)
+        elif kind is inspect.Parameter.VAR_POSITIONAL:
+            # `*args` is a tuple, which JSON records as a list
+            expected[name] = list(cast(tuple[Any, ...], value))
+        else:
+            expected[name] = value
+    return expected
+
+
+@pytest.mark.parametrize(
+    ("fn", "args", "kwargs"),
+    [
+        (_search, ("q", "d1", "d2", "d3"), {}),
+        (_search, ("q",), {}),
+        (_merge, (1, 2, 3, 4), {"sep": "-"}),
+        (_merge, (1, 2), {}),
+        (_everything, (1, 2, 3, 4), {"c": 5, "e": 6}),
+        (_everything, (1,), {"c": 5, "d": 7}),
+        (_everything, (), {"a": 1, "c": 5}),
+    ],
+)
+def test_observe_input_matches_python_binding(
+    span_exporter: InMemorySpanExporter,
+    fn: Any,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+):
+    _ = observe()(fn)(*args, **kwargs)
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    expected = _expected_input(fn, *args, **kwargs)
+    assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.input"])) == expected
+
+
+def test_observe_input_var_positional_method(span_exporter: InMemorySpanExporter):
+    class Store:
+        @observe(ignore_inputs=["skip"])
+        def add(self, key: str, *values: int, skip: int = 0) -> None: ...
+
+    Store().add("k", 1, 2, 3, skip=4)
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.input"])) == {
+        "key": "k",
+        "values": [1, 2, 3],
+    }
+
+
+def test_observe_input_when_call_does_not_match_signature(span_exporter: InMemorySpanExporter):
+    @observe()
+    def observed_foo(a: int, b: int) -> None: ...
+
+    with pytest.raises(TypeError):
+        observed_foo(1, 2, 3)  # pyright: ignore[reportCallIssue]
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.input"])) == {
+        "a": 1,
+        "b": 2,
     }
 
 

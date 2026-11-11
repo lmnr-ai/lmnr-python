@@ -22,6 +22,12 @@
 - **`json_dumps` NEVER raises — it returns `"{}"`.** So a `try/except` around it is dead code; check the returned value instead. This matters for `lmnr.sdk.raw.response` specifically: app-server's replay cache PREFERS a non-empty raw response over reconstructing from `gen_ai.output.messages` (`app-server/src/debugger/mod.rs`), so stamping `"{}"` would shadow the usable fallback and make every cache HIT rebuild an empty response. `_set_raw_response_attribute` skips the attribute instead.
 - google-genai-specific consequences (why `model_dump(mode="python")`, not `mode="json"`) live in `opentelemetry_lib/opentelemetry/instrumentation/google_genai/AGENTS.md`.
 
+## Function input capture (`get_input_from_func_args`, LAM-2532)
+
+- **Pair arguments with `inspect.signature(func).bind_partial`, never by index.** `@observe` and several instrumentors (kernel, skyvern, cua_computer, claude_agent, browser_use) record span input through it. The old index-based pairing gave `*args` only its first value and handed the rest to the following keyword-only params (`def merge(a, b, /, *rest, sep)` recorded `sep` as the 4th positional).
+- Recorded shape: `*args` is a list under its own name; `**kwargs` is flattened to the top level next to the named params (long-standing shape, kept on purpose); params left at their default are omitted. `tests/test_observe.py::test_observe_input_matches_python_binding` compares against Python's own binding.
+- A call that doesn't match the signature (it raises `TypeError` when it runs) falls back to positional pairing, so the error span still shows what was passed.
+
 ## Evals memory model (LAM-1909)
 
 - **Evals stream datapoints; nothing accumulates for the whole run.** `_evaluate_in_batches` in `evaluations/evaluation.py` is a semaphore sliding window (`concurrency_limit`, default 5, in-flight Trials — NOT barrier batches) over `iter(self.data)`. It returns the average scores directly: score sums/counts are aggregated incrementally per completed Trial, and finished eval tasks + `upload_tasks` are pruned as the loop advances, so `EvaluationResultDatapoint`s (with full data/target/output payloads) are NOT retained. `get_average_scores` (`evaluations/utils.py`) still exists for the public API but is no longer used internally. When touching this code, don't reintroduce a `gather`-everything-then-aggregate shape — that's what caused memory pressure on huge datasets.
