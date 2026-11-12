@@ -1,4 +1,5 @@
-"""No VCR here: `typesafe-sdk` runs on `httpx2`, which vcrpy cannot intercept.
+"""No VCR here: there is no `typesafe-sdk` API key to record with (vcrpy >= 9 can intercept
+`httpx2`, so cassettes become possible once there is one).
 
 Responses are injected through the SDK's own `transport=` seam
 (`httpx2.MockTransport`) and are validated by the SDK's strict

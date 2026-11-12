@@ -28,7 +28,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.context_keys im
     DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.reasoning import (
-    GEN_AI_RESPONSE_REASONING_EFFORT,
+    GEN_AI_RESPONSE_REASONING_LEVEL,
     get_reasoning_effort,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
@@ -298,7 +298,7 @@ def set_data_attributes(traced_response: TracedData, span: Span):
         if usage.input_tokens_details:
             set_span_attribute(
                 span,
-                "gen_ai.usage.cache_read_input_tokens",
+                "gen_ai.usage.cache_read.input_tokens",
                 usage.input_tokens_details.cached_tokens,
             )
 
@@ -308,7 +308,7 @@ def set_data_attributes(traced_response: TracedData, span: Span):
 
         set_span_attribute(
             span,
-            "gen_ai.usage.reasoning_tokens",
+            "gen_ai.usage.reasoning.output_tokens",
             reasoning_tokens or 0,
         )
 
@@ -320,12 +320,12 @@ def set_data_attributes(traced_response: TracedData, span: Span):
 
     set_span_attribute(
         span,
-        "gen_ai.request.reasoning_effort",
+        "gen_ai.request.reasoning.level",
         traced_response.request_reasoning_effort or (),
     )
     set_span_attribute(
         span,
-        GEN_AI_RESPONSE_REASONING_EFFORT,
+        GEN_AI_RESPONSE_REASONING_LEVEL,
         traced_response.response_reasoning_effort,
     )
 

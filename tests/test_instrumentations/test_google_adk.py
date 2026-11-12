@@ -65,6 +65,29 @@ def vcr_config():
     }
 
 
+@pytest.fixture(autouse=True, params=["legacy", "v2"])
+def adk_schema(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> str:
+    # ADK 2.13 defaults to a semconv-aligned telemetry schema ("v2"): no
+    # `call_llm` span (ADK's native `generate_content` span is the LLM span)
+    # and tool payloads on `gen_ai.tool.call.*`. The legacy schema is still
+    # reachable through an opt-in, and both must keep working.
+    schema = cast(str, request.param)
+    if schema == "v2":
+        pytest.importorskip("google.adk.telemetry._schema_version", reason="ADK < 2.13 has no v2")
+    if schema == "legacy":
+        monkeypatch.setenv("ADK_TELEMETRY_SCHEMA_VERSION_OPT_IN", "1")
+    else:
+        monkeypatch.delenv("ADK_TELEMETRY_SCHEMA_VERSION_OPT_IN", raising=False)
+        monkeypatch.setenv("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "SPAN_ONLY")
+    return schema
+
+
+@pytest.fixture
+def default_cassette_name(request: pytest.FixtureRequest) -> str:
+    # One cassette per test, shared by both schemas: the HTTP traffic is identical.
+    return cast(str, request.node.originalname)
+
+
 @pytest.fixture(autouse=True)
 def gemini_env(monkeypatch: pytest.MonkeyPatch):
     # Real key from the environment while recording; the placeholder is
@@ -130,27 +153,59 @@ def run_agent(
     return session
 
 
+def llm_spans(span_exporter: InMemorySpanExporter, schema: str) -> list[ReadableSpan]:
+    """The per-turn LLM spans: `call_llm` (legacy) or ADK's native `generate_content` (v2)."""
+    if schema == "legacy":
+        return spans_by_name(span_exporter, "call_llm")
+    return [s for s in span_exporter.get_finished_spans() if s.name.startswith("generate_content ")]
+
+
 def spans_by_name(span_exporter: InMemorySpanExporter, name: str) -> list[ReadableSpan]:
     return [s for s in span_exporter.get_finished_spans() if s.name == name]
 
 
 @pytest.mark.vcr
-def test_tool_span_typed_with_input_and_output(span_exporter: InMemorySpanExporter):
+def test_tool_span_typed_with_input_and_output(
+    span_exporter: InMemorySpanExporter, adk_schema: str
+):
     _result = run_agent()
 
     (tool_span,) = spans_by_name(span_exporter, "execute_tool get_weather")
-    assert (tool_span.attributes or {})["lmnr.span.type"] == "TOOL"
-    assert json.loads(cast(str, (tool_span.attributes or {})["lmnr.span.input"])) == {
-        "city": "Almaty"
-    }
-    assert json.loads(cast(str, (tool_span.attributes or {})["lmnr.span.output"])) == {
-        "city": "Almaty",
-        "forecast": "sunny",
-    }
+    attributes = tool_span.attributes or {}
+    assert attributes["lmnr.span.type"] == "TOOL"
+    if adk_schema == "v2":
+        # The backend reads gen_ai.tool.call.* on TOOL spans; nothing is copied.
+        assert "lmnr.span.input" not in attributes
+        assert "lmnr.span.output" not in attributes
+        input_, output = (
+            attributes["gen_ai.tool.call.arguments"],
+            attributes["gen_ai.tool.call.result"],
+        )
+    else:
+        input_, output = attributes["lmnr.span.input"], attributes["lmnr.span.output"]
+    assert json.loads(cast(str, input_)) == {"city": "Almaty"}
+    assert json.loads(cast(str, output)) == {"city": "Almaty", "forecast": "sunny"}
 
 
 @pytest.mark.vcr
-def test_call_llm_span_carries_gen_ai_attributes(span_exporter: InMemorySpanExporter):
+def test_call_llm_span_carries_gen_ai_attributes(
+    span_exporter: InMemorySpanExporter, adk_schema: str
+):
+    if adk_schema == "v2":
+        # No call_llm span: ADK's native generate_content span is the sole LLM
+        # span per turn (two turns here), typed LLM. The enclosing
+        # invoke_agent span must not be mistaken for one.
+        _res = run_agent()
+        generate_spans = llm_spans(span_exporter, adk_schema)
+        assert len(generate_spans) == 2
+        for span in generate_spans:
+            assert (span.attributes or {})["lmnr.span.type"] == "LLM"
+            assert (span.attributes or {})["gen_ai.request.model"] == "gemini-3.5-flash-lite"
+        assert spans_by_name(span_exporter, "call_llm") == []
+        (agent_span,) = spans_by_name(span_exporter, "invoke_agent weather_agent")
+        assert "lmnr.span.type" not in (agent_span.attributes or {})
+        return
+
     # With GOOGLE_GENAI excluded by default (google-adk installed), ADK's own
     # `call_llm` span is the sole LLM span per turn (two turns here: the
     # tool call and the final answer), enriched directly from the real
@@ -179,7 +234,9 @@ def test_call_llm_span_carries_gen_ai_attributes(span_exporter: InMemorySpanExpo
 
 
 @pytest.mark.vcr
-def test_tool_span_is_sibling_of_call_llm_not_child(span_exporter: InMemorySpanExporter):
+def test_tool_span_is_sibling_of_call_llm_not_child(
+    span_exporter: InMemorySpanExporter, adk_schema: str
+):
     # Regression: ADK's own `call_llm` span stays the ambient "current span"
     # (via its still-open start_as_current_span block) through the tool
     # postprocessing that immediately follows, unless the call_llm wrap
@@ -187,7 +244,7 @@ def test_tool_span_is_sibling_of_call_llm_not_child(span_exporter: InMemorySpanE
     # instead of nesting under call_llm itself.
     _res = run_agent()
 
-    call_llm_spans = spans_by_name(span_exporter, "call_llm")
+    call_llm_spans = llm_spans(span_exporter, adk_schema)
     (tool_span,) = spans_by_name(span_exporter, "execute_tool get_weather")
 
     call_llm_span_ids = {_ctx(s).span_id for s in call_llm_spans}
@@ -199,7 +256,9 @@ def test_tool_span_is_sibling_of_call_llm_not_child(span_exporter: InMemorySpanE
 
 
 @pytest.mark.vcr
-def test_call_llm_span_ends_before_tool_execution(span_exporter: InMemorySpanExporter):
+def test_call_llm_span_ends_before_tool_execution(
+    span_exporter: InMemorySpanExporter, adk_schema: str
+):
     # Regression: call_llm's recorded duration must not stretch across the
     # tool-execution/callback postprocessing that follows inside ADK's
     # still-open start_as_current_span block — it should end as soon as the
@@ -207,7 +266,7 @@ def test_call_llm_span_ends_before_tool_execution(span_exporter: InMemorySpanExp
     # eventually unwinds.
     _res = run_agent()
 
-    call_llm_spans = spans_by_name(span_exporter, "call_llm")
+    call_llm_spans = llm_spans(span_exporter, adk_schema)
     (tool_span,) = spans_by_name(span_exporter, "execute_tool get_weather")
 
     # Both call_llm spans (tool-call turn, final-answer turn) share the same
@@ -222,10 +281,13 @@ def test_call_llm_span_ends_before_tool_execution(span_exporter: InMemorySpanExp
 def test_call_llm_content_respects_adk_content_toggle(
     span_exporter: InMemorySpanExporter,
     monkeypatch: pytest.MonkeyPatch,
+    adk_schema: str,
 ):
     # With the content knob off, ADK stamps "{}" for the legacy
     # gcp.vertex.agent.llm_request/response attributes; the new gen_ai.*
     # attributes must not leak content through a side door.
+    if adk_schema == "v2":
+        pytest.skip("v2 has no call_llm span; its content is gated by ADK itself")
     monkeypatch.setenv("ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS", "0")
     _res = run_agent()
 
@@ -262,20 +324,19 @@ def test_tool_content_respects_adk_content_toggle(
     assert "lmnr.span.output" not in (tool_span.attributes or {})
 
 
-def test_adk_recognizes_laminar_genai_instrumentation(span_exporter: InMemorySpanExporter):
-    # ADK's own native inner LLM span is always redundant while this
-    # instrumentor is active — call_llm enrichment (or, in the explicit
-    # opt-in case, Laminar's own google_genai span) already covers the
-    # call — so the detection patch unconditionally reports an external
-    # genai instrumentation, regardless of GOOGLE_GENAI's own state.
+def test_adk_skips_native_span_under_legacy_schema(adk_schema: str):
+    # ADK's own native `generate_content` span is redundant under the legacy
+    # schema (call_llm is the LLM span), so the instrumentor tells ADK not to
+    # emit it. Under v2 the native span is the LLM span and is kept.
+    if adk_schema == "v2":
+        pytest.skip("native span is kept under v2")
     from google.adk.telemetry import tracing
 
-    detected = tracing._instrumented_with_opentelemetry_instrumentation_google_genai()
-    assert detected is True
+    assert tracing._should_emit_native_telemetry(None, None) is False  # pyright: ignore[reportArgumentType]
 
 
 @pytest.mark.vcr
-def test_merged_parallel_tool_span_typed(span_exporter: InMemorySpanExporter):
+def test_merged_parallel_tool_span_typed(span_exporter: InMemorySpanExporter, adk_schema: str):
     # Two function calls in one turn produce an `execute_tool (merged)`
     # span via trace_merged_tool_calls, which flows.llm_flows.functions
     # binds by name at import time. This module imports ADK at collection,
@@ -290,11 +351,14 @@ def test_merged_parallel_tool_span_typed(span_exporter: InMemorySpanExporter):
 
     (merged_span,) = spans_by_name(span_exporter, "execute_tool (merged)")
     assert (merged_span.attributes or {})["lmnr.span.type"] == "TOOL"
-    assert "lmnr.span.output" in (merged_span.attributes or {})
+    if adk_schema == "legacy":
+        assert "lmnr.span.output" in (merged_span.attributes or {})
 
 
 @pytest.mark.vcr
-def test_empty_args_tool_is_not_mistaken_for_redaction(span_exporter: InMemorySpanExporter):
+def test_empty_args_tool_is_not_mistaken_for_redaction(
+    span_exporter: InMemorySpanExporter, adk_schema: str
+):
     # A niladic tool's args serialize to "{}", same as ADK's redaction
     # sentinel; the (empty) input must still be recorded.
     _res = run_agent(
@@ -303,11 +367,14 @@ def test_empty_args_tool_is_not_mistaken_for_redaction(span_exporter: InMemorySp
     )
 
     (tool_span,) = spans_by_name(span_exporter, "execute_tool get_default_city")
-    assert (tool_span.attributes or {})["lmnr.span.type"] == "TOOL"
-    assert (tool_span.attributes or {})["lmnr.span.input"] == "{}"
-    assert json.loads(cast(str, (tool_span.attributes or {})["lmnr.span.output"])) == {
-        "city": "Almaty"
-    }
+    attributes = tool_span.attributes or {}
+    assert attributes["lmnr.span.type"] == "TOOL"
+    if adk_schema == "v2":
+        assert attributes["gen_ai.tool.call.arguments"] == "{}"
+        assert json.loads(cast(str, attributes["gen_ai.tool.call.result"])) == {"city": "Almaty"}
+    else:
+        assert attributes["lmnr.span.input"] == "{}"
+        assert json.loads(cast(str, attributes["lmnr.span.output"])) == {"city": "Almaty"}
 
 
 def test_agent_enrichment_keeps_explicit_session_id():
@@ -343,7 +410,9 @@ def test_agent_enrichment_keeps_explicit_session_id():
     assert span.attributes["lmnr.association.properties.user_id"] == "adk-user"
 
 
-def test_partial_call_llm_response_does_not_detach_or_end_span():
+def test_partial_call_llm_response_does_not_detach_or_end_span(adk_schema: str):
+    if adk_schema == "v2":
+        pytest.skip("v2 has no call_llm span")
     # Streaming turns run trace_call_llm once per chunk with partial=True
     # for every fragment but the last. Detaching/ending call_llm on a
     # partial chunk would be premature: the call hasn't actually finished,

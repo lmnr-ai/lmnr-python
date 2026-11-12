@@ -1,8 +1,9 @@
 """Reasoning / thinking request config as span attributes.
 
-There is no GenAI semantic convention for these yet, and every provider names
-and shapes the knob differently, so each one is recorded under its own name
-rather than squeezed into a single normalized attribute.
+The OpenAI-style effort string goes to the GenAI semconv's
+`gen_ai.request.reasoning.level`. The semconv has nothing for the other knobs,
+and every provider names and shapes them differently, so each one is recorded
+under its own name rather than squeezed into a single normalized attribute.
 """
 
 from __future__ import annotations
@@ -19,9 +20,10 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
 )
 
 # OpenAI / Groq / LiteLLM `reasoning_effort`, OpenAI Responses `reasoning.effort`
-GEN_AI_REQUEST_REASONING_EFFORT = "gen_ai.request.reasoning_effort"
-# OpenAI Responses echoes the effort actually applied (a default when unset)
-GEN_AI_RESPONSE_REASONING_EFFORT = "gen_ai.response.reasoning_effort"
+GEN_AI_REQUEST_REASONING_LEVEL = "gen_ai.request.reasoning.level"
+# OpenAI Responses echoes the effort actually applied (a default when unset);
+# named after the request-side `gen_ai.request.reasoning.level`.
+GEN_AI_RESPONSE_REASONING_LEVEL = "gen_ai.response.reasoning.level"
 # Anthropic `thinking.type` (enabled / adaptive / disabled / ...)
 GEN_AI_REQUEST_THINKING_TYPE = "gen_ai.request.thinking_type"
 # Anthropic `thinking.budget_tokens`, Gemini `thinking_config.thinking_budget`
@@ -88,7 +90,7 @@ def set_reasoning_attributes(span: Span, params: Any) -> None:
     thinking = _get(params, "thinking")
     thinking_config = _get(params, "thinking_config")
     attributes: dict[str, str | int | None] = {
-        GEN_AI_REQUEST_REASONING_EFFORT: get_reasoning_effort(params),
+        GEN_AI_REQUEST_REASONING_LEVEL: get_reasoning_effort(params),
         GEN_AI_REQUEST_THINKING_TYPE: _as_str(_get(thinking, "type")),
         GEN_AI_REQUEST_THINKING_BUDGET: _first(
             _as_int(_get(thinking, "budget_tokens")),

@@ -22,6 +22,15 @@ from opentelemetry.trace import INVALID_TRACE_ID, Span, Status, StatusCode, use_
 from opentelemetry.util.types import AttributeValue
 from typing_extensions import TypedDict
 
+from lmnr.opentelemetry_lib.bridges import (
+    Bridge,
+    BridgeContext,
+    available_bridges,
+    conflicting_instruments,
+    install_bridges,
+    resolve_bridges,
+    uninstall_bridges,
+)
 from lmnr.opentelemetry_lib.tracing import (
     flush_tracing,
     force_reinit_processor,
@@ -52,6 +61,7 @@ from lmnr.opentelemetry_lib.tracing.context import (
     push_span,
     push_span_context,
     set_association_prop_context,
+    set_inherit_global_context,
 )
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
@@ -238,13 +248,14 @@ class Laminar:
         max_export_batch_size_bytes: int | None = None,
         flush_by_size: bool = False,
         export_timeout_seconds: int | None = None,
-        set_global_tracer_provider: bool = True,
+        set_global_tracer_provider: bool | None = None,
         otel_logger_level: int = logging.ERROR,
         session_recording_options: SessionRecordingOptions | None = None,
         force_http: bool = False,
         metadata: dict[str, AttributeValue] | None = None,
         release: str | None = None,
         write_trajectory: bool = True,
+        bridges: list[Bridge | str] | set[Bridge | str] | tuple[Bridge | str, ...] | None = None,
     ):
         """Initialize Laminar context across the application.
         This method must be called before using any other Laminar methods or
@@ -300,7 +311,8 @@ class Laminar:
                 OpenTelemetry allows only one tracer provider per app, so set this\
                 to False, if you are using another tracing library. Setting this to\
                 False may break some external instrumentations, e.g. LiteLLM.\
-                Defaults to True.
+                Defaults to True, or False when a bridge that needs its own\
+                provider (Langfuse) is enabled.
             otel_logger_level (int, optional): OpenTelemetry logger level. Defaults\
                 to logging.ERROR.
             session_recording_options (SessionRecordingOptions | None, optional): Options\
@@ -322,6 +334,12 @@ class Laminar:
                 (see below) applies to this process. Set to False in a process\
                 whose environment is meant for an agent it runs, so its own\
                 spans are still exported. Defaults to True.
+            bridges (list[Bridge | str] | None, optional): Third-party\
+                tracing SDKs whose spans to also send to Laminar, e.g.\
+                `bridges=[Bridge.LANGFUSE]` or `bridges=["langfuse"]`. What\
+                the SDK's own backend receives is not changed. Laminar's own instrumentations that would record the\
+                same calls again are left out of the default `instruments` set;\
+                an explicit `instruments` set is honored as is. Defaults to None.
 
         Environment:
             LMNR_TRAJECTORY_PATH: write the run as an lmnr-atif trajectory\
@@ -337,6 +355,8 @@ class Laminar:
         if cls.is_initialized():
             cls.__logger.info("Laminar is already initialized. Skipping initialization.")
             return
+
+        enabled_bridges = resolve_bridges(bridges)
 
         cls.__project_api_key = project_api_key or from_env("LMNR_PROJECT_API_KEY")
 
@@ -414,9 +434,37 @@ class Laminar:
                 )
         cls.__global_metadata = {**env_metadata, **(metadata or {})}
 
-        if not os.getenv("OTEL_ATTRIBUTE_COUNT_LIMIT"):
+        # A bridge whose SDK is missing or too old changes nothing: Laminar's
+        # instruments, provider and context stay as without `bridges`.
+        enabled_bridges = available_bridges(enabled_bridges)
+        block_instruments = set(disabled_instruments) if disabled_instruments is not None else None
+        if enabled_bridges:
+            conflicts = conflicting_instruments(enabled_bridges)
+            if instruments is None:
+                block_instruments = (block_instruments or set()) | conflicts
+            elif overlap := conflicts & set(instruments):
+                cls.__logger.warning(
+                    "These instruments also record what the enabled bridges send, so the "
+                    + "same calls may appear twice: "
+                    + ", ".join(sorted(i.name for i in overlap))
+                )
+        private_provider = any(b.requires_private_tracer_provider for b in enabled_bridges)
+        if private_provider and set_global_tracer_provider:
+            cls.__logger.warning(
+                "Ignoring set_global_tracer_provider=True: the Langfuse bridge needs "
+                + "Laminar's tracer provider to stay separate from Langfuse's."
+            )
+        set_global_tracer_provider_resolved = (
+            not private_provider
+            if set_global_tracer_provider is None
+            else (set_global_tracer_provider and not private_provider)
+        )
+
+        if not os.getenv("OTEL_ATTRIBUTE_COUNT_LIMIT") and not private_provider:
             # each message is at least 2 attributes: role and content,
-            # but the default attribute limit is 128, so raise it
+            # but the default attribute limit is 128, so raise it.
+            # With a bridge, Laminar's provider gets the limit directly instead
+            # (`init_tracing`), so the source SDK's provider keeps its own.
             os.environ["OTEL_ATTRIBUTE_COUNT_LIMIT"] = "10000"
 
         # A debug run wants spans to land in the UI instantly so the agent can
@@ -433,15 +481,13 @@ class Laminar:
             port=grpc_port or 8443,
             project_api_key=cls.__project_api_key,
             instruments=set(instruments) if instruments is not None else None,
-            block_instruments=(
-                set(disabled_instruments) if disabled_instruments is not None else None
-            ),
+            block_instruments=block_instruments,
             disable_batch=disable_batch_resolved,
             max_export_batch_size=max_export_batch_size,
             max_export_batch_size_bytes=max_export_batch_size_bytes,
             flush_by_size=flush_by_size,
             timeout_seconds=export_timeout_seconds,
-            set_global_tracer_provider=set_global_tracer_provider,
+            set_global_tracer_provider=set_global_tracer_provider_resolved,
             otel_logger_level=otel_logger_level,
             session_recording_options=session_recording_options,
             force_http=force_http,
@@ -450,12 +496,18 @@ class Laminar:
             export=export,
         )
 
-        # A previous initialize()/shutdown() cycle leaves the Langfuse bridge
-        # holding the retired span processor — its `instrument()` returns early
-        # once installed, and nothing else re-runs on a re-init (LANGFUSE is
-        # never in the default instrument set). Cheap no-op when the bridge was
-        # never installed or the processor is unchanged.
-        _rebind_success = cls._rebind_langfuse_bridge()
+        installed_bridges = (
+            install_bridges(
+                enabled_bridges,
+                BridgeContext(
+                    span_processor=_tracer_wrapper.span_processor,
+                    tracer_provider=_tracer_wrapper.tracer_provider,
+                ),
+            )
+            if enabled_bridges
+            else []
+        )
+        set_inherit_global_context(any(b.inherits_global_context for b in installed_bridges))
 
         # Build the debug runtime only after tracing is up. It has no dependency
         # on init_tracing (which never reads the runtime or global
@@ -1029,12 +1081,15 @@ class Laminar:
             # Get metadata from context if it exists
             ctx_metadata = cast(MetadataType, get_value(CONTEXT_METADATA_KEY, ctx)) or {}
             # Merge with priority: global < context < parent < explicit
-            merged_metadata = {
-                **(cls.__global_metadata or {}),
-                **(ctx_metadata or {}),
-                **(parsed["metadata"] or {}),
-                **(metadata or {}),
-            }
+            merged_metadata = cast(
+                MetadataType,
+                {
+                    **(cls.__global_metadata or {}),
+                    **(ctx_metadata or {}),
+                    **(parsed["metadata"] or {}),
+                    **(metadata or {}),
+                },
+            )
 
             # Get association props from context (fallback values)
             ctx_user_id = cast(str, get_value(CONTEXT_USER_ID_KEY, ctx))
@@ -1290,12 +1345,15 @@ class Laminar:
                         pass
 
             # Merge with priority: global < context < parent < explicit
-            merged_metadata = {
-                **(cls.__global_metadata or {}),
-                **(ctx_metadata or {}),
-                **(parsed.get("metadata") or {}),
-                **(metadata or {}),
-            }
+            merged_metadata = cast(
+                MetadataType,
+                {
+                    **(cls.__global_metadata or {}),
+                    **(ctx_metadata or {}),
+                    **(parsed.get("metadata") or {}),
+                    **(metadata or {}),
+                },
+            )
 
             # Merge user_id and session_id with priority: context < parent < explicit
             final_user_id = (
@@ -1481,11 +1539,14 @@ class Laminar:
         ctx_session_id = cast(str, get_value(CONTEXT_SESSION_ID_KEY, ctx))
         ctx_metadata = cast(MetadataType, get_value(CONTEXT_METADATA_KEY, ctx))
 
-        merged_metadata = {
-            **(cls.__global_metadata or {}),
-            **(ctx_metadata or {}),
-            **(parsed["metadata"] or {}),
-        }
+        merged_metadata = cast(
+            MetadataType,
+            {
+                **(cls.__global_metadata or {}),
+                **(ctx_metadata or {}),
+                **(parsed["metadata"] or {}),
+            },
+        )
         final_user_id = parsed["user_id"] if parsed["user_id"] is not None else ctx_user_id
         final_session_id = (
             parsed["session_id"] if parsed["session_id"] is not None else ctx_session_id
@@ -1784,117 +1845,6 @@ class Laminar:
             return LaminarSpan(cast(SDKSpan, span))
 
     @classmethod
-    def _rebind_langfuse_bridge(cls) -> bool:
-        """Re-point an already-installed Laminar/Langfuse bridge at the current
-        span processor. Best-effort: never let it break `initialize()`.
-
-        Returns: whether rebind was successful
-        """
-        try:
-            from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse import (
-                get_langfuse_instrumentor,
-            )
-
-            instrumentor = get_langfuse_instrumentor()
-            if not instrumentor.is_instrumented_by_opentelemetry:
-                return False
-            wrapper = get_tracer_wrapper()
-            if wrapper is None:
-                return False
-            return instrumentor.rebind(
-                lmnr_tracer_provider=wrapper.tracer_provider,
-                lmnr_span_processor=wrapper.span_processor,
-            )
-        except Exception:
-            cls.__logger.warning(
-                "Failed to rebind the Laminar/Langfuse bridge",
-                exc_info=True,
-            )
-            return False
-
-    @classmethod
-    def connect_to_langfuse(cls) -> bool:
-        """Bridge the Langfuse Python SDK into Laminar so spans emitted by
-        ``@observe``, ``langfuse.openai``, ``langfuse.langchain``, etc. are
-        dual-exported to Laminar in addition to Langfuse.
-
-        The Langfuse bridge is opt-in: it is NOT installed merely because
-        ``langfuse`` is present. Install it either by passing an explicit
-        ``instruments`` set containing ``Instruments.LANGFUSE`` to
-        ``Laminar.initialize``, or by calling this method after initialization
-        (e.g. when initialization happens in code you don't control).
-
-        Returns:
-            bool: True if the bridge was installed, False otherwise
-            (e.g. Laminar not initialized, ``langfuse < 3.0`` or not
-            importable).
-        """
-        # `cls.__logger` is only set by `_initialize_logger()` during
-        # `initialize()`, so we cannot rely on it here — this method is
-        # reachable before initialization. Fall back to a module-level
-        # logger instead.
-        logger = get_default_logger(__name__)
-        if not cls.is_initialized():
-            logger.warning("Laminar is not initialized. Call Laminar.initialize() first.")
-            return False
-        from lmnr.opentelemetry_lib.tracing.instruments import (
-            langfuse_installed,
-        )
-
-        # `_langfuse_installed` gates on both presence AND version >= 3.0 —
-        # the bridge is OTel-native and does nothing useful on langfuse 2.x.
-        # Going through `instrument()` on 2.x would install a useless
-        # translator, flip `_installed=True`, and permanently block a later
-        # valid install.
-        if not langfuse_installed():
-            logger.warning(
-                "`langfuse >= 3.0` is required for the Laminar/Langfuse "
-                + "bridge. Install it with `pip install 'langfuse>=3.0'`."
-            )
-            return False
-        from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse import (
-            get_langfuse_instrumentor,
-            langfuse_sdk_importable,
-        )
-
-        # `_langfuse_installed()` only reads install metadata; it never imports
-        # the SDK. On Python 3.14 langfuse's pydantic-v1 models fail to build,
-        # so the package is "present" but `import
-        # langfuse._client.resource_manager` raises. The bridge's
-        # resource-manager attach/patch path swallows that and silently no-ops,
-        # which would leave the bridge `_installed=True` but inert — SDK spans
-        # would never reach Laminar. Refuse to report success in that case.
-        if not langfuse_sdk_importable():
-            logger.warning(
-                "`langfuse` is installed but cannot be imported in this "
-                + "interpreter (a known pydantic v1 incompatibility on Python "
-                + "3.14). The Laminar/Langfuse bridge would be inert, so it was "
-                + "not installed."
-            )
-            return False
-
-        wrapper = get_tracer_wrapper()
-        if wrapper is None:
-            return False
-        instrumentor = get_langfuse_instrumentor()
-        # `LangfuseInstrumentor._instrument()` re-raises after rollback if the
-        # attach-to-existing / resource-manager-patch phase fails (e.g.
-        # `RuntimeError` from concurrent modification of
-        # `LangfuseResourceManager._instances`). This public helper is
-        # documented to return `bool`, so swallow the exception and surface
-        # the failure as False — `uninstrument()` has already cleaned up
-        # partial state by the time we get here.
-        try:
-            instrumentor.instrument(
-                lmnr_tracer_provider=wrapper.tracer_provider,
-                lmnr_span_processor=wrapper.span_processor,
-            )
-        except Exception:
-            logger.warning("Failed to install Laminar/Langfuse bridge", exc_info=True)
-            return False
-        return instrumentor.is_instrumented_by_opentelemetry
-
-    @classmethod
     def flush(cls) -> bool:
         """Flush the internal tracer.
 
@@ -1950,6 +1900,8 @@ class Laminar:
                 except Exception:
                     cls.__logger.debug("Failed to close debug cache client", exc_info=True)
                 cls._close_debug_async_client(runtime.async_client)
+            uninstall_bridges()
+            set_inherit_global_context(False)
             shutdown_tracing()
             cls.__initialized = False
             # Clear the one-shot debug-runtime state so a subsequent

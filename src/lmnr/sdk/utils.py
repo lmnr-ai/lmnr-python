@@ -218,24 +218,47 @@ def get_input_from_func_args(
 ) -> dict[str, Any]:
     normalized_args = list(func_args if func_args is not None else [])
     normalized_kwargs = func_kwargs if func_kwargs is not None else {}
-    # Remove implicitly passed "self" or "cls" argument for
-    # instance or class methods
+
+    def is_ignored(name: str) -> bool:
+        # Drop the implicitly passed "self" or "cls" of instance or class methods
+        return (is_method and name in ("self", "cls")) or bool(
+            ignore_inputs and name in ignore_inputs
+        )
+
     try:
-        res = {
-            k: v for k, v in normalized_kwargs.items() if not (ignore_inputs and k in ignore_inputs)
-        }
-        for i, k in enumerate(inspect.signature(func).parameters.keys()):
-            if is_method and k in ["self", "cls"]:
-                continue
-            if ignore_inputs and k in ignore_inputs:
-                continue
-            # If param has default value, then it's not present in func args
-            if i < len(normalized_args):
-                res[k] = normalized_args[i]
-        return res
+        signature = inspect.signature(func)
     except Exception:
         logger.warning("Failed to get input from func args")
         return {}
+
+    try:
+        # Let Python pair the arguments with the parameters, so `*args` gets
+        # every extra positional and keyword-only params keep their own values.
+        bound = signature.bind_partial(*normalized_args, **normalized_kwargs)
+        # Record params left at their default too, since they shape the call as
+        # much as the passed ones. An empty `*args` is recorded as `[]`.
+        bound.apply_defaults()
+    except TypeError:
+        # The call doesn't match the signature (it will raise when it runs),
+        # so record what was passed as best we can.
+        res = {k: v for k, v in normalized_kwargs.items() if not is_ignored(k)}
+        for k, v in zip(signature.parameters, normalized_args):
+            if not is_ignored(k):
+                res[k] = v
+        return res
+
+    res: dict[str, Any] = {}
+    for name, value in bound.arguments.items():
+        if is_ignored(name):
+            continue
+        if signature.parameters[name].kind is inspect.Parameter.VAR_KEYWORD:
+            # `**kwargs` are recorded at the top level, next to the named params
+            res.update(
+                {k: v for k, v in value.items() if not (ignore_inputs and k in ignore_inputs)}
+            )
+        else:
+            res[name] = value
+    return res
 
 
 def from_env(key: str) -> str | None:
@@ -470,7 +493,7 @@ _ORJSON_NATIVE_KEY_TYPES = (
 
 
 def _stringify_dict_keys(
-    value: pydantic.BaseModel | JsonValue | Sequence[Any] | dict[Any, Any] | set[Any],
+    value: pydantic.BaseModel | JsonValue | Sequence[Any] | Mapping[Any, Any] | set[Any],
 ) -> JsonValue:
     """Coerce the mapping keys orjson cannot encode into strings.
 
@@ -517,7 +540,7 @@ def _stringify_dict_keys(
 
 
 def json_dumps(
-    data: pydantic.BaseModel | JsonValue | dict[str, Any] | Sequence[Any] | set[Any],
+    data: pydantic.BaseModel | JsonValue | Mapping[str, Any] | Sequence[Any] | set[Any],
 ) -> str:
     try:
         return orjson.dumps(

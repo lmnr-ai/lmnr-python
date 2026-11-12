@@ -81,7 +81,7 @@ def test_openrouter_chat(span_exporter: InMemorySpanExporter):
     assert attributes["gen_ai.request.temperature"] == 0
     assert attributes["gen_ai.request.frequency_penalty"] == 0.5
     assert attributes["gen_ai.request.presence_penalty"] == 0.3
-    assert attributes["gen_ai.request.reasoning_effort"] == "low"
+    assert attributes["gen_ai.request.reasoning.level"] == "low"
     assert attributes["llm.user"] == "user-123"
     schema = json.loads(cast(str, attributes["gen_ai.request.structured_output_schema"]))
     assert schema == CAPITAL_SCHEMA
@@ -304,7 +304,7 @@ def test_openrouter_responses(span_exporter: InMemorySpanExporter):
     assert attributes["gen_ai.request.max_tokens"] == 50
     assert attributes["gen_ai.request.frequency_penalty"] == 0.2
     assert attributes["gen_ai.request.presence_penalty"] == 0.1
-    assert attributes["gen_ai.request.reasoning_effort"] == "low"
+    assert attributes["gen_ai.request.reasoning.level"] == "low"
     assert attributes["llm.user"] == "user-123"
     schema = json.loads(cast(str, attributes["gen_ai.request.structured_output_schema"]))
     assert schema == CAPITAL_SCHEMA

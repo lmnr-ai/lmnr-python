@@ -30,7 +30,7 @@ import datetime
 import hashlib
 import json
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, cast
 
@@ -48,7 +48,21 @@ from lmnr.version import __version__
 
 # `gen_ai.request.*` attributes that describe the transport, or that have their
 # own place in ATIF, rather than request parameters.
-_NOT_REQUEST_PARAMS = {"model", "base_url", "api_type", "api_version", "reasoning_effort"}
+_NOT_REQUEST_PARAMS = {
+    "model",
+    "base_url",
+    "api_type",
+    "api_version",
+    "reasoning.level",
+    "reasoning_effort",
+}
+# Pre-semconv names of attributes the builder reads, still emitted by older SDKs.
+_LEGACY_ATTRIBUTES = {
+    "gen_ai.request.reasoning.level": "gen_ai.request.reasoning_effort",
+    "gen_ai.usage.cache_read.input_tokens": "gen_ai.usage.cache_read_input_tokens",
+    "gen_ai.usage.cache_write.input_tokens": "gen_ai.usage.cache_creation_input_tokens",
+    "gen_ai.usage.reasoning.output_tokens": "gen_ai.usage.reasoning_tokens",
+}
 _SYSTEM_ROLES = ("system", "developer")
 
 
@@ -145,6 +159,13 @@ def _json_attribute(value: Any) -> Any:
             return json.loads(value)
         except (TypeError, ValueError):
             return value
+    return value
+
+
+def _get_attribute(attrs: Mapping[str, Any], key: str) -> Any:
+    value = attrs.get(key)
+    if value is None and key in _LEGACY_ATTRIBUTES:
+        return attrs.get(_LEGACY_ATTRIBUTES[key])
     return value
 
 
@@ -681,7 +702,7 @@ class _Builder:
         model = attrs.get("gen_ai.response.model") or attrs.get("gen_ai.request.model")
         if isinstance(model, str) and model:
             step["model_name"] = model
-        effort = attrs.get("gen_ai.request.reasoning_effort")
+        effort = _get_attribute(attrs, "gen_ai.request.reasoning.level")
         if isinstance(effort, (str, int, float)) and not isinstance(effort, bool):
             step["reasoning_effort"] = effort
         step["message"] = output.get("content") or ""
@@ -732,9 +753,9 @@ class _Builder:
         for key, attribute in (
             ("prompt_tokens", "gen_ai.usage.input_tokens"),
             ("completion_tokens", "gen_ai.usage.output_tokens"),
-            ("cached_tokens", "gen_ai.usage.cache_read_input_tokens"),
+            ("cached_tokens", "gen_ai.usage.cache_read.input_tokens"),
         ):
-            if (value := _number(attrs.get(attribute))) is not None:
+            if (value := _number(_get_attribute(attrs, attribute))) is not None:
                 metrics[key] = int(value)
         input_cost = _number(attrs.get("gen_ai.usage.input_cost"))
         output_cost = _number(attrs.get("gen_ai.usage.output_cost"))
@@ -746,10 +767,10 @@ class _Builder:
             totals.add_cost(cost)
         metrics_extra: dict[str, Any] = {}
         for key, attribute in (
-            ("reasoning_tokens", "gen_ai.usage.reasoning_tokens"),
-            ("cache_creation_tokens", "gen_ai.usage.cache_creation_input_tokens"),
+            ("reasoning_tokens", "gen_ai.usage.reasoning.output_tokens"),
+            ("cache_creation_tokens", "gen_ai.usage.cache_write.input_tokens"),
         ):
-            if (value := _number(attrs.get(attribute))) is not None and value > 0:
+            if (value := _number(_get_attribute(attrs, attribute))) is not None and value > 0:
                 metrics_extra[key] = int(value)
         if input_cost is not None:
             metrics_extra["input_cost_usd"] = input_cost

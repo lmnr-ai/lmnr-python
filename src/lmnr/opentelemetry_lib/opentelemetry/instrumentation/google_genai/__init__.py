@@ -203,12 +203,12 @@ def _set_response_attributes(span: Span, response: types.GenerateContentResponse
         )
         set_span_attribute(
             span,
-            "gen_ai.usage.cache_read_input_tokens",
+            "gen_ai.usage.cache_read.input_tokens",
             usage_dict.get("cached_content_token_count"),
         )
         set_span_attribute(
             span,
-            "gen_ai.usage.reasoning_tokens",
+            "gen_ai.usage.reasoning.output_tokens",
             thoughts_token_count,
         )
 

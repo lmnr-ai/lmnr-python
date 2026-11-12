@@ -300,7 +300,7 @@ def _assert_tool_call_span(span: ReadableSpan, streaming: bool):
     assert attrs["llm.is_streaming"] is streaming
     assert attrs["gen_ai.request.model"] == MODEL
     assert attrs["gen_ai.request.max_tokens"] == 512
-    assert attrs["gen_ai.request.reasoning_effort"] == "low"
+    assert attrs["gen_ai.request.reasoning.level"] == "low"
     assert attrs["gen_ai.response.model"] == MODEL
     assert attrs["gen_ai.usage.input_tokens"] == 120
     assert attrs["gen_ai.usage.output_tokens"] == 40

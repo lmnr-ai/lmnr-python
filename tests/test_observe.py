@@ -1,7 +1,7 @@
 import json
 import os
 import uuid
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Callable, Generator
 from typing import Any, cast
 
 import pytest
@@ -429,6 +429,97 @@ async def test_observe_skip_input_keys_async(span_exporter: InMemorySpanExporter
     assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.input"])) == {
         "_b": 2,
         "_c": 3,
+    }
+
+
+@observe()
+def _search(query: str, *docs: str) -> None: ...
+
+
+@observe()
+def _merge(a: int, b: int, /, *rest: int, sep: str = ", ") -> None: ...
+
+
+@observe()
+def _everything(a: int, b: int = 2, *args: int, c: int, d: int = 4, **kwargs: int) -> None: ...
+
+
+@pytest.mark.parametrize(
+    ("call", "expected_input"),
+    [
+        pytest.param(
+            lambda: _search("q", "d1", "d2", "d3"),
+            {"query": "q", "docs": ["d1", "d2", "d3"]},
+            id="var-positional",
+        ),
+        pytest.param(
+            lambda: _search("q"),
+            {"query": "q", "docs": []},
+            id="empty-var-positional",
+        ),
+        pytest.param(
+            lambda: _merge(1, 2, 3, 4, sep="-"),
+            {"a": 1, "b": 2, "rest": [3, 4], "sep": "-"},
+            id="keyword-only-after-var-positional",
+        ),
+        pytest.param(
+            lambda: _merge(1, 2),
+            {"a": 1, "b": 2, "rest": [], "sep": ", "},
+            id="keyword-only-default",
+        ),
+        pytest.param(
+            lambda: _everything(1, 2, 3, 4, c=5, e=6),
+            {"a": 1, "b": 2, "args": [3, 4], "c": 5, "d": 4, "e": 6},
+            id="all-kinds",
+        ),
+        pytest.param(
+            lambda: _everything(1, c=5, d=7),
+            {"a": 1, "b": 2, "args": [], "c": 5, "d": 7},
+            id="positional-default",
+        ),
+        pytest.param(
+            lambda: _everything(a=1, c=5),
+            {"a": 1, "b": 2, "args": [], "c": 5, "d": 4},
+            id="all-by-keyword",
+        ),
+    ],
+)
+def test_observe_input_binds_args_like_python(
+    span_exporter: InMemorySpanExporter,
+    call: Callable[[], None],
+    expected_input: dict[str, Any],
+):
+    call()
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.input"])) == expected_input
+
+
+def test_observe_input_var_positional_method(span_exporter: InMemorySpanExporter):
+    class Store:
+        @observe(ignore_inputs=["skip"])
+        def add(self, key: str, *values: int, skip: int = 0) -> None: ...
+
+    Store().add("k", 1, 2, 3, skip=4)
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.input"])) == {
+        "key": "k",
+        "values": [1, 2, 3],
+    }
+
+
+def test_observe_input_when_call_does_not_match_signature(span_exporter: InMemorySpanExporter):
+    @observe()
+    def observed_foo(a: int, b: int) -> None: ...
+
+    with pytest.raises(TypeError):
+        observed_foo(1, 2, 3)  # pyright: ignore[reportCallIssue]
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.input"])) == {
+        "a": 1,
+        "b": 2,
     }
 
 

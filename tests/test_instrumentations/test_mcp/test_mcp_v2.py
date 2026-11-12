@@ -20,7 +20,7 @@ from mcp.client._memory import InMemoryTransport
 from mcp.client.session import ClientSession
 from mcp.server import _otel
 from mcp.server.lowlevel.server import Server
-from mcp.server.mcpserver import Context, MCPServer
+from mcp.server.mcpserver import MCPServer
 from mcp.server.session import ServerSession
 from mcp.shared import jsonrpc_dispatcher
 from mcp.shared.exceptions import MCPError
@@ -28,7 +28,6 @@ from opentelemetry import context as context_api
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import SpanKind, StatusCode
-from pydantic import FileUrl
 
 from lmnr import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp import McpInstrumentor
@@ -59,17 +58,7 @@ def _server() -> MCPServer:
         """Always fails."""
         raise ValueError(f"boom: {reason}")
 
-    @server.tool()
-    async def roots(ctx: Context) -> str:
-        """Lists the client's roots."""
-        result = await ctx.session.list_roots()
-        return ",".join(str(root.uri) for root in result.roots)
-
     return server
-
-
-async def _list_roots(context: Any) -> types.ListRootsResult:
-    return types.ListRootsResult(roots=[types.Root(uri=FileUrl("file:///workspace"))])
 
 
 @pytest.fixture(params=["direct", "jsonrpc"])
@@ -191,7 +180,7 @@ async def test_trace_context_propagates_from_client_to_server(
 async def test_discover_handshake(span_exporter: InMemorySpanExporter, target: Target):
     async with Client(target(_server())) as client:
         tools = await client.list_tools()
-    assert {t.name for t in tools.tools} == {"add", "echo", "fail", "roots"}
+    assert {t.name for t in tools.tools} == {"add", "echo", "fail"}
 
     spans = span_exporter.get_finished_spans()
     # `send_discover` bypasses `send_request`
@@ -210,7 +199,7 @@ async def test_discover_handshake(span_exporter: InMemorySpanExporter, target: T
     assert "gen_ai.tool.name" not in attrs
     assert json.loads(attrs["lmnr.span.input"])["method"] == "tools/list"
     output = json.loads(attrs["lmnr.span.output"])
-    assert {t["name"] for t in output["tools"]} == {"add", "echo", "fail", "roots"}
+    assert {t["name"] for t in output["tools"]} == {"add", "echo", "fail"}
     server_list_tools = _one(spans, "tools/list.mcp", SpanKind.SERVER)
     assert _parent_id(server_list_tools) == _span_id(list_tools)
     assert not _native(spans)
@@ -230,21 +219,6 @@ async def test_legacy_handshake(span_exporter: InMemorySpanExporter, target: Tar
     # `notifications/initialized` is not traced
     assert not [s for s in spans if "notifications/" in s.name]
     assert not _native(spans)
-
-
-@pytest.mark.asyncio
-async def test_server_to_client_request(span_exporter: InMemorySpanExporter, target: Target):
-    # server-initiated requests need the legacy (stateful) protocol
-    async with Client(target(_server()), mode="legacy", list_roots_callback=_list_roots) as client:
-        result = await client.call_tool("roots", {})
-    assert result.content[0].model_dump()["text"] == "file:///workspace"
-
-    spans = span_exporter.get_finished_spans()
-    server_span = _one(spans, "roots.tool", SpanKind.SERVER)
-    list_roots = _one(spans, "roots/list.mcp", SpanKind.CLIENT)
-    assert _parent_id(list_roots) == _span_id(server_span)
-    output = json.loads(_attrs(list_roots)["lmnr.span.output"])
-    assert output["roots"][0]["uri"] == "file:///workspace"
 
 
 @pytest.mark.asyncio

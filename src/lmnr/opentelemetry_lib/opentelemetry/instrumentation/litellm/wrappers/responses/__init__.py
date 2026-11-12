@@ -12,7 +12,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.litellm.utils import (
     infer_provider,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.reasoning import (
-    GEN_AI_RESPONSE_REASONING_EFFORT,
+    GEN_AI_RESPONSE_REASONING_LEVEL,
     get_reasoning_effort,
     set_reasoning_attributes,
     set_reasoning_usage,
@@ -123,13 +123,13 @@ def process_responses_response(
         if input_details := usage_dict.get("input_tokens_details"):
             details = to_dict(input_details)
             cache_read_tokens = cast(int, details.get("cached_tokens") or 0)
-            set_span_attribute(span, "gen_ai.usage.cache_read_input_tokens", cache_read_tokens)
+            set_span_attribute(span, "gen_ai.usage.cache_read.input_tokens", cache_read_tokens)
 
     final_items = []
     if reasoning := response_dict.get("reasoning"):
         reasoning_dict = to_dict(reasoning)
         set_span_attribute(
-            span, GEN_AI_RESPONSE_REASONING_EFFORT, get_reasoning_effort(response_dict)
+            span, GEN_AI_RESPONSE_REASONING_LEVEL, get_reasoning_effort(response_dict)
         )
         if reasoning_dict.get("summary") or reasoning_dict.get("effort"):
             final_items.append(reasoning_dict)  # pyright: ignore[reportUnknownMemberType]

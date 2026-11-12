@@ -39,7 +39,7 @@ instrumentor closes them:
    `gen_ai.usage.output_tokens`. Gemini bills thinking as output, so we add
    the thinking tokens to the output count on Gemini `chat` spans (as
    Laminar's google-genai instrumentation does) and record them under
-   `gen_ai.usage.reasoning_tokens`, the key the backend reads.
+   `gen_ai.usage.reasoning.output_tokens`, the key the backend reads.
 8. Workflow spans are named with `OtelAttr` members (a `str` enum), which
    OTel rejects inside sequence attributes, dropping `lmnr.span.path` for the
    workflow and everything under it. Span names are coerced to plain `str`.
@@ -107,7 +107,7 @@ _PROVIDER_NAME = "gen_ai.provider.name"
 _SYSTEM = "gen_ai.system"
 _TOOL_DEFINITIONS = "gen_ai.tool.definitions"
 _OUTPUT_TOKENS = "gen_ai.usage.output_tokens"
-_REASONING_TOKENS = "gen_ai.usage.reasoning_tokens"
+_REASONING_TOKENS = "gen_ai.usage.reasoning.output_tokens"
 # `gen_ai.provider.name` prefix of the framework's Gemini clients ("gcp.gemini").
 _GEMINI_PROVIDER_PREFIX = "gcp."
 _SCOPE_NAME = "lmnr.span.instrumentation_scope.name"
@@ -295,8 +295,6 @@ def _add_gemini_reasoning_tokens(
     if (
         not isinstance(attributes, dict)
         or attributes.get(_OPERATION_NAME) != "chat"
-        # Already applied to this attribute dict.
-        or _REASONING_TOKENS in attributes
         or not str(attributes.get(_PROVIDER_NAME) or "").startswith(_GEMINI_PROVIDER_PREFIX)
         or kwargs.get("capture_usage") is False
     ):
@@ -311,6 +309,9 @@ def _add_gemini_reasoning_tokens(
         or isinstance(reasoning, bool)
         or reasoning <= 0
         or not isinstance(output, int)
+        # Already applied to this attribute dict. The reasoning key can't mark
+        # that: the framework sets it itself under the experimental semconv.
+        or output != usage.get("output_token_count")
     ):
         return
     attributes[_OUTPUT_TOKENS] = output + reasoning

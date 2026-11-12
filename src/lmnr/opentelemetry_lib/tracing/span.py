@@ -258,7 +258,9 @@ class LaminarSpanInterfaceMixin:
             )
             return {}
         try:
-            values: MetadataType = {}
+            # Attribute values are wider than `MetadataType` (OTel 1.45 allows
+            # bytes and mappings); they are passed through as stored.
+            values: dict[str, Any] = {}
             for key, value in (self.span.attributes or {}).items():
                 if key.startswith(f"{ASSOCIATION_PROPERTIES}."):
                     if key.startswith(f"{ASSOCIATION_PROPERTIES}.metadata."):

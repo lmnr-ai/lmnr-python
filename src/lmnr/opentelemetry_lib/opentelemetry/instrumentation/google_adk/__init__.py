@@ -91,6 +91,21 @@ _GENAI_DETECTOR = "_instrumented_with_opentelemetry_instrumentation_google_genai
 T = TypeVar("T")
 
 
+def _is_schema_v2() -> bool:
+    """Whether ADK emits its semconv-aligned telemetry schema (default from 2.13;
+    ``ADK_TELEMETRY_SCHEMA_VERSION_OPT_IN=1`` pins the legacy one). Releases without
+    the schema module only have the legacy schema."""
+    try:
+        from google.adk.telemetry._schema_version import (
+            SCHEMA_VERSION_SEMCONV_ALIGNED,
+            resolve_schema_version,
+        )
+
+        return resolve_schema_version() >= SCHEMA_VERSION_SEMCONV_ALIGNED
+    except Exception:
+        return False
+
+
 def _resolve_span(
     args: Sequence[Any],
     kwargs: dict[str, Any],
@@ -164,6 +179,10 @@ def _wrap_trace_tool_call(
         if span is None:
             return result
         span.set_attribute(SPAN_TYPE, "TOOL")
+        if _is_schema_v2():
+            # v2 stamps gen_ai.tool.call.arguments / .result, which the backend
+            # reads on TOOL spans, so there is nothing to copy.
+            return result
         _copy_content_attribute(
             span,
             _TOOL_ARGS_ATTRIBUTE,
@@ -194,7 +213,8 @@ def _wrap_trace_merged_tool_calls(
         if span is None or not span.is_recording():  # pyright: ignore[reportUnnecessaryComparison]
             return result
         span.set_attribute(SPAN_TYPE, "TOOL")
-        _copy_content_attribute(span, _TOOL_RESPONSE_ATTRIBUTE, SPAN_OUTPUT)
+        if not _is_schema_v2():
+            _copy_content_attribute(span, _TOOL_RESPONSE_ATTRIBUTE, SPAN_OUTPUT)
     except Exception:
         logger.debug("Failed to enrich ADK merged tool span", exc_info=True)
     return result
@@ -329,6 +349,11 @@ def _wrap_trace_call_llm(
     kwargs: dict[str, Any],
 ) -> T:
     result = wrapped(*args, **kwargs)
+    if _is_schema_v2():
+        # v2 has no call_llm span: `span` is the caller's (e.g. invoke_agent),
+        # which must not be typed LLM or detached/ended. The inference span is
+        # typed in _wrap_set_common_generate_content_attributes.
+        return result
     # trace_call_llm(invocation_context, event_id, llm_request, llm_response,
     # span=None) — span is the 5th positional parameter.
     span = _resolve_span(args, kwargs, position=4)
@@ -419,6 +444,42 @@ def _wrap_genai_detection(
     return True
 
 
+def _wrap_should_emit_native_telemetry(
+    wrapped: Callable[..., bool], _instance: Any, args: Sequence[Any], kwargs: dict[str, Any]
+) -> bool:
+    """ADK 2.13+ decides per call whether to record its own `generate_content`
+    span, by introspecting the google-genai wrappers (which does not recognise
+    ours). Under the legacy schema `call_llm` is the LLM span, so the native one
+    is always redundant. Under v2 the native span is the LLM span, unless
+    Laminar's own google_genai instrumentor is on and already records the call."""
+    if not _is_schema_v2():
+        return False
+    try:
+        from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai import (
+            GoogleGenAiSdkInstrumentor,
+        )
+
+        if GoogleGenAiSdkInstrumentor().is_instrumented_by_opentelemetry:
+            return False
+    except Exception:
+        logger.debug("Failed to check google_genai instrumentation", exc_info=True)
+    return wrapped(*args, **kwargs)
+
+
+def _wrap_set_common_generate_content_attributes(
+    wrapped: Callable[..., T], _instance: Any, args: Sequence[Any], kwargs: dict[str, Any]
+) -> T:
+    """Types ADK's native `generate_content` span (the LLM span under v2)."""
+    result = wrapped(*args, **kwargs)
+    try:
+        span = cast(trace.Span | None, kwargs.get("span", args[0] if args else None))
+        if span is not None and span.is_recording():
+            span.set_attribute(SPAN_TYPE, "LLM")
+    except Exception:
+        logger.debug("Failed to type ADK generate_content span", exc_info=True)
+    return result
+
+
 _wrapped_functions: list[tuple[str, str, Callable[..., Any]]] = []
 
 
@@ -430,7 +491,7 @@ class GoogleAdkInstrumentor(BaseInstrumentor):
     @override
     def instrumentation_dependencies(self) -> Collection[str]:
         # All wrapped hooks exist with compatible signatures since 2.0.0;
-        # validated against 2.7.1 and 2.11.0. The upper bound guards
+        # validated against 2.7.1, 2.11.0 and 2.13.0. The upper bound guards
         # against a 3.x rework of the telemetry module.
         return ("google-adk >= 2.0.0, < 3.0.0",)
 
@@ -481,6 +542,16 @@ class GoogleAdkInstrumentor(BaseInstrumentor):
                 _wrap_trace_agent_invocation,
             ),
             (_TRACING_MODULE, _GENAI_DETECTOR, _wrap_genai_detection),
+            (
+                _TRACING_MODULE,
+                "_should_emit_native_telemetry",
+                _wrap_should_emit_native_telemetry,
+            ),
+            (
+                _TRACING_MODULE,
+                "_set_common_generate_content_attributes",
+                _wrap_set_common_generate_content_attributes,
+            ),
             (
                 _TRACING_MODULE,
                 "_use_extra_generate_content_attributes",

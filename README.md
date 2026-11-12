@@ -19,12 +19,6 @@ First, install the package, specifying the extras you want to use.
 uv add lmnr
 ```
 
-To install all possible instrumentations, use the following command:
-
-```sh
-uv add lmnr --all-extras
-```
-
 Initialize Laminar in your code:
 
 ```python

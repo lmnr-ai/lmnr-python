@@ -9,6 +9,9 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_USAGE_OUTPUT_TOKENS,
 )
 
+# Instrumentation scope of every span Laminar itself creates.
+TRACER_NAME = "lmnr.tracer"
+
 SPAN_INPUT = "lmnr.span.input"
 SPAN_OUTPUT = "lmnr.span.output"
 SPAN_TYPE = "lmnr.span.type"
@@ -20,6 +23,8 @@ SPAN_INSTRUMENTATION_SOURCE = "lmnr.span.instrumentation_source"
 SPAN_SDK_VERSION = "lmnr.span.sdk_version"
 SPAN_LANGUAGE_VERSION = "lmnr.span.language_version"
 SPAN_RELEASE = "lmnr.span.release"
+SPAN_BRIDGE_NAME = "lmnr.span.bridge.name"
+SPAN_BRIDGE_VERSION = "lmnr.span.bridge.version"
 
 ASSOCIATION_PROPERTIES = "lmnr.association.properties"
 SESSION_ID = "session_id"

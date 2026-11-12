@@ -3,7 +3,7 @@ import json
 from typing import Any, cast
 from unittest.mock import patch
 
-import httpx
+import httpx2
 import pytest
 from openai import AsyncOpenAI, AuthenticationError, OpenAI
 from openai.types.chat import ChatCompletionUserMessageParam
@@ -262,8 +262,8 @@ def test_chat_context_propagation(
     span_exporter: InMemorySpanExporter,
     vllm_openai_client: OpenAI,
 ):
-    send_spy = spy_decorator(httpx.Client.send)
-    with patch.object(httpx.Client, "send", send_spy):
+    send_spy = spy_decorator(httpx2.Client.send)
+    with patch.object(httpx2.Client, "send", send_spy):
         _ = vllm_openai_client.chat.completions.create(
             model="meta-llama/Llama-3.2-1B-Instruct",
             messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
@@ -288,8 +288,8 @@ async def test_chat_async_context_propagation(
     span_exporter: InMemorySpanExporter,
     async_vllm_openai_client: AsyncOpenAI,
 ):
-    send_spy = spy_decorator(httpx.AsyncClient.send)
-    with patch.object(httpx.AsyncClient, "send", send_spy):
+    send_spy = spy_decorator(httpx2.AsyncClient.send)
+    with patch.object(httpx2.AsyncClient, "send", send_spy):
         _ = await async_vllm_openai_client.chat.completions.create(
             model="meta-llama/Llama-3.2-1B-Instruct",
             messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
@@ -437,8 +437,8 @@ def test_chat_reasoning(
     assert len(spans) >= 1
     span = spans[-1]
     attributes = span.attributes or {}
-    assert attributes["gen_ai.request.reasoning_effort"] == "low"
-    assert cast(int, attributes["gen_ai.usage.reasoning_tokens"]) > 0
+    assert attributes["gen_ai.request.reasoning.level"] == "low"
+    assert cast(int, attributes["gen_ai.usage.reasoning.output_tokens"]) > 0
 
 
 def test_chat_exception(
@@ -478,7 +478,7 @@ def test_chat_exception(
         str, event_attributes["exception.stacktrace"]
     )
     assert "openai.AuthenticationError" in cast(str, event_attributes["exception.stacktrace"])
-    assert "invalid_api_key" in cast(str, event_attributes["exception.stacktrace"])
+    assert "Incorrect API key provided" in cast(str, event_attributes["exception.stacktrace"])
 
 
 @pytest.mark.asyncio
@@ -518,7 +518,7 @@ async def test_chat_async_exception(
         str, event_attributes["exception.stacktrace"]
     )
     assert "openai.AuthenticationError" in cast(str, event_attributes["exception.stacktrace"])
-    assert "invalid_api_key" in cast(str, event_attributes["exception.stacktrace"])
+    assert "Incorrect API key provided" in cast(str, event_attributes["exception.stacktrace"])
     assert attributes.get("error.type") == "AuthenticationError"
 
 
@@ -730,8 +730,8 @@ def test_chat_streaming_tool_calls_without_index(
     instrumentor: OpenAIInstrumentor,
     span_exporter: InMemorySpanExporter,
 ):
-    transport = httpx.MockTransport(
-        lambda request: httpx.Response(
+    transport = httpx2.MockTransport(
+        lambda request: httpx2.Response(
             200,
             headers={"Content-Type": "text/event-stream"},
             content=_unindexed_tool_call_stream(),
@@ -740,7 +740,7 @@ def test_chat_streaming_tool_calls_without_index(
     client = OpenAI(
         base_url="http://gemini.test/v1",
         api_key="test_api_key",
-        http_client=httpx.Client(transport=transport),
+        http_client=httpx2.Client(transport=transport),
     )
 
     response = client.chat.completions.create(

@@ -2,7 +2,7 @@ from collections.abc import Callable
 from typing import Any
 from unittest.mock import MagicMock
 
-import httpx
+import httpx2
 from opentelemetry.sdk.trace import Span
 from opentelemetry.trace.propagation import get_current_span
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
@@ -23,10 +23,10 @@ def spy_decorator(method_to_decorate: Callable[..., T]) -> Callable[..., T]:
     return wrapper
 
 
-def single_request_to_path(mock: MagicMock, path: str) -> httpx.Request:
+def single_request_to_path(mock: MagicMock, path: str) -> httpx2.Request:
     """Return the one request the spy captured for ``path``.
 
-    These spies patch ``httpx.Client.send`` / ``httpx.AsyncClient.send`` GLOBALLY, so
+    These spies patch ``httpx2.Client.send`` / ``httpx2.AsyncClient.send`` GLOBALLY, so
     they see every HTTP call any thread makes during the ``with`` block — not just the
     OpenAI one under test. Asserting ``call_once`` (or reading ``call_args``, which is
     the LAST call) therefore fails whenever unrelated background traffic happens to
@@ -37,7 +37,7 @@ def single_request_to_path(mock: MagicMock, path: str) -> httpx.Request:
         request
         for call in mock.call_args_list
         for request in call.args[:1]
-        if isinstance(request, httpx.Request) and request.url.path == path
+        if isinstance(request, httpx2.Request) and request.url.path == path
     ]
     assert len(matching) == 1, (
         f"expected exactly 1 request to {path}, got {len(matching)}. "
@@ -46,7 +46,7 @@ def single_request_to_path(mock: MagicMock, path: str) -> httpx.Request:
     return matching[0]
 
 
-def assert_request_contains_tracecontext(request: httpx.Request, expected_span: Span):
+def assert_request_contains_tracecontext(request: httpx2.Request, expected_span: Span):
     assert TraceContextTextMapPropagator._TRACEPARENT_HEADER_NAME in request.headers
     ctx = TraceContextTextMapPropagator().extract(request.headers)
     request_span_context = get_current_span(ctx).get_span_context()
