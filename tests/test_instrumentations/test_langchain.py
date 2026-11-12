@@ -1,6 +1,7 @@
 import json
 import os
-from collections.abc import Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
+from types import SimpleNamespace
 from typing import Annotated, Any, TypedDict, cast
 
 import httpx
@@ -29,6 +30,9 @@ from pydantic import SecretStr
 
 from lmnr import InstrumentOptions, Laminar, observe
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langchain import callback_handler
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langgraph import (
+    async_wrap_pregel_stream,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.context_keys import (
     LANGGRAPH_TOPOLOGY,
 )
@@ -810,6 +814,38 @@ def test_graph_option_is_read_per_run(
     instrument_options({})
     _ = graph.invoke({"messages": [HumanMessage(content="hi")]})  # pyright: ignore[reportUnknownMemberType]
     assert NODES_KEY in _attrs(_span(span_exporter.get_finished_spans(), "LangGraph.workflow"))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("record_graph", [True, False])
+async def test_async_stream_close_closes_the_graph(
+    record_graph: bool, instrument_options: Callable[[InstrumentOptions], None]
+):
+    # Closing the wrapper must close the graph's iterator right away, with or
+    # without the topology, not leave it to the async generator finalizer
+    instrument_options({"langgraph": {"record_graph": record_graph}})
+    closed: list[bool] = []
+
+    async def graph_stream() -> AsyncIterator[int]:
+        try:
+            yield 1
+            yield 2
+        finally:
+            closed.append(True)
+
+    instance = SimpleNamespace(
+        aget_graph=lambda: _as_awaitable(SimpleNamespace(nodes={}, edges=[]))
+    )
+    stream = async_wrap_pregel_stream(
+        cast(Any, None), lambda *a, **kw: graph_stream(), instance, (), {}
+    )
+    assert await anext(stream) == 1
+    await stream.aclose()
+    assert closed == [True]
+
+
+async def _as_awaitable(value: Any) -> Any:
+    return value
 
 
 def test_thread_id_is_conversation_id(span_exporter: InMemorySpanExporter):
