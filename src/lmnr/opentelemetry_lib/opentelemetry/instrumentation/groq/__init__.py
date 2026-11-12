@@ -41,6 +41,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
     stamp_instrumentation_scope,
 )
+from lmnr.opentelemetry_lib.tracing.context import get_event_attributes_from_context
 from lmnr.sdk.log import get_default_logger
 
 logger = get_default_logger(__name__)
@@ -102,6 +103,15 @@ async def _create_async_stream_processor(
     span.end()
 
 
+def _record_error(span: Span, error: BaseException):
+    """End the span as failed; the caller re-raises."""
+    if span.is_recording():
+        span.set_attribute("error.type", type(error).__name__)
+        span.record_exception(error, attributes=get_event_attributes_from_context())
+        span.set_status(Status(StatusCode.ERROR, str(error)))
+    span.end()
+
+
 @dont_throw
 def _handle_input(span: Span, kwargs: dict[str, Any]):
     set_model_input_attributes(span, kwargs)
@@ -134,7 +144,11 @@ def _wrap(
     stamp_instrumentation_scope(span, to_wrap)
     _handle_input(span, kwargs)
 
-    response = wrapped(*args, **kwargs)
+    try:
+        response = wrapped(*args, **kwargs)
+    except Exception as e:
+        _record_error(span, e)
+        raise
 
     if is_streaming_response(response):
         try:
@@ -178,7 +192,11 @@ async def _awrap(
     stamp_instrumentation_scope(span, to_wrap)
     _handle_input(span, kwargs)
 
-    response = await wrapped(*args, **kwargs)
+    try:
+        response = await wrapped(*args, **kwargs)
+    except Exception as e:
+        _record_error(span, e)
+        raise
 
     if is_streaming_response(response):
         try:

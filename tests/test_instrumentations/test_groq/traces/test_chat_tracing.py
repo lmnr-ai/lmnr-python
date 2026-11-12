@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import httpx
 import pytest
-from groq import AsyncGroq, Groq
+from groq import AsyncGroq, Groq, RateLimitError
 from groq.types.chat import (
     ChatCompletionContentPartImageParam,
     ChatCompletionMessageParam,
@@ -17,6 +17,7 @@ from groq.types.chat import (
 )
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.trace import StatusCode
 
 with open(
     Path(__file__).parent.parent.joinpath("data/logo.jpg"),
@@ -388,3 +389,41 @@ def test_chat_content_not_traced(
     assert "gen_ai.output.messages" not in attrs
     assert "gen_ai.tool.definitions" not in attrs
     assert attrs["gen_ai.usage.input_tokens"] == 120
+
+
+def _error_handler(_request: httpx.Request) -> httpx.Response:
+    return httpx.Response(429, json={"error": {"message": "rate limited"}})
+
+
+def test_chat_api_error_ends_span_with_error(
+    instrument_legacy: MagicMock, span_exporter: InMemorySpanExporter
+):
+    client = Groq(
+        api_key="test",
+        max_retries=0,
+        http_client=httpx.Client(transport=httpx.MockTransport(_error_handler)),
+    )
+    with pytest.raises(RateLimitError):
+        client.chat.completions.create(model=MODEL, messages=TOOL_MESSAGES)
+
+    span = _only_span(span_exporter)
+    assert span.status.status_code == StatusCode.ERROR
+    assert _attrs(span)["error.type"] == "RateLimitError"
+    assert [event.name for event in span.events] == ["exception"]
+
+
+@pytest.mark.asyncio
+async def test_async_chat_api_error_ends_span_with_error(
+    instrument_legacy: MagicMock, span_exporter: InMemorySpanExporter
+):
+    client = AsyncGroq(
+        api_key="test",
+        max_retries=0,
+        http_client=httpx.AsyncClient(transport=httpx.MockTransport(_error_handler)),
+    )
+    with pytest.raises(RateLimitError):
+        await client.chat.completions.create(model=MODEL, messages=TOOL_MESSAGES)
+
+    span = _only_span(span_exporter)
+    assert span.status.status_code == StatusCode.ERROR
+    assert _attrs(span)["error.type"] == "RateLimitError"
