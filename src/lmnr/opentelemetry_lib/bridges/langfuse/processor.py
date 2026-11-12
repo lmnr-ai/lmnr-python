@@ -600,7 +600,13 @@ class LangfuseBridgeSpanProcessor(SpanProcessor):
 
     @override
     def force_flush(self, timeout_millis: int = 30000) -> bool:
-        return True
+        # Copies are handed to Laminar's processor in `on_end`, where they wait
+        # in its batch. Without this, `langfuse.flush()` would leave them there.
+        try:
+            return self.lmnr_span_processor.force_flush(timeout_millis)
+        except Exception:
+            logger.debug("Langfuse bridge failed to flush", exc_info=True)
+            return False
 
 
 def langfuse_would_export(provider: object, span: ReadableSpan) -> bool:
