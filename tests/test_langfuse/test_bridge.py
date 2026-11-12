@@ -14,7 +14,9 @@ import pytest
 from langfuse import Langfuse, observe, propagate_attributes
 from langfuse._client.resource_manager import LangfuseResourceManager
 from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
+from lmnr.opentelemetry_lib.bridges import BridgeContext
 from lmnr.opentelemetry_lib.bridges.langfuse import LangfuseBridge
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
@@ -24,6 +26,7 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
     SPAN_PATH,
     SPAN_TYPE,
 )
+from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 from lmnr.opentelemetry_lib.utils.package_check import get_package_version
 
 from .conftest import Laminar, RecordingExporter, _replace_langfuse_exporter
@@ -216,3 +219,20 @@ def test_only_spans_langfuse_exports_are_forwarded(
 
     exported_by_langfuse = any(s["name"] == "http-call" for s in langfuse_export.spans)
     assert ("http-call" in laminar.spans()) == exported_by_langfuse
+
+
+def test_langfuse_flush_flushes_laminars_batch(
+    bridge: LangfuseBridge, langfuse_client: Any, monkeypatch: pytest.MonkeyPatch
+):
+    # A batching processor with a long delay: copies stay queued until flushed.
+    monkeypatch.setenv("OTEL_BSP_SCHEDULE_DELAY", "600000")
+    exporter = InMemorySpanExporter()
+    processor = LaminarSpanProcessor(api_key="test", exporter=exporter)
+    try:
+        provider = TracerProvider()
+        provider.add_span_processor(processor)
+        assert bridge.install(BridgeContext(span_processor=processor, tracer_provider=provider))
+        _run_scenario(langfuse_client)  # ends with `client.flush()`
+        assert {s.name for s in exporter.get_finished_spans()} >= {"generate", "agent"}
+    finally:
+        processor.shutdown()
