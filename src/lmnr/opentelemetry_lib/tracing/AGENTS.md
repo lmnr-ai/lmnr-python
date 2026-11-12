@@ -18,6 +18,13 @@
 - `PYDANTIC_AI` is auto-enabled and strips the raw provider instrumentors (`_PYDANTIC_AI_PROVIDER_CONFLICTS`): see `opentelemetry/instrumentation/pydantic_ai/AGENTS.md`.
 - `DEEPAGENTS` is auto-enabled, strips `LANGCHAIN`/`LANGGRAPH` (`_DEEPAGENTS_NOISE_CONFLICTS`), and wins over pydantic_ai's conflict removal: see `opentelemetry/instrumentation/deepagents/AGENTS.md`.
 
+## Per-instrumentation options (`instrument_options`, LAM-2535)
+
+- **`tracing/instrument_options.py` is a leaf** holding the resolved options. `OPTION_DEFAULTS` is the single table of options and defaults; env var names are derived from it (`LMNR_{INSTRUMENT}_{OPTION}`), and `tests/test_instrument_options.py` pins that the public `InstrumentOptions` TypedDict (`sdk/types.py`) has the same keys. Adding an option = a row in the table + a key in the TypedDict + docs (docs repo `tracing/instrumentation-options.mdx`) + the same option in the TS SDK.
+- **Instrumentations read options when they record (`get_instrument_option`), never at instrument time**: instrumentors survive `initialize()`/`shutdown()` (see above), so a captured value would ignore a re-init. Resolution (argument over env, bad values warned and ignored) happens once in `Laminar.initialize`; `shutdown` resets to unresolved, and a read before `initialize` resolves from the env alone and caches it.
+- The store keeps only explicitly set values (`explicit_instrument_option`) so a legacy source of the same option (Temporal's `LaminarTemporalInterceptorOptions`) can sit between them and the default.
+- Tests: `set_instrument_options(...)` to set, but tear down with `reset_instrument_options()` when the test also monkeypatches env: fixture teardown runs before monkeypatch undo, so resolving in teardown caches the test's env vars for the rest of the session.
+
 ## Span batching / export
 
 - **`LaminarSpanProcessor` is a `SpanProcessor` wrapper, not a batcher.** It owns the path bookkeeping + attribute stamping and delegates the actual buffering to `self.instance`: `SimpleSpanProcessor` when `disable_batch=True`, `SizeLimitedBatchSpanProcessor` when `flush_by_size=True`, and the plain upstream `BatchSpanProcessor` otherwise. `disable_batch` wins over `flush_by_size`. Both construction sites (`__init__` and `force_reinit`) go through `_new_batch_processor()` so the two must never drift — `force_reinit` silently dropping a limit *or switching transports* is the failure mode this centralization prevents.

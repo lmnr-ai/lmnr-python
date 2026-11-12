@@ -42,6 +42,7 @@ from lmnr.opentelemetry_lib.tracing.context import (
     CONTEXT_METADATA_KEY,
     get_current_context,
 )
+from lmnr.opentelemetry_lib.tracing.instrument_options import set_instrument_options
 from lmnr.sdk.types import DebugContext, LaminarSpanContext
 
 
@@ -562,3 +563,81 @@ async def test_workflow_child_and_continue_as_new_forward_headers():
     assert LAMINAR_SPAN_CONTEXT_HEADER in next_.start_child_workflow_input.headers
     assert LAMINAR_SPAN_CONTEXT_HEADER in next_.start_local_activity_input.headers
     assert LAMINAR_SPAN_CONTEXT_HEADER in next_.continue_as_new_input.headers
+
+
+# --------------------------------------------------------------------------- #
+# instrument_options (LAM-2535)
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    ("legacy", "new", "expected"),
+    [
+        (None, None, True),
+        (False, None, False),
+        (None, False, False),
+        # `instrument_options` wins when both set the option
+        (False, True, True),
+        (True, False, False),
+    ],
+)
+def test_options_resolve_new_over_legacy(
+    legacy: bool | None, new: bool | None, expected: bool, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("LMNR_TEMPORAL_RECORD_ACTIVITY_ARGS", raising=False)
+    set_instrument_options({"temporal": {"record_activity_args": new}} if new is not None else None)
+    try:
+        options = LaminarTemporalInterceptorOptions(record_activity_args=legacy)
+        assert options.resolve("record_activity_args") is expected
+    finally:
+        set_instrument_options(None)
+
+
+@pytest.mark.asyncio
+async def test_activity_args_and_output_skipped_via_instrument_options(
+    span_exporter: InMemorySpanExporter,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    span_exporter.clear()
+    set_instrument_options(
+        {"temporal": {"record_activity_args": False, "record_activity_output": False}}
+    )
+    try:
+        # The auto-injected interceptor carries no legacy options
+        root = LaminarTracingInterceptor()
+        interceptor = _LaminarActivityInboundInterceptor(
+            cast(Any, _FakeActivityNext(result="out")), root
+        )
+        monkeypatch.setattr(
+            "temporalio.activity.info",
+            lambda: SimpleNamespace(activity_type="MyActivity"),
+        )
+        input = SimpleNamespace(args=["a"], headers=build_headers({}, _span_context()))
+        assert await interceptor.execute_activity(cast(Any, input)) == "out"
+    finally:
+        set_instrument_options(None)
+
+    act = [s for s in span_exporter.get_finished_spans() if s.name == "MyActivity"]
+    assert len(act) == 1
+    attrs = dict(act[0].attributes or {})
+    assert "lmnr.span.input" not in attrs
+    assert "lmnr.span.output" not in attrs
+
+
+@pytest.mark.asyncio
+async def test_activity_span_disabled_via_instrument_options_over_legacy(
+    span_exporter: InMemorySpanExporter,
+):
+    span_exporter.clear()
+    set_instrument_options({"temporal": {"create_activity_span": False}})
+    try:
+        root = LaminarTracingInterceptor(
+            LaminarTemporalInterceptorOptions(create_activity_span=True)
+        )
+        interceptor = _LaminarActivityInboundInterceptor(
+            cast(Any, _FakeActivityNext(result="out")), root
+        )
+        input = SimpleNamespace(args=["a"], headers=build_headers({}, _span_context()))
+        assert await interceptor.execute_activity(cast(Any, input)) == "out"
+    finally:
+        set_instrument_options(None)
+
+    assert span_exporter.get_finished_spans() == ()

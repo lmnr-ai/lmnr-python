@@ -63,6 +63,10 @@ from lmnr.opentelemetry_lib.tracing.context import (
     set_association_prop_context,
     set_inherit_global_context,
 )
+from lmnr.opentelemetry_lib.tracing.instrument_options import (
+    reset_instrument_options,
+    set_instrument_options,
+)
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
@@ -80,6 +84,7 @@ from lmnr.sdk.utils import (
 from .log import get_default_logger
 from .types import (
     DebugContext,
+    InstrumentOptions,
     LaminarSpanContext,
     LaminarSpanContextDict,
     LaminarSpanType,
@@ -256,6 +261,7 @@ class Laminar:
         release: str | None = None,
         write_trajectory: bool = True,
         bridges: list[Bridge | str] | set[Bridge | str] | tuple[Bridge | str, ...] | None = None,
+        instrument_options: InstrumentOptions | None = None,
     ):
         """Initialize Laminar context across the application.
         This method must be called before using any other Laminar methods or
@@ -340,6 +346,14 @@ class Laminar:
                 the SDK's own backend receives is not changed. Laminar's own instrumentations that would record the\
                 same calls again are left out of the default `instruments` set;\
                 an explicit `instruments` set is honored as is. Defaults to None.
+            instrument_options (InstrumentOptions | None, optional): Options\
+                for individual automatic instrumentations, keyed by instrument,\
+                e.g. `{"langchain": {"record_metadata": True}, "langgraph":\
+                {"record_graph": False}}`. Each option can also be set with the\
+                `LMNR_{INSTRUMENT}_{OPTION}` environment variable (e.g.\
+                `LMNR_LANGGRAPH_RECORD_GRAPH=false`); this argument wins over\
+                it. Unknown instruments and options are ignored with a warning.\
+                Defaults to None.
 
         Environment:
             LMNR_TRAJECTORY_PATH: write the run as an lmnr-atif trajectory\
@@ -356,6 +370,7 @@ class Laminar:
             cls.__logger.info("Laminar is already initialized. Skipping initialization.")
             return
 
+        set_instrument_options(instrument_options)
         enabled_bridges = resolve_bridges(bridges)
 
         cls.__project_api_key = project_api_key or from_env("LMNR_PROJECT_API_KEY")
@@ -1903,6 +1918,7 @@ class Laminar:
             uninstall_bridges()
             set_inherit_global_context(False)
             shutdown_tracing()
+            reset_instrument_options()
             cls.__initialized = False
             # Clear the one-shot debug-runtime state so a subsequent
             # initialize() re-reads LMNR_DEBUG* instead of resurrecting the

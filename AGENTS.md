@@ -106,6 +106,7 @@ LMNR_BASE_URL         # API base URL (default: https://api.lmnr.ai)
 LMNR_RELEASE          # Release (git SHA) stamped on spans; auto-detected if unset
 LMNR_TRAJECTORY_PATH  # Write the run as an lmnr-atif (ATIF) file; local-only, no key needed. May contain {trace_id}, {pid}
 LMNR_TRAJECTORY_FORCE_EXPORT  # With LMNR_TRAJECTORY_PATH: also export spans to Laminar
+LMNR_{INSTRUMENT}_{OPTION}  # Per-instrumentation options, e.g. LMNR_LANGGRAPH_RECORD_GRAPH=false; see tracing/AGENTS.md
 ```
 
 ## Nested AGENTS.md files
@@ -116,7 +117,7 @@ LMNR_TRAJECTORY_FORCE_EXPORT  # With LMNR_TRAJECTORY_PATH: also export spans to 
 - `src/lmnr/sdk/trajectory/AGENTS.md` - lmnr-atif spec location, version bumps, schema/doc/fixture sync, harbor validation
 - `src/lmnr/opentelemetry_lib/bridges/AGENTS.md` - `bridges=` option, the `LaminarBridge` contract shared with the TS SDK
 - `src/lmnr/opentelemetry_lib/bridges/langfuse/AGENTS.md` - Langfuse bridge: copy-on-end (never mutate Langfuse's spans), private provider, export-filter mirroring, usage/metadata shapes per langfuse major, version overlays in CI
-- `src/lmnr/opentelemetry_lib/tracing/AGENTS.md` - import-cycle wiring, tracing singleton + provider reuse, default instrument set, span batching / export, release stamp, trajectory file (`LMNR_TRAJECTORY_PATH`), payload size limit
+- `src/lmnr/opentelemetry_lib/tracing/AGENTS.md` - import-cycle wiring, tracing singleton + provider reuse, default instrument set, per-instrumentation options (`instrument_options`), span batching / export, release stamp, trajectory file (`LMNR_TRAJECTORY_PATH`), payload size limit
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/AGENTS.md` - instrumentor structure, error status (exception events), GenAI message attributes
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/anthropic/AGENTS.md` - structured output, `with_raw_response`, native OTel spans (dropped unless content mode), stream manager + error spans, anthropic 2.x / `httpx2`
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/claude_agent/AGENTS.md` - settings.json precedence, proxy

@@ -20,6 +20,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     LaminarInstrumentorConfig,
     WrappedFunctionSpec,
 )
+from lmnr.opentelemetry_lib.tracing.instrument_options import get_instrument_option
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.utils import json_dumps
 
@@ -87,6 +88,8 @@ def wrap_pregel_stream(
     args: Sequence[Any],
     kwargs: dict[str, Any],
 ) -> Iterator[T]:
+    if not get_instrument_option("langgraph", "record_graph"):
+        return wrapped(*args, **kwargs)
     try:
         topology = _topology(instance.get_graph())
     except Exception:
@@ -103,10 +106,11 @@ async def async_wrap_pregel_stream(
     kwargs: dict[str, Any],
 ) -> AsyncIterator[T]:
     topology: dict[str, str] | None = None
-    try:
-        topology = _topology(await instance.aget_graph())
-    except Exception:
-        logger.debug("Failed to read the LangGraph topology", exc_info=True)
+    if get_instrument_option("langgraph", "record_graph"):
+        try:
+            topology = _topology(await instance.aget_graph())
+        except Exception:
+            logger.debug("Failed to read the LangGraph topology", exc_info=True)
     iterator = aiter(wrapped(*args, **kwargs))
     if topology is None:
         async for item in iterator:
