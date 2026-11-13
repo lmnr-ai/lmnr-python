@@ -62,13 +62,20 @@ def _create_stream_processor(
     """Create a generator that processes a stream while collecting telemetry."""
     accumulator = StreamAccumulator()
 
-    for chunk in response:
-        try:
-            accumulator.add(chunk)
-        except Exception:
-            logger.warning("Failed to process streaming chunk for groq span", exc_info=True)
-        finally:
-            yield chunk
+    try:
+        for chunk in response:
+            try:
+                accumulator.add(chunk)
+            except Exception:
+                logger.warning("Failed to process streaming chunk for groq span", exc_info=True)
+            finally:
+                yield chunk
+    except Exception as e:
+        # Iteration errors (SSE error events, a dropped connection) escape the
+        # generator. The try around the call in `_wrap` never sees them, because
+        # the body runs only when the caller iterates.
+        _record_error(span, e)
+        raise
 
     _handle_response(span, accumulator.response())
 
@@ -84,16 +91,20 @@ async def _create_async_stream_processor(
     """Create an async generator that processes a stream while collecting telemetry."""
     accumulator = StreamAccumulator()
 
-    async for chunk in response:
-        try:
-            accumulator.add(chunk)
-        except Exception:
-            logger.warning(
-                "Failed to process streaming chunk for groq span",
-                exc_info=True,
-            )
-        finally:
-            yield chunk
+    try:
+        async for chunk in response:
+            try:
+                accumulator.add(chunk)
+            except Exception:
+                logger.warning(
+                    "Failed to process streaming chunk for groq span",
+                    exc_info=True,
+                )
+            finally:
+                yield chunk
+    except Exception as e:
+        _record_error(span, e)
+        raise
 
     _handle_response(span, accumulator.response())
 
