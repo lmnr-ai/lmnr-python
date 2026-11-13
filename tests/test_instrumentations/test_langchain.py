@@ -1,6 +1,7 @@
 import json
 import os
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
+from types import SimpleNamespace
 from typing import Annotated, Any, TypedDict, cast
 
 import httpx
@@ -27,11 +28,15 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.trace import StatusCode
 from pydantic import SecretStr
 
-from lmnr import Laminar, observe
+from lmnr import InstrumentOptions, Laminar, observe
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langchain import callback_handler
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langgraph import (
+    async_wrap_pregel_stream,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.context_keys import (
     LANGGRAPH_TOPOLOGY,
 )
+from lmnr.opentelemetry_lib.tracing.instrument_options import set_instrument_options
 
 
 class AgentState(TypedDict):
@@ -81,6 +86,14 @@ def _span(spans: tuple[ReadableSpan, ...] | list[ReadableSpan], name: str) -> Re
 def _span_id(span: ReadableSpan) -> int:
     assert span.context is not None
     return span.context.span_id
+
+
+@pytest.fixture
+def instrument_options() -> Iterator[Callable[[InstrumentOptions], None]]:
+    # What `Laminar.initialize(instrument_options=...)` sets; the session
+    # fixture initializes once, so tests set the options directly
+    yield set_instrument_options
+    set_instrument_options(None)
 
 
 def _parent_id(span: ReadableSpan) -> int | None:
@@ -725,7 +738,21 @@ def test_retriever(span_exporter: InMemorySpanExporter):
     ]
 
 
-def test_metadata_is_sanitized(span_exporter: InMemorySpanExporter):
+def test_metadata_is_not_recorded_by_default(span_exporter: InMemorySpanExporter):
+    chain = RunnableLambda(lambda x: x).with_config(run_name="echo", metadata={"user": "u1"})
+    _ = chain.invoke("hi")
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert "langchain.metadata" not in _attrs(spans[0])
+
+
+def test_metadata_is_sanitized(
+    span_exporter: InMemorySpanExporter,
+    instrument_options: Callable[[InstrumentOptions], None],
+):
+    instrument_options({"langchain": {"record_metadata": True}})
+
     class Secretive:
         def __str__(self) -> str:
             return "api_key=sk-secret"
@@ -738,6 +765,87 @@ def test_metadata_is_sanitized(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert json.loads(cast(str, _attrs(spans[0])["langchain.metadata"])) == {"user": "u1", "n": 1}
     assert not any(key.startswith("lmnr.association.properties.") for key in _attrs(spans[0]))
+
+
+def test_graph_is_not_recorded_when_disabled(
+    span_exporter: InMemorySpanExporter,
+    instrument_options: Callable[[InstrumentOptions], None],
+):
+    instrument_options({"langgraph": {"record_graph": False}})
+    graph = _build_graph()
+    _ = graph.invoke({"messages": [HumanMessage(content="hi")]})  # pyright: ignore[reportUnknownMemberType]
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 3
+    for span in spans:
+        assert NODES_KEY not in _attrs(span)
+        assert EDGES_KEY not in _attrs(span)
+
+
+@pytest.mark.asyncio
+async def test_graph_is_not_recorded_when_disabled_async(
+    span_exporter: InMemorySpanExporter,
+    instrument_options: Callable[[InstrumentOptions], None],
+):
+    instrument_options({"langgraph": {"record_graph": False}})
+    graph = _build_graph()
+    _ = await graph.ainvoke({"messages": [HumanMessage(content="hi")]})  # pyright: ignore[reportUnknownMemberType]
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 3
+    _ = _span(spans, "LangGraph.workflow")
+    for span in spans:
+        assert NODES_KEY not in _attrs(span)
+        assert EDGES_KEY not in _attrs(span)
+
+
+def test_graph_option_is_read_per_run(
+    span_exporter: InMemorySpanExporter,
+    instrument_options: Callable[[InstrumentOptions], None],
+):
+    # Instrumentors outlive initialize()/shutdown(), so the option must be read
+    # on each run, not when the instrumentor was built
+    graph = _build_graph()
+    instrument_options({"langgraph": {"record_graph": False}})
+    _ = graph.invoke({"messages": [HumanMessage(content="hi")]})  # pyright: ignore[reportUnknownMemberType]
+    assert NODES_KEY not in _attrs(_span(span_exporter.get_finished_spans(), "LangGraph.workflow"))
+
+    span_exporter.clear()
+    instrument_options({})
+    _ = graph.invoke({"messages": [HumanMessage(content="hi")]})  # pyright: ignore[reportUnknownMemberType]
+    assert NODES_KEY in _attrs(_span(span_exporter.get_finished_spans(), "LangGraph.workflow"))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("record_graph", [True, False])
+async def test_async_stream_close_closes_the_graph(
+    record_graph: bool, instrument_options: Callable[[InstrumentOptions], None]
+):
+    # Closing the wrapper must close the graph's iterator right away, with or
+    # without the topology, not leave it to the async generator finalizer
+    instrument_options({"langgraph": {"record_graph": record_graph}})
+    closed: list[bool] = []
+
+    async def graph_stream() -> AsyncIterator[int]:
+        try:
+            yield 1
+            yield 2
+        finally:
+            closed.append(True)
+
+    instance = SimpleNamespace(
+        aget_graph=lambda: _as_awaitable(SimpleNamespace(nodes={}, edges=[]))
+    )
+    stream = async_wrap_pregel_stream(
+        cast(Any, None), lambda *a, **kw: graph_stream(), instance, (), {}
+    )
+    assert await anext(stream) == 1
+    await stream.aclose()
+    assert closed == [True]
+
+
+async def _as_awaitable(value: Any) -> Any:
+    return value
 
 
 def test_thread_id_is_conversation_id(span_exporter: InMemorySpanExporter):

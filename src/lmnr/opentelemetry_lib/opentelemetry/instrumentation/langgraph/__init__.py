@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable, Collection, Iterator, Sequence
+from collections.abc import (
+    AsyncGenerator,
+    AsyncIterator,
+    Callable,
+    Collection,
+    Iterator,
+    Sequence,
+)
 from importlib.metadata import version
 from typing import Any
 
@@ -20,6 +27,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     LaminarInstrumentorConfig,
     WrappedFunctionSpec,
 )
+from lmnr.opentelemetry_lib.tracing.instrument_options import get_instrument_option
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.utils import json_dumps
 
@@ -62,24 +70,6 @@ def _steps(iterator: Iterator[T], topology: dict[str, str]) -> Iterator[T]:
             close()
 
 
-async def _async_steps(iterator: AsyncIterator[T], topology: dict[str, str]) -> AsyncIterator[T]:
-    try:
-        while True:
-            token = LANGGRAPH_TOPOLOGY.set(topology)
-            try:
-                item = await anext(iterator)
-            except StopAsyncIteration:
-                return
-            finally:
-                LANGGRAPH_TOPOLOGY.reset(token)
-            yield item
-    finally:
-        # Propagate an early close (e.g. `break` in the caller) to the graph
-        aclose = getattr(iterator, "aclose", None)
-        if aclose is not None:
-            await aclose()
-
-
 def wrap_pregel_stream(
     _to_wrap: WrappedFunctionSpec,
     wrapped: Callable[..., Iterator[T]],
@@ -87,6 +77,8 @@ def wrap_pregel_stream(
     args: Sequence[Any],
     kwargs: dict[str, Any],
 ) -> Iterator[T]:
+    if not get_instrument_option("langgraph", "record_graph"):
+        return wrapped(*args, **kwargs)
     try:
         topology = _topology(instance.get_graph())
     except Exception:
@@ -101,19 +93,34 @@ async def async_wrap_pregel_stream(
     instance: Any,
     args: Sequence[Any],
     kwargs: dict[str, Any],
-) -> AsyncIterator[T]:
+) -> AsyncGenerator[T]:
     topology: dict[str, str] | None = None
-    try:
-        topology = _topology(await instance.aget_graph())
-    except Exception:
-        logger.debug("Failed to read the LangGraph topology", exc_info=True)
+    if get_instrument_option("langgraph", "record_graph"):
+        try:
+            topology = _topology(await instance.aget_graph())
+        except Exception:
+            logger.debug("Failed to read the LangGraph topology", exc_info=True)
+    # `async def` with `yield` is a generator, so unlike the sync wrapper it can't
+    # return the graph's iterator as is; it forwards it, with or without the
+    # topology. Steps are inlined rather than delegated to a nested generator so
+    # closing this one (`break` + `aclose()`, `aclosing(...)`, cancellation)
+    # closes the graph right away instead of leaving it to the GC finalizer.
     iterator = aiter(wrapped(*args, **kwargs))
-    if topology is None:
-        async for item in iterator:
+    try:
+        while True:
+            token = LANGGRAPH_TOPOLOGY.set(topology) if topology is not None else None
+            try:
+                item = await anext(iterator)
+            except StopAsyncIteration:
+                return
+            finally:
+                if token is not None:
+                    LANGGRAPH_TOPOLOGY.reset(token)
             yield item
-        return
-    async for item in _async_steps(iterator, topology):
-        yield item
+    finally:
+        aclose = getattr(iterator, "aclose", None)
+        if aclose is not None:
+            await aclose()
 
 
 class LanggraphInstrumentor(BaseLaminarInstrumentor):

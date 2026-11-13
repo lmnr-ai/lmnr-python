@@ -11,10 +11,12 @@ one injection covers the client, activity, and workflow paths from a single
 patch — no separate worker/bundle patching like TS.
 
 The options that gate activity span recording (``create_activity_span`` /
-``record_activity_args`` / ``record_activity_output``) are read from the
-process-wide :data:`_interceptor_options` so they can be set via
-``Laminar.initialize(..., instrument_modules=...)``-style configuration before
-the instrumentor runs; they default to the dataclass defaults otherwise.
+``record_activity_args`` / ``record_activity_output``) are set with
+``Laminar.initialize(instrument_options={"temporal": {...}})`` or the
+``LMNR_TEMPORAL_*`` environment variables, and read on every activity. A
+:class:`LaminarTemporalInterceptorOptions` passed to a user-built interceptor
+(or to :class:`TemporalInstrumentor`) still works; ``instrument_options`` wins
+when both set the same option.
 """
 
 from __future__ import annotations

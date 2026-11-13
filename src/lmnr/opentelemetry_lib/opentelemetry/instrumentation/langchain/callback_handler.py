@@ -60,6 +60,7 @@ from lmnr.opentelemetry_lib.tracing.context import (
     detach_context,
     get_current_context,
 )
+from lmnr.opentelemetry_lib.tracing.instrument_options import get_instrument_option
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import LaminarSpanType
 from lmnr.sdk.utils import json_dumps
@@ -316,7 +317,9 @@ class LaminarCallbackHandler(BaseCallbackHandler):
             set_instrumentation_scope_attributes(span, self._scope)
             if tags:
                 set_span_attribute(span, "langchain.tags", tags)
-            if sanitized := sanitize_metadata(metadata):
+            if get_instrument_option("langchain", "record_metadata") and (
+                sanitized := sanitize_metadata(metadata)
+            ):
                 set_span_attribute(span, "langchain.metadata", json_dumps(sanitized))
             run = _Run(span=span, context=set_span_in_context(span, parent_context))
         if parent is not None:

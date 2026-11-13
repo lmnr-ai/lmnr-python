@@ -15,6 +15,7 @@ from .sdk.decorators import observe
 from .sdk.evaluations import evaluate
 from .sdk.laminar import Laminar
 from .sdk.types import (
+    InstrumentOptions,
     LaminarSpanContext,
     MaskInputOptions,
     SessionRecordingOptions,
@@ -29,6 +30,7 @@ __all__ = [
     "Attributes",
     "Bridge",
     "EvaluationDataset",
+    "InstrumentOptions",
     "Instruments",
     "Laminar",
     "LaminarClient",

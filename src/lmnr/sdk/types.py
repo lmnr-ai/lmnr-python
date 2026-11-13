@@ -392,3 +392,41 @@ class MaskInputOptions(TypedDict):
 
 class SessionRecordingOptions(TypedDict):
     mask_input_options: MaskInputOptions | None
+
+
+class LangchainInstrumentOptions(TypedDict, total=False):
+    #: Record LangChain run metadata as the `langchain.metadata` span
+    #: attribute. Defaults to False. Env: LMNR_LANGCHAIN_RECORD_METADATA.
+    record_metadata: bool
+
+
+class LanggraphInstrumentOptions(TypedDict, total=False):
+    #: Record a graph's nodes and edges on its root span (the graph view in
+    #: Laminar). Defaults to True. Env: LMNR_LANGGRAPH_RECORD_GRAPH.
+    record_graph: bool
+
+
+class TemporalInstrumentOptions(TypedDict, total=False):
+    #: Wrap each activity execution in a span named after the activity type.
+    #: Spans created inside the activity still nest under the workflow trace
+    #: when False. Defaults to True. Env: LMNR_TEMPORAL_CREATE_ACTIVITY_SPAN.
+    create_activity_span: bool
+    #: Record activity arguments as the activity span input. Defaults to True.
+    #: Env: LMNR_TEMPORAL_RECORD_ACTIVITY_ARGS.
+    record_activity_args: bool
+    #: Record the activity return value as the activity span output. Defaults
+    #: to True. Env: LMNR_TEMPORAL_RECORD_ACTIVITY_OUTPUT.
+    record_activity_output: bool
+
+
+class InstrumentOptions(TypedDict, total=False):
+    """Per-instrumentation options for `Laminar.initialize(instrument_options=...)`.
+
+    Keys are `Instruments` values. Every option can also be set with the
+    `LMNR_{INSTRUMENT}_{OPTION}` environment variable; the argument wins over
+    the environment variable.
+    """
+
+    langchain: LangchainInstrumentOptions
+    langgraph: LanggraphInstrumentOptions
+    temporal: TemporalInstrumentOptions

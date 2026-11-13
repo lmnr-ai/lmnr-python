@@ -26,7 +26,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from types import CoroutineType
-from typing import Any
+from typing import Any, Literal
 
 import temporalio.activity
 import temporalio.client
@@ -41,6 +41,10 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.temporal.helpers impor
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.temporal.workflow_interceptor import (
     LaminarWorkflowInboundInterceptor,
 )
+from lmnr.opentelemetry_lib.tracing.instrument_options import (
+    explicit_instrument_option,
+    get_instrument_option,
+)
 from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.log import get_default_logger
@@ -54,7 +58,11 @@ T = TypeVar("T")
 class LaminarTemporalInterceptorOptions:
     """Options controlling the Laminar Temporal interceptor.
 
-    Mirrors the TypeScript ``LaminarTemporalInterceptorOptions``.
+    Mirrors the TypeScript ``LaminarTemporalInterceptorOptions``. Prefer
+    ``Laminar.initialize(instrument_options={"temporal": {...}})``: an option set
+    there (or by its ``LMNR_TEMPORAL_*`` environment variable) wins over the
+    same option set here. ``None`` means unset, i.e. that value or the default
+    (``True``) applies.
     """
 
     #: Wrap each activity execution in a Laminar span named after the activity
@@ -62,13 +70,25 @@ class LaminarTemporalInterceptorOptions:
     #: context is still activated, so your own ``observe`` calls (and any
     #: auto-instrumented spans) inside the activity nest under the workflow /
     #: client trace rather than starting a detached trace.
-    create_activity_span: bool = True
+    create_activity_span: bool | None = None
     #: Record the activity's arguments as the span input. Ignored when
     #: ``create_activity_span`` is ``False``.
-    record_activity_args: bool = True
+    record_activity_args: bool | None = None
     #: Record the activity's return value as the span output. Ignored when
     #: ``create_activity_span`` is ``False``.
-    record_activity_output: bool = True
+    record_activity_output: bool | None = None
+
+    def resolve(
+        self,
+        option: Literal["create_activity_span", "record_activity_args", "record_activity_output"],
+    ) -> bool:
+        """The value in effect: ``instrument_options`` / env, then this object, then
+        the default. Read per activity, so a re-``initialize()`` applies."""
+        explicit = explicit_instrument_option("temporal", option)
+        if explicit is not None:
+            return explicit
+        legacy = getattr(self, option)
+        return get_instrument_option("temporal", option) if legacy is None else legacy
 
 
 class LaminarTracingInterceptor(temporalio.client.Interceptor, temporalio.worker.Interceptor):
@@ -236,7 +256,7 @@ class _LaminarActivityInboundInterceptor(temporalio.worker.ActivityInboundInterc
         # context as the parent so spans created inside the activity (manual
         # `observe`, auto-instrumented LLM calls, etc.) nest under the workflow /
         # client trace — and a propagated debug block still arms the runtime.
-        if not self.root.options.create_activity_span:
+        if not self.root.options.resolve("create_activity_span"):
             with Laminar.use_span_context(restored):
                 return await super().execute_activity(input)
 
@@ -247,11 +267,13 @@ class _LaminarActivityInboundInterceptor(temporalio.worker.ActivityInboundInterc
         span = Laminar.start_span(
             name=name,
             parent_span_context=restored,
-            input=input.args if self.root.options.record_activity_args else None,
+            input=input.args if self.root.options.resolve("record_activity_args") else None,
         )
         with Laminar.use_span(span, end_on_exit=True):
             res = await super().execute_activity(input)
-            if self.root.options.record_activity_output and isinstance(span, LaminarSpan):
+            if self.root.options.resolve("record_activity_output") and isinstance(
+                span, LaminarSpan
+            ):
                 try:
                     span.set_output(res)
                 except Exception:
