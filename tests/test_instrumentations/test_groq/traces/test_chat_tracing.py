@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import httpx
 import pytest
-from groq import AsyncGroq, Groq, RateLimitError
+from groq import APIError, AsyncGroq, Groq, RateLimitError
 from groq.types.chat import (
     ChatCompletionContentPartImageParam,
     ChatCompletionMessageParam,
@@ -427,3 +427,45 @@ async def test_async_chat_api_error_ends_span_with_error(
     span = _only_span(span_exporter)
     assert span.status.status_code == StatusCode.ERROR
     assert _attrs(span)["error.type"] == "RateLimitError"
+
+
+def _stream_error_handler(_request: httpx.Request) -> httpx.Response:
+    chunk = _chunk({"role": "assistant", "content": "Hel"})
+    error = {"error": {"message": "stream failed", "type": "server_error"}}
+    payload = f"data: {json.dumps(chunk)}\n\ndata: {json.dumps(error)}\n\n"
+    return httpx.Response(
+        200, content=payload.encode(), headers={"content-type": "text/event-stream"}
+    )
+
+
+def test_chat_stream_error_ends_span(
+    instrument_legacy: MagicMock, span_exporter: InMemorySpanExporter
+):
+    stream = _client(_stream_error_handler).chat.completions.create(
+        model=MODEL, messages=TOOL_MESSAGES, stream=True
+    )
+    with pytest.raises(APIError):
+        for _ in stream:
+            pass
+
+    span = _only_span(span_exporter)
+    assert span.status.status_code == StatusCode.ERROR
+    assert _attrs(span)["error.type"] == "APIError"
+    assert [event.name for event in span.events] == ["exception"]
+
+
+@pytest.mark.asyncio
+async def test_async_chat_stream_error_ends_span(
+    instrument_legacy: MagicMock, span_exporter: InMemorySpanExporter
+):
+    stream = await _async_client(_stream_error_handler).chat.completions.create(
+        model=MODEL, messages=TOOL_MESSAGES, stream=True
+    )
+    with pytest.raises(APIError):
+        async for _ in stream:
+            pass
+
+    span = _only_span(span_exporter)
+    assert span.status.status_code == StatusCode.ERROR
+    assert _attrs(span)["error.type"] == "APIError"
+    assert [event.name for event in span.events] == ["exception"]
