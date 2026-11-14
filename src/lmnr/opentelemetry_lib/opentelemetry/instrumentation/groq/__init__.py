@@ -76,13 +76,8 @@ def _create_stream_processor(
         # the body runs only when the caller iterates.
         _record_error(span, e)
         raise
-
-    _handle_response(span, accumulator.response())
-
-    if span.is_recording():
-        span.set_status(Status(StatusCode.OK))
-
-    span.end()
+    finally:
+        _finish_stream(span, accumulator)
 
 
 async def _create_async_stream_processor(
@@ -105,12 +100,17 @@ async def _create_async_stream_processor(
     except Exception as e:
         _record_error(span, e)
         raise
+    finally:
+        _finish_stream(span, accumulator)
 
+
+def _finish_stream(span: Span, accumulator: StreamAccumulator):
+    # Runs on exhaustion and when the consumer stops early (GeneratorExit), so
+    # the span always ends; a no-op if `_record_error` already ended it.
+    if not span.is_recording():
+        return
     _handle_response(span, accumulator.response())
-
-    if span.is_recording():
-        span.set_status(Status(StatusCode.OK))
-
+    span.set_status(Status(StatusCode.OK))
     span.end()
 
 
