@@ -244,6 +244,16 @@ def _set_raw_response_attribute(
             logger.debug("Failed to set lmnr.sdk.raw.response attribute", exc_info=True)
 
 
+def _record_stream_error(span: Span, e: Exception) -> None:
+    try:
+        attributes = get_event_attributes_from_context()
+        span.set_attribute(ERROR_TYPE, e.__class__.__name__)
+        span.record_exception(e, attributes=attributes)
+        span.set_status(Status(StatusCode.ERROR, str(e)))
+    except Exception:
+        logger.debug("Failed to record stream error on span", exc_info=True)
+
+
 @dont_throw
 def _build_from_streaming_response(
     span: Span,
@@ -254,32 +264,36 @@ def _build_from_streaming_response(
     role = "model"
     aggregated_usage_metadata: defaultdict[Any, int] = defaultdict(int)
     model_version = None
-    for chunk in response:
-        try:
-            span.add_event("llm.content.completion.chunk")
-        except Exception:
-            logger.debug("Failed to add completion event on span", exc_info=True)
-        # Important: do all processing in a separate sync function, that is
-        # wrapped in @dont_throw. If we did it here, the @dont_throw on top of
-        # this function would not be able to catch the errors, as they are
-        # raised later, after the generator is returned, and when it is being
-        # consumed.
-        chunk_result = process_stream_chunk(
-            chunk,
-            role,
-            model_version,
-            aggregated_usage_metadata,
-            final_parts,
-        )
-        # even though process_stream_chunk can't return None, the result can be
-        # None, if the processing throws an error (see @dont_throw)
-        if chunk_result:
-            role = chunk_result["role"]
-            model_version = chunk_result["model_version"]
-        yield chunk
-
-    fp = cast(list[Any], [p for p in final_parts if p is not None])
     try:
+        try:
+            for chunk in response:
+                try:
+                    span.add_event("llm.content.completion.chunk")
+                except Exception:
+                    logger.debug("Failed to add completion event on span", exc_info=True)
+                # Important: do all processing in a separate sync function, that is
+                # wrapped in @dont_throw. If we did it here, the @dont_throw on top of
+                # this function would not be able to catch the errors, as they are
+                # raised later, after the generator is returned, and when it is being
+                # consumed.
+                chunk_result = process_stream_chunk(
+                    chunk,
+                    role,
+                    model_version,
+                    aggregated_usage_metadata,
+                    final_parts,
+                )
+                # even though process_stream_chunk can't return None, the result can be
+                # None, if the processing throws an error (see @dont_throw)
+                if chunk_result:
+                    role = chunk_result["role"]
+                    model_version = chunk_result["model_version"]
+                yield chunk
+        except Exception as e:
+            _record_stream_error(span, e)
+            raise
+
+        fp = cast(list[Any], [p for p in final_parts if p is not None])
         compound_response = types.GenerateContentResponse(
             candidates=[
                 types.Candidate(
@@ -314,32 +328,36 @@ async def _abuild_from_streaming_response(
     role = "model"
     aggregated_usage_metadata: defaultdict[Any, int] = defaultdict(int)
     model_version = None
-    async for chunk in response:
-        try:
-            span.add_event("llm.content.completion.chunk")
-        except Exception:
-            logger.debug("Failed to add completion event on span", exc_info=True)
-        # Important: do all processing in a separate sync function, that is
-        # wrapped in @dont_throw. If we did it here, the @dont_throw on top of
-        # this function would not be able to catch the errors, as they are
-        # raised later, after the generator is returned, and when it is being
-        # consumed.
-        chunk_result = process_stream_chunk(
-            chunk,
-            role,
-            model_version,
-            aggregated_usage_metadata,
-            final_parts,
-        )
-        # even though process_stream_chunk can't return None, the result can be
-        # None, if the processing throws an error (see @dont_throw)
-        if chunk_result:
-            role = chunk_result["role"]
-            model_version = chunk_result["model_version"]
-        yield chunk
-
-    fp = cast(list[Any], [p for p in final_parts if p is not None])
     try:
+        try:
+            async for chunk in response:
+                try:
+                    span.add_event("llm.content.completion.chunk")
+                except Exception:
+                    logger.debug("Failed to add completion event on span", exc_info=True)
+                # Important: do all processing in a separate sync function, that is
+                # wrapped in @dont_throw. If we did it here, the @dont_throw on top of
+                # this function would not be able to catch the errors, as they are
+                # raised later, after the generator is returned, and when it is being
+                # consumed.
+                chunk_result = process_stream_chunk(
+                    chunk,
+                    role,
+                    model_version,
+                    aggregated_usage_metadata,
+                    final_parts,
+                )
+                # even though process_stream_chunk can't return None, the result can be
+                # None, if the processing throws an error (see @dont_throw)
+                if chunk_result:
+                    role = chunk_result["role"]
+                    model_version = chunk_result["model_version"]
+                yield chunk
+        except Exception as e:
+            _record_stream_error(span, e)
+            raise
+
+        fp = cast(list[Any], [p for p in final_parts if p is not None])
         compound_response = types.GenerateContentResponse(
             candidates=[
                 types.Candidate(

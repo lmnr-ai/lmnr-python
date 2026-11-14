@@ -1566,3 +1566,61 @@ def test_merge_text_parts_leading_non_text():
     assert len(result) == 2
     assert result[0].inline_data is not None
     assert result[1].text == "Text1 Text2"
+
+
+def _first_chunk():
+    return types.GenerateContentResponse(
+        candidates=[
+            types.Candidate(content=types.Content(role="model", parts=[types.Part(text="Hel")]))
+        ]
+    )
+
+
+def _failing_stream_chunks():
+    yield _first_chunk()
+    raise ConnectionError("stream dropped")
+
+
+async def _afailing_stream_chunks():
+    yield _first_chunk()
+    raise ConnectionError("stream dropped")
+
+
+def _assert_stream_error_span(span_exporter: InMemorySpanExporter):
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    span = spans[0]
+    assert span.status.status_code == StatusCode.ERROR
+    assert (span.attributes or {})["error.type"] == "ConnectionError"
+    assert [event.name for event in span.events].count("exception") == 1
+
+
+def test_google_genai_streaming_error_ends_span(span_exporter: InMemorySpanExporter):
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai import (
+        _build_from_streaming_response,
+    )
+    from lmnr.sdk.laminar import Laminar
+
+    span = Laminar.start_span("gemini.generate_content_stream", span_type="LLM")  # type: ignore[arg-type]
+    with pytest.raises(ConnectionError):
+        for _ in _build_from_streaming_response(span, _failing_stream_chunks()):
+            pass
+
+    _assert_stream_error_span(span_exporter)
+
+
+@pytest.mark.asyncio
+async def test_google_genai_streaming_error_ends_span_async(
+    span_exporter: InMemorySpanExporter,
+):
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai import (
+        _abuild_from_streaming_response,
+    )
+    from lmnr.sdk.laminar import Laminar
+
+    span = Laminar.start_span("gemini.generate_content_stream", span_type="LLM")  # type: ignore[arg-type]
+    with pytest.raises(ConnectionError):
+        async for _ in _abuild_from_streaming_response(span, _afailing_stream_chunks()):
+            pass
+
+    _assert_stream_error_span(span_exporter)
