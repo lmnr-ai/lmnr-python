@@ -469,3 +469,43 @@ async def test_async_chat_stream_error_ends_span(
     assert span.status.status_code == StatusCode.ERROR
     assert _attrs(span)["error.type"] == "APIError"
     assert [event.name for event in span.events] == ["exception"]
+
+
+def _two_chunk_handler(_request: httpx.Request) -> httpx.Response:
+    chunks = [
+        _chunk({"role": "assistant", "content": "Hel"}),
+        _chunk({"content": "lo"}, finish_reason="stop"),
+    ]
+    payload = "".join(f"data: {json.dumps(c)}\n\n" for c in chunks) + "data: [DONE]\n\n"
+    return httpx.Response(
+        200, content=payload.encode(), headers={"content-type": "text/event-stream"}
+    )
+
+
+def test_chat_stream_early_close_ends_span(
+    instrument_legacy: MagicMock, span_exporter: InMemorySpanExporter
+):
+    stream = _client(_two_chunk_handler).chat.completions.create(
+        model=MODEL, messages=TOOL_MESSAGES, stream=True
+    )
+    for _ in stream:
+        break
+    stream.close()  # type: ignore[attr-defined]
+
+    span = _only_span(span_exporter)
+    assert span.status.status_code == StatusCode.OK
+
+
+@pytest.mark.asyncio
+async def test_async_chat_stream_early_close_ends_span(
+    instrument_legacy: MagicMock, span_exporter: InMemorySpanExporter
+):
+    stream = await _async_client(_two_chunk_handler).chat.completions.create(
+        model=MODEL, messages=TOOL_MESSAGES, stream=True
+    )
+    async for _ in stream:
+        break
+    await stream.aclose()  # type: ignore[attr-defined]
+
+    span = _only_span(span_exporter)
+    assert span.status.status_code == StatusCode.OK
