@@ -252,10 +252,14 @@ def get_input_from_func_args(
         if is_ignored(name):
             continue
         if signature.parameters[name].kind is inspect.Parameter.VAR_KEYWORD:
-            # `**kwargs` are recorded at the top level, next to the named params
-            res.update(
-                {k: v for k, v in value.items() if not (ignore_inputs and k in ignore_inputs)}
-            )
+            kwargs = {k: v for k, v in value.items() if not (ignore_inputs and k in ignore_inputs)}
+            if res.keys().isdisjoint(kwargs):
+                # `**kwargs` are recorded at the top level, next to the named params
+                res.update(kwargs)
+            else:
+                # A key named like a positional-only param or `*args` would
+                # overwrite that param's value, so keep `**kwargs` under its name.
+                res[name] = kwargs
         else:
             res[name] = value
     return res
