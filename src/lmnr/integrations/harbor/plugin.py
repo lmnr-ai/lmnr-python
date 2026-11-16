@@ -155,7 +155,7 @@ class LaminarPlugin:
         self._uploads: list[asyncio.Task[Any]] = []
         self._seen_reward_keys: list[str] = []
         self._next_index: int = 0
-        self._evals_root: Path | None = None
+        self._task_set_root: Path | None = None
 
     # Harbor JobPlugin protocol
 
@@ -284,28 +284,29 @@ class LaminarPlugin:
         logger.info(f"Laminar evaluation: {self.evaluation_url}")
 
     def _hosted_metadata(self) -> dict[str, str] | None:
-        """Links the evaluation to the evals folder of a remote run
-        (`lmnr-cli eval run --remote`), whose orchestrator sets both variables
-        and runs Harbor from the suite dir."""
-        upload_id = os.environ.get("LMNR_EVAL_UPLOAD_ID")
-        root = os.environ.get("LMNR_EVALS_ROOT")
-        if not upload_id or not root:
+        """Links the evaluation to the task-set version and agent scripts it
+        ran. lmnr-cli sets these for every Harbor run it starts, local or
+        remote; `LMNR_EVAL_RUN_ID` only for remote runs."""
+        task_set_version_id = os.environ.get("LMNR_EVAL_TASK_SET_VERSION_ID")
+        if not task_set_version_id:
             return None
-        evals_root = Path(root).resolve()
-        suite_path = _relative_path(Path.cwd(), evals_root)
-        if suite_path is None:
-            return None
-        # Trials get task paths only when the evaluation is linked to the upload.
-        self._evals_root = evals_root
-        return {"uploadId": upload_id, "suitePath": suite_path}
+        root = os.environ.get("LMNR_EVAL_TASK_SET_ROOT")
+        # Trials get task paths only when the evaluation is linked to the task set.
+        self._task_set_root = Path(root).resolve() if root else None
+        metadata = {"taskSetVersionId": task_set_version_id}
+        if agent_version_id := os.environ.get("LMNR_EVAL_AGENT_VERSION_ID"):
+            metadata["agentVersionId"] = agent_version_id
+        if run_id := os.environ.get("LMNR_EVAL_RUN_ID"):
+            metadata["runId"] = run_id
+        return metadata
 
     def _task_path(self, event: "TrialHookEvent") -> str | None:
-        """The task dir relative to a remote run's evals root. Tasks Harbor
-        fetched from git or a registry live outside it and have none."""
-        if self._evals_root is None:
+        """The task dir relative to the task set's root. Tasks Harbor fetched
+        from git or a registry live outside it and have none."""
+        if self._task_set_root is None:
             return None
         try:
-            return _relative_path(Path(event.config.task.get_local_path()), self._evals_root)
+            return _relative_path(Path(event.config.task.get_local_path()), self._task_set_root)
         except Exception:
             return None
 

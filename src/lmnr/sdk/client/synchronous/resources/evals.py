@@ -44,7 +44,8 @@ class Evals(BaseResource):
             group_name (str | None, optional): Group name for the evaluation. Defaults to None.
             metadata (dict[str, Any] | None, optional): Metadata to associate with. Defaults to None.
             hosted_metadata (dict[str, Any] | None, optional): Links the evaluation to the
-                evals folder of a remote Harbor run (`uploadId`, `suitePath`). Set by the
+                task set and agent scripts a Harbor run used (`taskSetVersionId`,
+                `agentVersionId`, `runId`). Set by the
                 Laminar Harbor plugin. Defaults to None.
 
         Returns:

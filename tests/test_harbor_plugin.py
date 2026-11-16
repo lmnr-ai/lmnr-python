@@ -295,26 +295,27 @@ async def test_job_reports_trials_as_evaluation(
 
 
 @pytest.mark.asyncio
-async def test_remote_run_links_evaluation_and_trials_to_uploaded_folder(
+async def test_run_links_evaluation_and_trials_to_task_set(
     client: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    # A remote run's orchestrator extracts the evals folder at LMNR_EVALS_ROOT
-    # and runs Harbor from the suite dir.
-    root = tmp_path / "evals"
-    suite_dir = root / "support"
-    suite_dir.mkdir(parents=True)
-    monkeypatch.setenv("LMNR_EVALS_ROOT", str(root))
-    monkeypatch.setenv("LMNR_EVAL_UPLOAD_ID", "upload-1")
-    monkeypatch.chdir(suite_dir)
+    # lmnr-cli materializes the task set at LMNR_EVAL_TASK_SET_ROOT and names
+    # the versions the run used.
+    root = tmp_path / "support-bot" / "task_sets" / "checkout"
+    root.mkdir(parents=True)
+    monkeypatch.setenv("LMNR_EVAL_TASK_SET_ROOT", str(root))
+    monkeypatch.setenv("LMNR_EVAL_TASK_SET_VERSION_ID", "set-version-1")
+    monkeypatch.setenv("LMNR_EVAL_AGENT_VERSION_ID", "agent-version-1")
+    monkeypatch.setenv("LMNR_EVAL_RUN_ID", "run-1")
     job = FakeJob(tmp_path / "job")
-    inside = make_task_dir(suite_dir, "refund")
+    inside = make_task_dir(root, "refund")
     outside = make_task_dir(tmp_path / "registry-cache", "fetched")
     plugin = LaminarPlugin(project_api_key="test_key")
 
     await plugin.on_job_start(job)
     assert client.evals.init.call_args.kwargs["hosted_metadata"] == {
-        "uploadId": "upload-1",
-        "suitePath": "support",
+        "taskSetVersionId": "set-version-1",
+        "agentVersionId": "agent-version-1",
+        "runId": "run-1",
     }
     for task_dir, trial in [(inside, "refund__a"), (outside, "fetched__b")]:
         event = make_event(job, task_dir, trial, rewards={"reward": 1.0})
@@ -327,32 +328,34 @@ async def test_remote_run_links_evaluation_and_trials_to_uploaded_folder(
         for dp in saved_datapoints(client)
         if isinstance(dp, EvaluationResultDatapoint)
     }
-    # Tasks Harbor fetched from elsewhere aren't in the uploaded folder.
-    assert task_paths == {"refund__a": "support/tasks/refund", "fetched__b": None}
+    # Tasks Harbor fetched from elsewhere aren't in the task set.
+    assert task_paths == {
+        "refund__a": inside.relative_to(root).as_posix(),
+        "fetched__b": None,
+    }
 
 
 @pytest.mark.asyncio
-async def test_local_run_has_no_hosted_metadata(client: MagicMock, tmp_path: Path):
-    plugin = LaminarPlugin(project_api_key="test_key")
-    await plugin.on_job_start(FakeJob(tmp_path / "job"))
-    assert client.evals.init.call_args.kwargs["hosted_metadata"] is None
-
-
-@pytest.mark.asyncio
-async def test_unlinked_evaluation_records_no_task_paths(
+async def test_local_run_links_without_run_id(
     client: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    # Harbor running outside the evals root can't be linked to the upload, so
-    # its trials' task paths would point at an upload the evaluation lacks.
-    root = tmp_path / "evals"
-    root.mkdir()
-    elsewhere = tmp_path / "elsewhere"
-    elsewhere.mkdir()
-    monkeypatch.setenv("LMNR_EVALS_ROOT", str(root))
-    monkeypatch.setenv("LMNR_EVAL_UPLOAD_ID", "upload-1")
-    monkeypatch.chdir(elsewhere)
+    monkeypatch.setenv("LMNR_EVAL_TASK_SET_VERSION_ID", "set-version-1")
+    plugin = LaminarPlugin(project_api_key="test_key")
+    await plugin.on_job_start(FakeJob(tmp_path / "job"))
+    assert client.evals.init.call_args.kwargs["hosted_metadata"] == {
+        "taskSetVersionId": "set-version-1"
+    }
+
+
+@pytest.mark.asyncio
+async def test_plain_harbor_run_has_no_hosted_metadata(
+    client: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    # Only lmnr-cli sets the link; the root alone (or a stray run id) links nothing.
+    monkeypatch.setenv("LMNR_EVAL_TASK_SET_ROOT", str(tmp_path))
+    monkeypatch.setenv("LMNR_EVAL_RUN_ID", "run-1")
     job = FakeJob(tmp_path / "job")
-    task_dir = make_task_dir(root, "refund")
+    task_dir = make_task_dir(tmp_path, "refund")
     plugin = LaminarPlugin(project_api_key="test_key")
 
     await plugin.on_job_start(job)
