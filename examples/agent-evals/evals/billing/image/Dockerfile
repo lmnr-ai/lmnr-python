@@ -8,7 +8,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-install-project
 ENV PATH="/srv/app/.venv/bin:$PATH"
 
-COPY evals/support/image/run_case.py /opt/harness/
+COPY evals/billing/image/run_case.py /opt/harness/
 COPY app/ ./app/
 
 WORKDIR /case
