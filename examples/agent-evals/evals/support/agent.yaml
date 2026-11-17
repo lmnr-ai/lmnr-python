@@ -9,3 +9,6 @@ job:
       env:
         ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
   n_concurrent_trials: 4
+# After `lmnr-cli eval push support`, pin the version each task set runs at:
+# task_sets:
+#   billing: 1

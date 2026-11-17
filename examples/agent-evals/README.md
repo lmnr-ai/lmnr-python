@@ -12,7 +12,7 @@ app/
 pyproject.toml, uv.lock       # the app's dependencies, installed into the image
 evals/
   support/                    # an agent; everything but task_sets/ is its scripts
-    agent.yaml                # the image tasks use, and the Harbor job config
+    agent.yaml                # the image tasks use, the Harbor job config, task set pins
     adapter.py                # Harbor agent that runs run_case.py in the container
     image/
       Dockerfile
@@ -55,6 +55,10 @@ You need [Docker](https://docs.docker.com/get-docker/), [uv](https://docs.astral
    npx lmnr-cli@latest eval push support
    ```
 
+6. Pin the version it printed in `evals/support/agent.yaml` (`task_sets: {billing: 1}`), so runs without a local copy, such as CI, use it.
+
 Each trial shows up in Laminar as a datapoint with a `refund` score and a `reply` score, next to the trace of the agent's model and tool calls.
 
-To add a case, copy `evals/support/task_sets/billing/duplicate-charge`, then change `case.json`, `seed.json`, and `expected.json`, and `eval push support/billing` to publish it.
+To add a case, copy `evals/support/task_sets/billing/duplicate-charge`, then change `case.json`, `seed.json`, and `expected.json`, and `eval push support/billing` to publish it. Bump the pin in `agent.yaml` to the new version to run it in CI.
+
+In your own repo, task sets live in Laminar rather than in git: `lmnr-cli eval pull` writes an `evals/<agent>/.gitignore` for `task_sets/`. The agent scripts must be committed, since `eval run` only uses the repo's copy. This example ships its task set so it runs out of the box.
