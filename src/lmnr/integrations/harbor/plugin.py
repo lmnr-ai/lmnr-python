@@ -12,6 +12,7 @@ recorded step. Verifier rewards become evaluation scores.
 """
 
 import asyncio
+import json
 import os
 import re
 import uuid
@@ -283,22 +284,25 @@ class LaminarPlugin:
         self._project_id = str(evaluation.get("projectId"))
         logger.info(f"Laminar evaluation: {self.evaluation_url}")
 
-    def _hosted_metadata(self) -> dict[str, str] | None:
-        """Links the evaluation to the task-set version and agent scripts it
-        ran. lmnr-cli sets these for every Harbor run it starts, local or
-        remote; `LMNR_EVAL_RUN_ID` only for remote runs."""
-        task_set_version_id = os.environ.get("LMNR_EVAL_TASK_SET_VERSION_ID")
-        if not task_set_version_id:
+    def _hosted_metadata(self) -> dict[str, Any] | None:
+        """What lmnr-cli tells Laminar about the run (task set, the blobs of its
+        files and scripts, the remote run), sent as is: lmnr-cli sets
+        `LMNR_EVAL_HOSTED_METADATA` for every Harbor run it starts, local or
+        remote, and Laminar reads it."""
+        raw = os.environ.get("LMNR_EVAL_HOSTED_METADATA")
+        if not raw:
+            return None
+        try:
+            metadata = json.loads(raw)
+        except ValueError:
+            metadata = None
+        if not isinstance(metadata, dict):
+            logger.warning("Ignoring LMNR_EVAL_HOSTED_METADATA: not a JSON object")
             return None
         root = os.environ.get("LMNR_EVAL_TASK_SET_ROOT")
-        # Trials get task paths only when the evaluation is linked to the task set.
+        # Trials get task paths only for runs lmnr-cli started.
         self._task_set_root = Path(root).resolve() if root else None
-        metadata = {"taskSetVersionId": task_set_version_id}
-        if agent_version_id := os.environ.get("LMNR_EVAL_AGENT_VERSION_ID"):
-            metadata["agentVersionId"] = agent_version_id
-        if run_id := os.environ.get("LMNR_EVAL_RUN_ID"):
-            metadata["runId"] = run_id
-        return metadata
+        return cast("dict[str, Any]", metadata)
 
     def _task_path(self, event: "TrialHookEvent") -> str | None:
         """The task dir relative to the task set's root. Tasks Harbor fetched

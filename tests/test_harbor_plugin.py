@@ -294,29 +294,33 @@ async def test_job_reports_trials_as_evaluation(
         assert (span.attributes or {})["lmnr.association.properties.trace_type"] == ("EVALUATION")
 
 
+HOSTED_METADATA = {
+    "agent": "support-bot",
+    "taskSet": "checkout",
+    "taskSetHash": "ab" * 32,
+    "scriptsHash": "cd" * 32,
+    "gitSha": "abc123",
+    "runId": "run-1",
+}
+
+
 @pytest.mark.asyncio
-async def test_run_links_evaluation_and_trials_to_task_set(
+async def test_run_sends_hosted_metadata_and_task_paths(
     client: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    # lmnr-cli materializes the task set at LMNR_EVAL_TASK_SET_ROOT and names
-    # the versions the run used.
+    # lmnr-cli materializes the task set at LMNR_EVAL_TASK_SET_ROOT and
+    # describes the run in LMNR_EVAL_HOSTED_METADATA.
     root = tmp_path / "support-bot" / "task_sets" / "checkout"
     root.mkdir(parents=True)
     monkeypatch.setenv("LMNR_EVAL_TASK_SET_ROOT", str(root))
-    monkeypatch.setenv("LMNR_EVAL_TASK_SET_VERSION_ID", "set-version-1")
-    monkeypatch.setenv("LMNR_EVAL_AGENT_VERSION_ID", "agent-version-1")
-    monkeypatch.setenv("LMNR_EVAL_RUN_ID", "run-1")
+    monkeypatch.setenv("LMNR_EVAL_HOSTED_METADATA", json.dumps(HOSTED_METADATA))
     job = FakeJob(tmp_path / "job")
     inside = make_task_dir(root, "refund")
     outside = make_task_dir(tmp_path / "registry-cache", "fetched")
     plugin = LaminarPlugin(project_api_key="test_key")
 
     await plugin.on_job_start(job)
-    assert client.evals.init.call_args.kwargs["hosted_metadata"] == {
-        "taskSetVersionId": "set-version-1",
-        "agentVersionId": "agent-version-1",
-        "runId": "run-1",
-    }
+    assert client.evals.init.call_args.kwargs["hosted_metadata"] == HOSTED_METADATA
     for task_dir, trial in [(inside, "refund__a"), (outside, "fetched__b")]:
         event = make_event(job, task_dir, trial, rewards={"reward": 1.0})
         await job.emit("start", event)
@@ -336,24 +340,22 @@ async def test_run_links_evaluation_and_trials_to_task_set(
 
 
 @pytest.mark.asyncio
-async def test_local_run_links_without_run_id(
-    client: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("raw", ["not json", '["a list"]'])
+async def test_invalid_hosted_metadata_is_ignored(
+    client: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, raw: str
 ):
-    monkeypatch.setenv("LMNR_EVAL_TASK_SET_VERSION_ID", "set-version-1")
+    monkeypatch.setenv("LMNR_EVAL_HOSTED_METADATA", raw)
     plugin = LaminarPlugin(project_api_key="test_key")
     await plugin.on_job_start(FakeJob(tmp_path / "job"))
-    assert client.evals.init.call_args.kwargs["hosted_metadata"] == {
-        "taskSetVersionId": "set-version-1"
-    }
+    assert client.evals.init.call_args.kwargs["hosted_metadata"] is None
 
 
 @pytest.mark.asyncio
 async def test_plain_harbor_run_has_no_hosted_metadata(
     client: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    # Only lmnr-cli sets the link; the root alone (or a stray run id) links nothing.
+    # Only lmnr-cli sets the metadata; the root alone records no task paths.
     monkeypatch.setenv("LMNR_EVAL_TASK_SET_ROOT", str(tmp_path))
-    monkeypatch.setenv("LMNR_EVAL_RUN_ID", "run-1")
     job = FakeJob(tmp_path / "job")
     task_dir = make_task_dir(tmp_path, "refund")
     plugin = LaminarPlugin(project_api_key="test_key")

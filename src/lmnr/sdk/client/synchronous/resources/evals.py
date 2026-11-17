@@ -43,10 +43,10 @@ class Evals(BaseResource):
             name (str | None, optional): Name of the evaluation. Defaults to None.
             group_name (str | None, optional): Group name for the evaluation. Defaults to None.
             metadata (dict[str, Any] | None, optional): Metadata to associate with. Defaults to None.
-            hosted_metadata (dict[str, Any] | None, optional): Links the evaluation to the
-                task set and agent scripts a Harbor run used (`taskSetVersionId`,
-                `agentVersionId`, `runId`). Set by the
-                Laminar Harbor plugin. Defaults to None.
+            hosted_metadata (dict[str, Any] | None, optional): What lmnr-cli records
+                about a Harbor run (`agent`, `taskSet`, `taskSetHash`, `scriptsHash`,
+                `gitSha`, `runId`); Laminar links the task set version whose hash
+                matches. Set by the Laminar Harbor plugin. Defaults to None.
 
         Returns:
             InitEvaluationResponse: The response from the initialization request.
