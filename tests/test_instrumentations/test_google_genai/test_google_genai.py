@@ -1603,7 +1603,7 @@ def test_google_genai_streaming_error_ends_span(span_exporter: InMemorySpanExpor
 
     span = Laminar.start_span("gemini.generate_content_stream", span_type="LLM")  # type: ignore[arg-type]
     with pytest.raises(ConnectionError):
-        for _ in _build_from_streaming_response(span, _failing_stream_chunks()):
+        for _ in _build_from_streaming_response(span, _failing_stream_chunks()):  # pyright: ignore[reportOptionalIterable]
             pass
 
     _assert_stream_error_span(span_exporter)
@@ -1620,7 +1620,7 @@ async def test_google_genai_streaming_error_ends_span_async(
 
     span = Laminar.start_span("gemini.generate_content_stream", span_type="LLM")  # type: ignore[arg-type]
     with pytest.raises(ConnectionError):
-        async for _ in _abuild_from_streaming_response(span, _afailing_stream_chunks()):
+        async for _ in _abuild_from_streaming_response(span, _afailing_stream_chunks()):  # pyright: ignore[reportOptionalIterable]
             pass
 
     _assert_stream_error_span(span_exporter)
