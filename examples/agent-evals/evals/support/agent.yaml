@@ -1,0 +1,11 @@
+images:
+  refund-agent-evals:
+    dockerfile: image/Dockerfile
+    context: ../..
+job:
+  agents:
+    - import_path: adapter:SupportAgent
+      model_name: anthropic/claude-sonnet-5
+      env:
+        ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+  n_concurrent_trials: 4
