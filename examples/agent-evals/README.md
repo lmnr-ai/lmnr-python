@@ -61,4 +61,4 @@ Each trial shows up in Laminar as a datapoint with a `refund` score and a `reply
 
 To add a case, copy `evals/support/task_sets/billing/duplicate-charge`, then change `case.json`, `seed.json`, and `expected.json`, and `eval push support/billing` to publish it. Bump the pin in `agent.yaml` to the new version to run it in CI.
 
-In your own repo, task sets live in Laminar rather than in git: `lmnr-cli eval pull` writes an `evals/<agent>/.gitignore` for `task_sets/`. The agent scripts must be committed, since `eval run` only uses the repo's copy. This example ships its task set so it runs out of the box.
+In your own repo, task sets live in Laminar rather than in git: `lmnr-cli eval pull` and `eval push` write an `evals/<agent>/.gitignore` for `task_sets/`. Task set names are unique per Laminar project, so pick one no other agent uses. The agent scripts must be committed, since `eval run` only uses the repo's copy. This example ships its task set so it runs out of the box.
