@@ -505,7 +505,7 @@ async def test_async_chat_stream_early_close_ends_span(
     )
     async for _ in stream:
         break
-    await stream.aclose()  # type: ignore[attr-defined]
+    await stream.aclose()  # pyright: ignore[reportAttributeAccessIssue]
 
     span = _only_span(span_exporter)
     assert span.status.status_code == StatusCode.OK
