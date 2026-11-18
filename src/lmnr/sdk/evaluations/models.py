@@ -92,6 +92,8 @@ class PartialEvaluationDatapoint(BaseModel):
     metadata: EvaluationDatapointMetadata = Field(default=None)
     dataset_link: EvaluationDatapointDatasetLink | None = Field(default=None)
     task_id: str | None = Field(default=None)
+    # Content hash of the dataset task version the trial ran (Harbor plugin).
+    task_version_hash: str | None = Field(default=None)
 
     # uuid is not serializable by default, so we need to convert it to a string
     def to_dict(self, max_data_length: int = DEFAULT_DATAPOINT_MAX_DATA_LENGTH):
@@ -122,6 +124,7 @@ class PartialEvaluationDatapoint(BaseModel):
                     if self.dataset_link is not None
                     else None
                 ),
+                **({"taskVersionHash": self.task_version_hash} if self.task_version_hash else {}),
             }
         except Exception as e:
             raise ValueError("Error serializing PartialEvaluationDatapoint") from e
@@ -139,6 +142,8 @@ class EvaluationResultDatapoint(BaseModel):
     metadata: EvaluationDatapointMetadata = Field(default=None)
     dataset_link: EvaluationDatapointDatasetLink | None = Field(default=None)
     task_id: str | None = Field(default=None)
+    # Content hash of the dataset task version the trial ran (Harbor plugin).
+    task_version_hash: str | None = Field(default=None)
 
     # uuid is not serializable by default, so we need to convert it to a string
     def to_dict(self, max_data_length: int = DEFAULT_DATAPOINT_MAX_DATA_LENGTH):
@@ -179,6 +184,7 @@ class EvaluationResultDatapoint(BaseModel):
                     if self.dataset_link is not None
                     else None
                 ),
+                **({"taskVersionHash": self.task_version_hash} if self.task_version_hash else {}),
             }
         except Exception as e:
             raise ValueError("Error serializing EvaluationResultDatapoint") from e

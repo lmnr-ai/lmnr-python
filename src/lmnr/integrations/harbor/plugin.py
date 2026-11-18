@@ -9,9 +9,14 @@ Each Harbor job becomes one Laminar evaluation. Each Harbor task becomes a
 Laminar Task, and each of its trials a Trial, whose trace contains the trial phases (environment setup, agent setup, agent,
 verifier) and, when the agent writes an ATIF trajectory, one LLM / TOOL span per
 recorded step. Verifier rewards become evaluation scores.
+
+`lmnr-cli eval run` also passes `--pk dataset=<name> --pk task_hashes=<file>`,
+which link the evaluation to its Laminar eval dataset and each trial to the
+version (content hash) of the task it ran.
 """
 
 import asyncio
+import json
 import os
 import re
 import uuid
@@ -78,6 +83,8 @@ class _TrialState:
     # Harbor's task name: every attempt of a task (`-k`) is a Trial of one Laminar Task.
     task_id: str
     data: dict[str, Any]
+    # Content hash of the task's dataset version, from the `task_hashes` file.
+    task_version_hash: str | None
     metadata: dict[str, Any]
     root_span: Any = None
     trace_id: uuid.UUID | None = None
@@ -116,6 +123,13 @@ class LaminarPlugin:
     - `fail_fast`: raise on Laminar errors instead of logging a warning and
       letting the Harbor run continue. Defaults to false. Env:
       `HARBOR_LAMINAR_FAIL_FAST`.
+    - `dataset`: name of the Laminar eval dataset (`evals/<dataset>/`) the job
+      runs, sent as the evaluation's `datasetV2Id`. Set by `lmnr-cli eval run`.
+    - `task_hashes`: path to a JSON file mapping Harbor task names (task dir
+      names) to the content hash of the task version that runs, e.g.
+      `{"refund": "5fc5..."}`. Each trial's datapoint gets its task's hash as
+      `taskVersionHash`. A missing or malformed file is logged and ignored.
+      Set by `lmnr-cli eval run`.
     """
 
     def __init__(
@@ -129,6 +143,8 @@ class LaminarPlugin:
         group_name: str | None = None,
         trajectory_spans: bool | str | None = None,
         fail_fast: bool | str | None = None,
+        dataset: str | None = None,
+        task_hashes: str | None = None,
     ):
         self.project_api_key: str | None = project_api_key or from_env("LMNR_PROJECT_API_KEY")
         self.base_url: str | None = base_url or from_env("LMNR_BASE_URL")
@@ -146,6 +162,8 @@ class LaminarPlugin:
         self.fail_fast: bool = _parse_bool(
             fail_fast if fail_fast is not None else from_env("HARBOR_LAMINAR_FAIL_FAST")
         )
+        self.dataset: str | None = str(dataset) if dataset else None
+        self.task_hashes: dict[str, str] = _load_task_hashes(task_hashes) if task_hashes else {}
 
         self._client: AsyncLaminarClient | None = None
         self._eval_id: uuid.UUID | None = None
@@ -278,6 +296,7 @@ class LaminarPlugin:
                 "agents": agents,
             },
             hosted_metadata=hosted_metadata,
+            dataset_v2_id=self.dataset,
         )
         self._eval_id = evaluation.get("id")
         self._project_id = str(evaluation.get("projectId"))
@@ -359,6 +378,7 @@ class LaminarPlugin:
                 index=self._next_index,
                 task_id=event.task_name,
                 data=data,
+                task_version_hash=self.task_hashes.get(event.task_name),
                 metadata={
                     "trial_name": event.trial_name,
                     "agent": agent.name or agent.import_path,
@@ -410,6 +430,7 @@ class LaminarPlugin:
             target={},
             index=state.index,
             task_id=state.task_id,
+            task_version_hash=state.task_version_hash,
             trace_id=state.trace_id,
             executor_span_id=_uuid(span_context.span_id),
             metadata=state.metadata,
@@ -526,6 +547,7 @@ class LaminarPlugin:
             id=state.datapoint_id,
             index=state.index,
             task_id=state.task_id,
+            task_version_hash=state.task_version_hash,
             data=state.data,
             target={},
             executor_output=self._executor_output(event),
@@ -655,6 +677,25 @@ class LaminarPlugin:
         if self.fail_fast:
             raise error
         logger.warning(f"{message}: {error}")
+
+
+def _load_task_hashes(path: str) -> dict[str, str]:
+    """The `task_hashes` file: `{"<task name>": "<hash>"}`. Problems with it
+    are logged and leave trials without a task version, never fail the job."""
+    try:
+        loaded = json.loads(Path(path).read_text())
+    except Exception as e:
+        logger.warning(f"Could not read Laminar task hashes from {path}: {e}")
+        return {}
+    if not isinstance(loaded, dict):
+        logger.warning(f"Ignoring Laminar task hashes in {path}: expected a JSON object")
+        return {}
+    hashes = cast(dict[Any, Any], loaded)
+    return {
+        task: task_hash
+        for task, task_hash in hashes.items()
+        if isinstance(task, str) and isinstance(task_hash, str) and task_hash
+    }
 
 
 def _relative_path(path: Path, root: Path) -> str | None:
