@@ -3,6 +3,4 @@ agents:
     model_name: anthropic/claude-sonnet-5
     env:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-datasets:
-  - path: tasks
 n_concurrent_trials: 4
