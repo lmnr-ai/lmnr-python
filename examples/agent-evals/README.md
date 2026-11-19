@@ -1,6 +1,6 @@
 # Agent evaluation example
 
-A support agent that handles billing tickets, with an [agent evaluation](https://laminar.sh/docs/agent-evaluations/introduction) suite you run with `lmnr-cli eval run`. The agent looks up a customer's charges in a SQLite database and can refund one. Each case starts with its own copy of the database, and a verifier checks both the database and the reply.
+A support agent that handles billing tickets, with an [agent evaluation](https://laminar.sh/docs/agent-evaluations/introduction) dataset you run with `lmnr-cli eval run`. The agent looks up a customer's charges in a SQLite database and can refund one. Each case starts with its own copy of the database, and a verifier checks both the database and the reply.
 
 The [quickstart](https://laminar.sh/docs/agent-evaluations/quickstart#get-started-manually) walks through the files.
 
@@ -11,13 +11,13 @@ app/
   support_agent.py            # the agent: Anthropic tool loop, instrumented with Laminar
 pyproject.toml, uv.lock       # the app's dependencies, installed into the image
 evals/
-  lmnr.yaml                   # the image tasks use, and how to build it
   image/
     Dockerfile
     shared/
       run_case.py             # seeds the database, calls the agent, writes result.json
-  support/                    # a suite
+  support/                    # a dataset
     harbor.yaml
+    lmnr.yaml                 # the image tasks use, and how to build it
     agent/
       __init__.py
       agent.py                # Harbor agent that runs run_case.py in the container
@@ -46,7 +46,7 @@ You need [Docker](https://docs.docker.com/get-docker/), [uv](https://docs.astral
    ```
 
 3. Add `ANTHROPIC_API_KEY` to `.env` (see `.env.example`).
-4. Run the suite:
+4. Run the dataset:
 
    ```bash
    npx lmnr-cli@latest eval run
