@@ -43,7 +43,7 @@ mcp 2.x opens its own spans (tracer `mcp-python-sdk`, client span `MCP send {met
 - `observed.py` is the leaf both sides import: `OBSERVED_SERVER_ATTR` (set on the wrapped low-level `Server`) and `OBSERVED_REQUEST` (the `ServerSession` of the wrapped request being handled).
   - 1.x: `_wrap_handle_request` passes through when `is_observed_server(instance)`.
   - 2.x: the wrapper removes `OpenTelemetryMiddleware` from the wrapped server, so `_wrap_server_middleware` never runs for it; if one is added back, `is_observed_request(ctx)` makes it pass through.
-- With both on, a client in the same process sends its CLIENT span in `_meta.traceparent`; the wrapped server's span reuses that trace id and LINKS to the client span instead of nesting under it (the contract wants roots). Details: `lmnr/sdk/mcp_server/AGENTS.md`.
+- With both on, a client in the same process sends its CLIENT span in `_meta.traceparent`; the wrapped server's span LINKS to the client span instead of nesting under it (the contract wants roots), and takes its trace id when the request has no session or starts a new turn of its session (later calls of the turn stay in that trace). Details: `lmnr/sdk/mcp_server/AGENTS.md`.
 
 ## Context propagation
 

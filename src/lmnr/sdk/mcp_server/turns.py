@@ -3,12 +3,16 @@
 First that applies (contract shared with the TS SDK and app-server):
 1. the client's turn id (`_meta["io.modelcontextprotocol/aiInvocation"].turnId`),
    hashed with the session id, so every server copy picks the same trace;
-2. the trace id of a valid W3C `traceparent` in `_meta` (the span stays a root
-   and links to the remote span);
-3. the per-session `TurnTracker`: a call joins the session's current trace when
-   another call of the session is in flight or the last activity was at most
-   `turn_gap` ago;
+2. with a session id, the per-session `TurnTracker`: a call joins the session's
+   current trace when another call of the session is in flight or the last
+   activity was at most `turn_gap` ago; a new turn starts with the trace id of
+   the call's `traceparent` (random without one);
+3. without a session, the trace id of a valid W3C `traceparent` in `_meta`;
 4. a random trace id.
+
+A `traceparent` is always recorded as a span link (the span stays a root). It
+only starts turns, never splits them: OTel-instrumented clients send a fresh one
+per call (their own client span), which would put every call in its own trace.
 """
 
 from __future__ import annotations
@@ -65,24 +69,35 @@ class TurnTracker:
         self._lock: threading.Lock = threading.Lock()
         self._turns: dict[str, _Turn] = {}
 
-    def begin(self, session_id: str, trace_id: int | None = None) -> int:
+    def begin(
+        self,
+        session_id: str,
+        trace_id: int | None = None,
+        new_turn_trace_id: int | None = None,
+    ) -> int:
         """Start a call of `session_id` and return its trace id.
 
-        `trace_id` (from a turn id or a `traceparent`) wins over the tracker
-        and becomes the session's current trace, so later calls of the same
-        turn that don't carry one still join it.
+        `trace_id` (from a client turn id) wins over the tracker and becomes the
+        session's current trace, so later calls of the same turn that don't
+        carry one still join it. Otherwise the call joins the session's current
+        turn; when there is none (first call, or past the gap), a new turn
+        starts with `new_turn_trace_id` (the client `traceparent`'s trace id)
+        or a random trace id.
         """
         with self._lock:
             now = self._clock()
             turn = self._turns.get(session_id)
             if turn is None:
                 self._evict(now)
-                turn = _Turn(trace_id=trace_id or _ids.generate_trace_id(), last_activity=now)
+                turn = _Turn(
+                    trace_id=trace_id or new_turn_trace_id or _ids.generate_trace_id(),
+                    last_activity=now,
+                )
                 self._turns[session_id] = turn
             elif trace_id is not None:
                 turn.trace_id = trace_id
             elif turn.in_flight == 0 and now - turn.last_activity > self.turn_gap_seconds:
-                turn.trace_id = _ids.generate_trace_id()
+                turn.trace_id = new_turn_trace_id or _ids.generate_trace_id()
             turn.in_flight += 1
             turn.last_activity = now
             return turn.trace_id

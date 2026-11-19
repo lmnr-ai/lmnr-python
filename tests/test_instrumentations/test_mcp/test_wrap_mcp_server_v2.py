@@ -589,6 +589,12 @@ async def test_streamable_http_session(span_exporter: InMemorySpanExporter):
     first, second, stateless = (_attrs(s) for s in spans)
     assert first["mcp.session.id"]
     assert first["mcp.session.id"] == second["mcp.session.id"]
+    # each call carried a fresh client `traceparent`: the first one's trace
+    # starts the session's turn, the second call joins it
+    assert _trace_id(spans[0]) == _trace_id(spans[1])
+    assert _trace_id(spans[0]) == spans[0].links[0].context.trace_id
+    assert spans[0].links and spans[1].links
+    assert spans[0].links[0].context.span_id != spans[1].links[0].context.span_id
     assert first["lmnr.association.properties.session_id"] == first["mcp.session.id"]
     assert "mcp.session.id" not in stateless
     for attrs in (first, second, stateless):
@@ -618,6 +624,71 @@ async def test_turn_id(span_exporter: InMemorySpanExporter, no_client_spans: Non
     assert turn_trace_id("s-1", "turn-42") == int(
         __import__("hashlib").sha256(b"s-1\nturn-42").hexdigest()[:32], 16
     )
+
+
+def _traceparent(trace_id: int, span_id: int) -> str:
+    return f"00-{trace_id:032x}-{span_id:016x}-01"
+
+
+async def _call_with_meta(client: Client, meta: dict[str, Any], b: int) -> None:
+    request = types.CallToolRequest(
+        params=types.CallToolRequestParams(
+            name="add", arguments={"a": 1, "b": b}, _meta=_meta(meta)
+        )
+    )
+    _ = await client.session.send_request(request, types.CallToolResult)
+
+
+@pytest.mark.asyncio
+async def test_session_turn_beats_traceparent(
+    span_exporter: InMemorySpanExporter, no_client_spans: None
+):
+    # an OTel-instrumented client sends a fresh `traceparent` (new trace) per call
+    remotes = [(0x1000 + i, 0x2000 + i) for i in range(3)]
+    server = wrap_mcp_server(_server())
+    now = [0.0]
+    _config(server).turns._clock = lambda: now[0]
+    async with Client(server) as client:
+        for i, (trace_id, span_id) in enumerate(remotes[:2]):
+            meta = {"openai/session": "chat-tp", "traceparent": _traceparent(trace_id, span_id)}
+            await _call_with_meta(client, meta, i)
+            now[0] += 5
+        now[0] += 30
+        trace_id, span_id = remotes[2]
+        meta = {"openai/session": "chat-tp", "traceparent": _traceparent(trace_id, span_id)}
+        await _call_with_meta(client, meta, 2)
+
+    spans = _server_spans(span_exporter.get_finished_spans())
+    assert len(spans) == 3
+    ids = [_trace_id(s) for s in spans]
+    # a new turn starts in its first call's client trace; the second call,
+    # within the gap, joins it despite its own traceparent; past the gap a new
+    # turn starts in that call's client trace
+    assert ids == [remotes[0][0], remotes[0][0], remotes[2][0]]
+    for span, (trace_id, span_id) in zip(spans, remotes, strict=True):
+        assert span.parent is None
+        assert len(span.links) == 1
+        assert (span.links[0].context.trace_id, span.links[0].context.span_id) == (
+            trace_id,
+            span_id,
+        )
+
+
+@pytest.mark.asyncio
+async def test_turn_id_beats_session_and_traceparent(
+    span_exporter: InMemorySpanExporter, no_client_spans: None
+):
+    server = wrap_mcp_server(_server())
+    async with Client(server) as client:
+        meta = {
+            "openai/session": "s-9",
+            "traceparent": _traceparent(0xABC, 0xDEF),
+            AI_INVOCATION: {"turnId": "turn-9"},
+        }
+        await _call_with_meta(client, meta, 1)
+    span = _one_server_span(span_exporter.get_finished_spans(), "tools/call add")
+    assert _trace_id(span) == turn_trace_id("s-9", "turn-9")
+    assert span.links[0].context.span_id == 0xDEF
 
 
 @pytest.mark.asyncio

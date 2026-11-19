@@ -110,7 +110,12 @@ def test_turn_tracker_gap_and_in_flight():
     now[0] = 140.5
     second = tracker.begin("s")
     assert second != first
-    # an explicit (turn id / traceparent) trace becomes the session's turn
+    tracker.end("s")
+    # a new turn may be seeded (client traceparent); a current one is kept
+    now[0] = 200
+    assert tracker.begin("s", None, 0x55) == 0x55
+    assert tracker.begin("s", None, 0x66) == 0x55
+    # an explicit (turn id) trace becomes the session's turn
     assert tracker.begin("s", 0xABC) == 0xABC
     assert tracker.begin("s") == 0xABC
 

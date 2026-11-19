@@ -376,14 +376,16 @@ class McpCall:
         session_id = request.session_id
         remote = _remote_parent(request.meta)
         turn_id = _string(request.ai_invocation.get("turnId"))
-        trace_id: int | None = None
-        if turn_id is not None:
-            trace_id = turn_trace_id(session_id, turn_id)
-        elif remote is not None:
-            trace_id = remote.trace_id
+        # turn id > session turn tracker > client traceparent > random. A
+        # traceparent only starts a session's turn, never splits it:
+        # OTel-instrumented clients send a fresh one per call. It is always a link.
+        trace_id = turn_trace_id(session_id, turn_id) if turn_id is not None else None
+        remote_trace_id = remote.trace_id if remote is not None else None
         if session_id is not None:
-            trace_id = self.config.turns.begin(session_id, trace_id)
+            trace_id = self.config.turns.begin(session_id, trace_id, remote_trace_id)
             self._tracked_session = session_id
+        elif trace_id is None:
+            trace_id = remote_trace_id
         if trace_id is not None and not _forced_trace_id_supported():
             trace_id = None
         name = f"{request.method} {request.target}" if request.target else request.method
