@@ -92,6 +92,8 @@ class PartialEvaluationDatapoint(BaseModel):
     metadata: EvaluationDatapointMetadata = Field(default=None)
     dataset_link: EvaluationDatapointDatasetLink | None = Field(default=None)
     task_id: str | None = Field(default=None)
+    # Content hash of the Harbor task version the trial ran (lmnr-cli eval datasets).
+    task_version_hash: str | None = Field(default=None)
 
     # uuid is not serializable by default, so we need to convert it to a string
     def to_dict(self, max_data_length: int = DEFAULT_DATAPOINT_MAX_DATA_LENGTH):
@@ -114,6 +116,7 @@ class PartialEvaluationDatapoint(BaseModel):
                 ),
                 "index": self.index,
                 "taskId": self.task_id,
+                **({"taskVersionHash": self.task_version_hash} if self.task_version_hash else {}),
                 "traceId": str(self.trace_id),
                 "executorSpanId": str(self.executor_span_id),
                 "metadata": (serialize(self.metadata) if self.metadata is not None else {}),
@@ -139,6 +142,8 @@ class EvaluationResultDatapoint(BaseModel):
     metadata: EvaluationDatapointMetadata = Field(default=None)
     dataset_link: EvaluationDatapointDatasetLink | None = Field(default=None)
     task_id: str | None = Field(default=None)
+    # Content hash of the Harbor task version the trial ran (lmnr-cli eval datasets).
+    task_version_hash: str | None = Field(default=None)
 
     # uuid is not serializable by default, so we need to convert it to a string
     def to_dict(self, max_data_length: int = DEFAULT_DATAPOINT_MAX_DATA_LENGTH):
@@ -173,6 +178,7 @@ class EvaluationResultDatapoint(BaseModel):
                 "executorSpanId": str(self.executor_span_id),
                 "index": self.index,
                 "taskId": self.task_id,
+                **({"taskVersionHash": self.task_version_hash} if self.task_version_hash else {}),
                 "metadata": (serialize(self.metadata) if self.metadata is not None else {}),
                 "datasetLink": (
                     _dataset_link_to_dict(self.dataset_link)
