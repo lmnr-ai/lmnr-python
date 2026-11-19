@@ -116,6 +116,35 @@ class TestAsyncLaminarClientEvaluations:
             assert result["name"] == "Renamed Evaluation"
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("dataset_v2_id", [None, "support"])
+    async def test_init_sends_dataset_v2_id_only_when_set(
+        self, async_client: AsyncLaminarClient, dataset_v2_id: str | None
+    ):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "id": "12345678-1234-5678-9abc-123456789abc",
+            "createdAt": "2026-11-18T00:00:00Z",
+            "groupId": "default",
+            "name": "run",
+            "projectId": "11111111-1111-1111-1111-111111111111",
+        }
+
+        with patch.object(
+            async_client.evals._client,
+            "post",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_post:
+            _ = await async_client.evals.init(name="run", dataset_v2_id=dataset_v2_id)
+
+            call_json = mock_post.call_args[1]["json"]
+            if dataset_v2_id is None:
+                assert "datasetV2Id" not in call_json
+            else:
+                assert call_json["datasetV2Id"] == dataset_v2_id
+
+    @pytest.mark.asyncio
     async def test_update_evaluation_error(
         self,
         async_client: AsyncLaminarClient,
@@ -380,6 +409,31 @@ class TestLaminarClientEvaluations:
             assert call_json["metadata"] == {"revision": 2}
             assert result["id"] == eval_id
             assert result["name"] == "Renamed Evaluation"
+
+    @pytest.mark.parametrize("dataset_v2_id", [None, "support"])
+    def test_init_sends_dataset_v2_id_only_when_set(
+        self, sync_client: LaminarClient, dataset_v2_id: str | None
+    ):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "id": "12345678-1234-5678-9abc-123456789abc",
+            "createdAt": "2026-11-18T00:00:00Z",
+            "groupId": "default",
+            "name": "run",
+            "projectId": "11111111-1111-1111-1111-111111111111",
+        }
+
+        with patch.object(
+            sync_client.evals._client, "post", return_value=mock_response
+        ) as mock_post:
+            _ = sync_client.evals.init(name="run", dataset_v2_id=dataset_v2_id)
+
+            call_json = mock_post.call_args[1]["json"]
+            if dataset_v2_id is None:
+                assert "datasetV2Id" not in call_json
+            else:
+                assert call_json["datasetV2Id"] == dataset_v2_id
 
     def test_update_evaluation_error(self, sync_client: LaminarClient):
         """Test evaluation update raises on non-200 responses."""
@@ -1389,6 +1443,9 @@ class TestAsyncClientRetryLogic:
             assert mock_post.call_count == 1
 
 
+TASK_VERSION_HASH = "5fc5d83e2db1dd8cbc6c508e273fbd9604fc38d743443435755405a7ce91809d"
+
+
 class TestTaskIdWire:
     """`taskId` goes out on eval datapoints and dataset pushes, and is read
     back (optionally) on dataset pulls."""
@@ -1435,3 +1492,34 @@ class TestTaskIdWire:
             pulled = client.datasets.pull(name="ds")
         assert [dp.task_id for dp in pulled["items"]] == ["a", None]
         client.close()
+
+    @pytest.mark.parametrize("task_version_hash", [None, TASK_VERSION_HASH])
+    def test_datapoints_send_task_version_hash_only_when_set(self, task_version_hash: str | None):
+        partial = PartialEvaluationDatapoint(
+            id=uuid.uuid4(),
+            data={},
+            target={},
+            index=0,
+            trace_id=uuid.uuid4(),
+            executor_span_id=uuid.uuid4(),
+            task_id="refund",
+            task_version_hash=task_version_hash,
+        )
+        result = EvaluationResultDatapoint(
+            id=uuid.uuid4(),
+            data={},
+            target={},
+            index=0,
+            executor_output=None,
+            scores={},
+            trace_id=uuid.uuid4(),
+            executor_span_id=uuid.uuid4(),
+            task_id="refund",
+            task_version_hash=task_version_hash,
+        )
+        for serialized in (partial.to_dict(), result.to_dict()):
+            assert serialized["taskId"] == "refund"
+            if task_version_hash is None:
+                assert "taskVersionHash" not in serialized
+            else:
+                assert serialized["taskVersionHash"] == task_version_hash

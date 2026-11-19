@@ -365,6 +365,93 @@ async def test_unlinked_evaluation_records_no_task_paths(
     assert all("task_path" not in (dp.metadata or {}) for dp in saved_datapoints(client))
 
 
+REFUND_HASH = "5fc5d83e2db1dd8cbc6c508e273fbd9604fc38d743443435755405a7ce91809d"
+
+
+@pytest.mark.asyncio
+async def test_dataset_and_task_hashes_link_evaluation_and_trials_to_task_versions(
+    client: MagicMock, tmp_path: Path
+):
+    # `lmnr-cli eval run` passes `--pk dataset=<name> --pk task_hashes=<file>`.
+    hashes_file = tmp_path / "task_hashes.json"
+    _ = hashes_file.write_text(json.dumps({"refund": REFUND_HASH}))
+    job = FakeJob(tmp_path / "job")
+    pinned = make_task_dir(tmp_path, "refund")
+    unpinned = make_task_dir(tmp_path, "other")
+    plugin = LaminarPlugin(
+        project_api_key="test_key", dataset="support", task_hashes=str(hashes_file)
+    )
+
+    await plugin.on_job_start(job)
+    assert client.evals.init.call_args.kwargs["dataset_v2_id"] == "support"
+    for task_dir, trial in [(pinned, "refund__a"), (unpinned, "other__b")]:
+        event = make_event(job, task_dir, trial, rewards={"reward": 1.0})
+        await job.emit("start", event)
+        await job.emit("end", event)
+    await plugin.on_job_end(SimpleNamespace())
+
+    datapoints = saved_datapoints(client)
+    # Both the partial datapoint at trial start and the final one.
+    assert len(datapoints) == 4
+    by_task = {
+        (dp.task_id, type(dp).__name__): dp.to_dict().get("taskVersionHash") for dp in datapoints
+    }
+    assert by_task == {
+        ("refund", "PartialEvaluationDatapoint"): REFUND_HASH,
+        ("refund", "EvaluationResultDatapoint"): REFUND_HASH,
+        # A task missing from the file gets no task version.
+        ("other", "PartialEvaluationDatapoint"): None,
+        ("other", "EvaluationResultDatapoint"): None,
+    }
+    assert all("taskVersionHash" not in dp.to_dict() for dp in datapoints if dp.task_id == "other")
+
+
+@pytest.mark.asyncio
+async def test_no_dataset_sends_no_dataset_or_task_version(client: MagicMock, tmp_path: Path):
+    job = FakeJob(tmp_path / "job")
+    task_dir = make_task_dir(tmp_path, "refund")
+    plugin = LaminarPlugin(project_api_key="test_key")
+
+    await plugin.on_job_start(job)
+    assert client.evals.init.call_args.kwargs["dataset_v2_id"] is None
+    event = make_event(job, task_dir, "refund__a", rewards={"reward": 1.0})
+    await job.emit("start", event)
+    await job.emit("end", event)
+    await plugin.on_job_end(SimpleNamespace())
+
+    assert all("taskVersionHash" not in dp.to_dict() for dp in saved_datapoints(client))
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [None, "not json", json.dumps(["refund"]), json.dumps({"refund": 1, "other": ""})],
+)
+@pytest.mark.asyncio
+async def test_unusable_task_hashes_file_is_ignored(
+    client: MagicMock, tmp_path: Path, contents: str | None
+):
+    hashes_file = tmp_path / "task_hashes.json"
+    if contents is not None:
+        _ = hashes_file.write_text(contents)
+    job = FakeJob(tmp_path / "job")
+    task_dir = make_task_dir(tmp_path, "refund")
+    plugin = LaminarPlugin(
+        project_api_key="test_key", dataset="support", task_hashes=str(hashes_file)
+    )
+    assert plugin.task_hashes == {}
+
+    await plugin.on_job_start(job)
+    assert client.evals.init.call_args.kwargs["dataset_v2_id"] == "support"
+    event = make_event(job, task_dir, "refund__a", rewards={"reward": 1.0})
+    await job.emit("start", event)
+    await job.emit("end", event)
+    await plugin.on_job_end(SimpleNamespace())
+
+    datapoints = saved_datapoints(client)
+    assert len(datapoints) == 2
+    assert all("taskVersionHash" not in dp.to_dict() for dp in datapoints)
+
+
 @pytest.mark.asyncio
 async def test_trajectory_becomes_llm_and_tool_spans(
     span_exporter: InMemorySpanExporter, client: MagicMock, tmp_path: Path

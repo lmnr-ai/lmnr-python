@@ -36,6 +36,7 @@ class AsyncEvals(BaseAsyncResource):
         group_name: str | None = None,
         metadata: dict[str, Any] | None = None,
         hosted_metadata: dict[str, Any] | None = None,
+        dataset_v2_id: str | None = None,
     ) -> InitEvaluationResponse:
         """Initialize a new evaluation.
 
@@ -46,6 +47,9 @@ class AsyncEvals(BaseAsyncResource):
             hosted_metadata (dict[str, Any] | None, optional): Links the evaluation to the
                 evals folder of a remote Harbor run (`uploadId`, `suitePath`). Set by the
                 Laminar Harbor plugin. Defaults to None.
+            dataset_v2_id (str | None, optional): Name of the Laminar eval dataset
+                (`evals/<dataset>/`) the evaluation runs. Set by the Laminar Harbor
+                plugin. Defaults to None.
 
         Returns:
             InitEvaluationResponse: The response from the initialization request.
@@ -59,6 +63,7 @@ class AsyncEvals(BaseAsyncResource):
                 "groupName": group_name,
                 "metadata": metadata,
                 **({"hostedMetadata": hosted_metadata} if hosted_metadata else {}),
+                **({"datasetV2Id": dataset_v2_id} if dataset_v2_id else {}),
             },
             headers=self._headers(),
         )
