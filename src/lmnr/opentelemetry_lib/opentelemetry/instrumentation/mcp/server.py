@@ -212,17 +212,14 @@ class ServerSpan:
         self.span = span
 
     def _turn_trace_id(self, remote_trace_id: int | None) -> int | None:
-        # turn id > session turn tracker > client traceparent > random. A
-        # traceparent only starts a session's turn, never splits it:
-        # OTel-instrumented clients send a fresh one per call.
+        # turn id > session turn tracker > client traceparent (no session) >
+        # random (`turns.py`)
         assert self.mode is not None
         session_id = self.request.session_id
         turn_id = _string(self.request.ai_invocation.get("turnId"))
         trace_id = turn_trace_id(session_id, turn_id) if turn_id is not None else None
         if session_id is not None:
-            trace_id = TURNS.begin(
-                session_id, self.mode.turn_gap_seconds, trace_id, remote_trace_id
-            )
+            trace_id = TURNS.begin(session_id, self.mode.turn_gap_seconds, trace_id)
             self._tracked_session = session_id
         elif trace_id is None:
             trace_id = remote_trace_id

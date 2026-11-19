@@ -358,8 +358,9 @@ async def test_session_turn_beats_client_traceparent(span_exporter: InMemorySpan
     clients = [s for s in spans if s.kind == SpanKind.CLIENT and s.name == "add.tool"]
     assert len(servers) == 2 and len(clients) == 2
     assert _trace_id(clients[0]) != _trace_id(clients[1])
-    # the first call's client trace starts the turn; the second call joins it
-    assert _trace_id(servers[0]) == _trace_id(servers[1]) == _trace_id(clients[0])
+    # one turn, in a trace of its own (a client trace never decides a session's)
+    assert _trace_id(servers[0]) == _trace_id(servers[1])
+    assert _trace_id(servers[0]) not in {_trace_id(c) for c in clients}
     for server_span, client_span in zip(servers, clients, strict=True):
         assert server_span.parent is None
         assert client_span.context is not None

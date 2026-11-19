@@ -565,10 +565,8 @@ async def test_streamable_http_session(span_exporter: InMemorySpanExporter):
     first, second, stateless = (_attrs(s) for s in spans)
     assert first["mcp.session.id"]
     assert first["mcp.session.id"] == second["mcp.session.id"]
-    # each call carried a fresh client `traceparent`: the first one's trace
-    # starts the session's turn, the second call joins it
+    # each call carried a fresh client `traceparent`; both are in one turn
     assert _trace_id(spans[0]) == _trace_id(spans[1])
-    assert _trace_id(spans[0]) == spans[0].links[0].context.trace_id
     assert spans[0].links and spans[1].links
     assert spans[0].links[0].context.span_id != spans[1].links[0].context.span_id
     assert first["lmnr.association.properties.session_id"] == first["mcp.session.id"]
@@ -637,10 +635,11 @@ async def test_session_turn_beats_traceparent(
     spans = _server_spans(span_exporter.get_finished_spans())
     assert len(spans) == 3
     ids = [_trace_id(s) for s in spans]
-    # a new turn starts in its first call's client trace; the second call,
-    # within the gap, joins it despite its own traceparent; past the gap a new
-    # turn starts in that call's client trace
-    assert ids == [remotes[0][0], remotes[0][0], remotes[2][0]]
+    # the second call, within the gap, joins the first one's turn despite its
+    # own traceparent; past the gap a new turn starts. Turns get fresh ids: a
+    # client that keeps one trace per session would give every turn the same.
+    assert ids[0] == ids[1] != ids[2]
+    assert not set(ids) & {trace_id for trace_id, _ in remotes}
     for span, (trace_id, span_id) in zip(spans, remotes, strict=True):
         assert span.parent is None
         assert len(span.links) == 1
