@@ -47,7 +47,8 @@ _PASS_THROUGH = _PassThroughTracer()
 
 
 def is_fastmcp_server(server: object) -> bool:
-    return type(server).__module__.split(".")[0] == "fastmcp"
+    # the MRO, not just the class: a user's `class MyServer(FastMCP)` lives in their package
+    return any(cls.__module__.split(".")[0] == "fastmcp" for cls in type(server).__mro__)
 
 
 @contextmanager

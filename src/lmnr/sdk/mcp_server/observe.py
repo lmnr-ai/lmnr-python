@@ -130,7 +130,7 @@ def as_dict(value: Any) -> dict[str, Any]:
     return {}
 
 
-def wire(value: Any) -> Any:
+def _wire(value: Any) -> Any:
     """A result as it goes on the wire (1.x wraps results in a `RootModel`)."""
     value = getattr(value, "root", value)
     if hasattr(value, "model_dump") and not isinstance(value, type):
@@ -419,7 +419,7 @@ class McpCall:
         span = self.span
         if span is None:
             return
-        result = wire(result)
+        result = _wire(result)
         if type(result).__name__ == "ErrorData":
             self._record_error(str(getattr(result, "code", "")), getattr(result, "message", None))
             return

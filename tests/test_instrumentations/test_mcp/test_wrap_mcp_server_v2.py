@@ -822,8 +822,12 @@ def _fastmcp_server_spans(spans: tuple[ReadableSpan, ...]) -> list[ReadableSpan]
     ]
 
 
-def _fastmcp() -> FastMCP:
-    server = FastMCP("fm")
+class _FastMCPSubclass(FastMCP):
+    """A user's subclass, defined outside the `fastmcp` package."""
+
+
+def _fastmcp(cls: type[FastMCP] = FastMCP) -> FastMCP:
+    server = cls("fm")
 
     @server.tool
     def add(a: int, b: int) -> int:
@@ -861,6 +865,18 @@ async def test_fastmcp_tool_call(span_exporter: InMemorySpanExporter):
     inner = next(s for s in spans if s.name == "inside_tool")
     assert span.context is not None and inner.parent is not None
     assert inner.parent.span_id == span.context.span_id
+
+
+@pytest.mark.asyncio
+async def test_fastmcp_subclass_native_spans_suppressed(span_exporter: InMemorySpanExporter):
+    server = wrap_mcp_server(_fastmcp(_FastMCPSubclass))
+    async with FastMCPClient(server) as client:
+        result = await client.call_tool("add", {"a": 2, "b": 3})
+    assert result.data == 5
+
+    spans = span_exporter.get_finished_spans()
+    assert not _fastmcp_server_spans(spans)
+    assert [s.name for s in _server_spans(spans)] == ["tools/call add"]
 
 
 @pytest.mark.asyncio

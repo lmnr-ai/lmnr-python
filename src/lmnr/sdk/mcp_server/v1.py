@@ -66,7 +66,7 @@ def _negotiated_version(requested: Any) -> str | None:
     return requested if requested in supported else str(latest)
 
 
-def request_from(server: Any, method: str, req: Any) -> McpRequest:
+def _request_from(server: Any, method: str, req: Any) -> McpRequest:
     params = as_dict(getattr(req, "params", None))
     meta = as_dict(params.pop("_meta", None))
     try:
@@ -166,7 +166,7 @@ class ObservedHandlers(dict[Any, Any]):
                 request: McpRequest | None = None
                 context_text: str | None = None
                 try:
-                    request = request_from(server, method, req)
+                    request = _request_from(server, method, req)
                     arguments, context_text = await split_context(config, request)
                     if arguments is not None:
                         forwarded = _with_arguments(req, arguments)

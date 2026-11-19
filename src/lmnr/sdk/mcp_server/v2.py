@@ -50,7 +50,7 @@ def _headers(ctx: Any) -> Mapping[str, str] | None:
     return cast(Mapping[str, str], headers) if isinstance(headers, Mapping) else None
 
 
-def request_from_context(ctx: Any) -> McpRequest:
+def _request_from_context(ctx: Any) -> McpRequest:
     params = as_dict(getattr(ctx, "params", None))
     params.pop("_meta", None)
     headers = _headers(ctx)
@@ -100,7 +100,7 @@ class ObservedServerMiddleware:
         request: McpRequest | None = None
         context_text: str | None = None
         try:
-            request = request_from_context(ctx)
+            request = _request_from_context(ctx)
             arguments, context_text = await split_context(self.config, request)
             if arguments is not None and request.method == TOOLS_CALL:
                 # before params validation, so strict schemas don't reject it
