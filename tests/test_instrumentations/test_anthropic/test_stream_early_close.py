@@ -1,4 +1,5 @@
 import json
+from typing import Any, cast
 
 import httpx2
 import pytest
@@ -11,7 +12,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.anthropic import (
 )
 
 
-def _sse(*events: tuple[str, dict]) -> bytes:
+def _sse(*events: tuple[str, dict[str, Any]]) -> bytes:
     return "".join(f"event: {name}\ndata: {json.dumps(data)}\n\n" for name, data in events).encode()
 
 
@@ -114,5 +115,5 @@ async def test_async_stream_closed_early_ends_span(
         stream=True,
     )
     await stream.__anext__()
-    await stream.aclose()
+    await cast("Any", stream).aclose()  # wrapped stream is an async generator at runtime
     _assert_finished_ok(span_exporter)
