@@ -116,7 +116,7 @@ LMNR_{INSTRUMENT}_{OPTION}  # Per-instrumentation options, e.g. LMNR_LANGGRAPH_R
 - `src/lmnr/sdk/AGENTS.md` - logging, HTTP error reporting, `json_dumps` / bytes, eval trace type
 - `src/lmnr/sdk/debug/AGENTS.md` - debug mode / replay, TS parity
 - `src/lmnr/sdk/trajectory/AGENTS.md` - lmnr-atif spec location, version bumps, schema/doc/fixture sync, harbor validation
-- `src/lmnr/sdk/mcp_server/AGENTS.md` - `wrap_mcp_server`: span contract shared with the TS SDK, what mcp 2.x / FastMCP emit natively, layering with `McpInstrumentor`, forced trace ids, `context` field, FastMCP native-span suppression
+- `src/lmnr/sdk/mcp_server/AGENTS.md` - `wrap_mcp_server`: settings read by `McpInstrumentor`'s single server-span path, behaviour that must not change, span contract shared with the TS SDK, what mcp 2.x / FastMCP emit natively, forced trace ids, `context` field, FastMCP native-span suppression
 - `src/lmnr/opentelemetry_lib/bridges/AGENTS.md` - `bridges=` option, the `LaminarBridge` contract shared with the TS SDK
 - `src/lmnr/opentelemetry_lib/bridges/langfuse/AGENTS.md` - Langfuse bridge: copy-on-end (never mutate Langfuse's spans), private provider, export-filter mirroring, usage/metadata shapes per langfuse major, version overlays in CI
 - `src/lmnr/opentelemetry_lib/tracing/AGENTS.md` - import-cycle wiring, tracing singleton + provider reuse, default instrument set, per-instrumentation options (`instrument_options`), span batching / export, release stamp, trajectory file (`LMNR_TRAJECTORY_PATH`), payload size limit, forced-trace-id generator

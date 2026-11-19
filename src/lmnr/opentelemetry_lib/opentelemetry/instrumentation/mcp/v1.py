@@ -5,30 +5,41 @@ and every client or server built on the SDK, FastMCP included:
 
 - `BaseSession.send_request`: one CLIENT span per outgoing request, whose
   trace context rides in the request's `params._meta` (W3C `traceparent`).
-- `Server._handle_request`: one SERVER span per incoming request handled by a
-  low-level `Server`, parented to the `traceparent` in the request's `_meta`.
-  The handler (and so the tool's own code) runs inside it.
+- `Server._handle_request`: the shared server span (`server.py`) per incoming
+  request a low-level `Server` handles. The handler (and so the tool's own
+  code) runs inside it.
 """
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Sequence
-from typing import TYPE_CHECKING, Any
+import functools
+import importlib
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, cast
 
 from opentelemetry import context as context_api
-from opentelemetry.trace import Span, SpanKind
+from opentelemetry.trace import SpanKind
 from typing_extensions import override
 from wrapt import ObjectProxy
 
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.observed import is_observed_server
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.context_field import (
+    split_context,
+    tools_with_context,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.server import ServerSpan
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.settings import (
+    TOOLS_LIST,
+    UNWRAPPED,
+    McpRequest,
+    as_dict,
+    settings_of,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.utils import (
     ACTIVE_CLIENT_SPAN,
-    extract_trace_context,
     get_arg,
     record_error,
     record_result,
     replace_arg,
-    set_output,
     start_span,
     use_span,
     with_trace_context,
@@ -36,11 +47,9 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.utils import (
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
 )
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
-    dont_throw,
-    set_span_attribute,
-)
-from lmnr.opentelemetry_lib.tracing.context import get_current_context
+from lmnr.sdk.log import get_default_logger
+
+logger = get_default_logger(__name__)
 
 
 async def wrap_send_request(
@@ -88,8 +97,8 @@ else:
     _ResponderBase = ObjectProxy
 
 
-class _TracedResponder(_ResponderBase):
-    """A `RequestResponder` that records the server's response on its span.
+class _Responder(_ResponderBase):
+    """A `RequestResponder` that passes the server's response through `on_response`.
 
     `Server._handle_request` turns handler failures into an `ErrorData` and
     sends it with `respond` instead of raising, so this is the one place both
@@ -97,24 +106,58 @@ class _TracedResponder(_ResponderBase):
     """
 
     @override
-    def __init__(self, wrapped: Any, span: Span):
+    def __init__(self, wrapped: Any, on_response: Callable[[Any], Any]):
         super().__init__(wrapped)
-        self._self_span: Span = span
+        self._self_on_response: Callable[[Any], Any] = on_response
 
     async def respond(self, response: Any) -> None:
-        _record_response(self._self_span, response)
-        await self.__wrapped__.respond(response)
+        await self.__wrapped__.respond(self._self_on_response(response))
 
 
-@dont_throw
-def _record_response(span: Span, response: Any) -> None:
-    # a `ServerResult` (a `RootModel` over the concrete result) or an `ErrorData`
-    if type(response).__name__ == "ErrorData":
-        set_output(span, response)
-        error_type = "McpError"
-        record_error(span, Exception(getattr(response, "message", None) or error_type), error_type)
-        return
-    record_result(span, getattr(response, "root", response))
+def _negotiated_version(requested: Any) -> str | None:
+    if not isinstance(requested, str):
+        return None
+    try:
+        # mcp 1.x names (basedpyright checks against 2.x)
+        supported: Any = importlib.import_module("mcp.shared.version").SUPPORTED_PROTOCOL_VERSIONS
+        latest: Any = importlib.import_module("mcp.types").LATEST_PROTOCOL_VERSION
+    except Exception:
+        return requested
+    # what `ServerSession` answers `initialize` with
+    return requested if requested in supported else str(latest)
+
+
+def _request_from(message: Any, req: Any, session: Any) -> McpRequest:
+    params = as_dict(getattr(req, "params", None))
+    # `RequestParams.Meta` allows extra fields, so the dump keeps `traceparent` & co.
+    meta = as_dict(params.pop("_meta", None))
+    # the HTTP request, on HTTP transports
+    http_request: Any = getattr(getattr(message, "message_metadata", None), "request_context", None)
+    raw_headers: Any = getattr(http_request, "headers", None)
+    headers = cast(Mapping[str, str], raw_headers) if isinstance(raw_headers, Mapping) else None
+    client_params: Any = getattr(session, "client_params", None)
+    client_info: Any = getattr(client_params, "clientInfo", None)
+    request_id: Any = getattr(message, "request_id", None)
+    return McpRequest(
+        method=str(getattr(req, "method", "")),
+        params=params,
+        meta=meta,
+        request_id=str(request_id) if request_id is not None else None,
+        transport_session_id=(headers or {}).get("mcp-session-id"),
+        protocol_version=(headers or {}).get("mcp-protocol-version")
+        or _negotiated_version(getattr(client_params, "protocolVersion", None)),
+        http=headers is not None or None,
+        client_name=getattr(client_info, "name", None),
+        client_version=getattr(client_info, "version", None),
+    )
+
+
+def _recording(span: ServerSpan) -> Callable[[Any], Any]:
+    def on_response(response: Any) -> Any:
+        span.record_result(response)
+        return response
+
+    return on_response
 
 
 async def _wrap_handle_request(
@@ -127,41 +170,45 @@ async def _wrap_handle_request(
     """`Server._handle_request(message, req, session, lifespan_context, raise_exceptions)`.
 
     `initialize` is answered by `ServerSession` itself and never reaches here.
+    `wrap_mcp_server` attaches its settings to the server (`instance`); every
+    other server records with `UNWRAPPED`.
     """
     message = get_arg(args, kwargs, 0, "message")
-    request = get_arg(args, kwargs, 1, "req")
-    if (
-        message is None
-        or request is None
-        or context_api.get_value(context_api._SUPPRESS_INSTRUMENTATION_KEY)
-        # `wrap_mcp_server` opens this server's spans itself
-        or is_observed_server(instance)
-    ):
+    req = get_arg(args, kwargs, 1, "req")
+    if message is None or req is None:
         return await wrapped(*args, **kwargs)
-
-    # The server handles each request in a task spawned from its own run loop,
-    # so the client's context only arrives through `_meta`.
-    meta = getattr(message, "request_meta", None) or getattr(
-        getattr(request, "params", None), "meta", None
-    )
-    parent = extract_trace_context(meta, get_current_context())
-    span = start_span(to_wrap, request, SpanKind.SERVER, context=parent)
-    if span is None:
-        return await wrapped(*args, **kwargs)
-    request_id = getattr(message, "request_id", None)
-    if isinstance(request_id, (str, int)):
-        set_span_attribute(span, "mcp.request.id", str(request_id))
-
-    args, kwargs = replace_arg(args, kwargs, 0, "message", _TracedResponder(message, span))
-    try:
-        with use_span(span):
+    settings = settings_of(instance)
+    if settings is None:
+        if context_api.get_value(context_api._SUPPRESS_INSTRUMENTATION_KEY):
             return await wrapped(*args, **kwargs)
-    except Exception as e:
-        # only with `raise_exceptions=True`; otherwise the error is responded
-        record_error(span, e)
-        raise
-    finally:
-        span.end()
+        settings = UNWRAPPED
+    with settings.suppress_native():
+        method: Any = getattr(req, "method", None)
+        if not isinstance(method, str) or not settings.traces(method):
+            if method == TOOLS_LIST:
+                on_response = functools.partial(tools_with_context, settings)
+                args, kwargs = replace_arg(
+                    args, kwargs, 0, "message", _Responder(message, on_response)
+                )
+            return await wrapped(*args, **kwargs)
+        try:
+            request = _request_from(message, req, get_arg(args, kwargs, 2, "session"))
+            arguments, context_text = await split_context(settings, request)
+            if arguments is not None:
+                # before the handler, which is where 1.x validates arguments
+                params = req.params.model_copy(update={"arguments": arguments})
+                args, kwargs = replace_arg(
+                    args, kwargs, 1, "req", req.model_copy(update={"params": params})
+                )
+        except Exception:
+            logger.debug("Failed to read the MCP request", exc_info=True)
+            return await wrapped(*args, **kwargs)
+        span = ServerSpan.start(to_wrap, settings, request, context_text)
+        args, kwargs = replace_arg(
+            args, kwargs, 0, "message", _Responder(message, _recording(span))
+        )
+        # with `raise_exceptions=True` the handler's exception propagates here
+        return await span.run(wrapped(*args, **kwargs), record_result=False)
 
 
 V1_WRAPPED_FUNCTIONS: list[WrappedFunctionSpec] = [

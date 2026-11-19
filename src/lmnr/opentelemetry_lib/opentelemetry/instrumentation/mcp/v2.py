@@ -7,9 +7,10 @@ global OTel context, so Laminar spans the tool's code opens don't nest under
 them. Instead of enriching them, these wrappers take their place:
 
 - `OpenTelemetryMiddleware.__call__`, the server middleware every `Server`
-  installs by default, is replaced (the native span is never opened) with one
-  that opens a Laminar SERVER span and runs the rest of the chain inside it.
-  Servers that removed the middleware get no server spans, as without us.
+  installs by default, is replaced (the native span is never opened) by the
+  shared server span (`server.py`) around the rest of the chain. Servers that
+  removed the middleware get no server spans, as without us, unless
+  `wrap_mcp_server` put one back.
 - `ClientSession.send_request` / `ServerSession.send_request` get the same
   CLIENT span wrapper as 1.x (`v1.wrap_send_request`). The typed request and
   result give the span its input / output, and it covers the in-process
@@ -24,22 +25,32 @@ them. Instead of enriching them, these wrappers take their place:
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Generator, Sequence
+import dataclasses
+from collections.abc import Awaitable, Callable, Generator, Mapping, Sequence
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, cast
 
 from opentelemetry import context as context_api
 from opentelemetry import trace
 from opentelemetry.trace import Span, SpanKind
-from pydantic import ValidationError
 
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.observed import is_observed_request
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.context_field import (
+    split_context,
+    tools_with_context,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.server import ServerSpan
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.settings import (
+    TOOLS_LIST,
+    UNWRAPPED,
+    McpRequest,
+    McpServerSettings,
+    as_dict,
+    settings_of,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.utils import (
     ACTIVE_CLIENT_SPAN,
-    TOOLS_CALL,
     attributes_for,
     error_code,
-    extract_trace_context,
     get_arg,
     name_and_type,
     record_error,
@@ -56,53 +67,77 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     dont_throw,
     safe_start_span,
     set_span_attribute,
-    should_send_prompts,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
     stamp_instrumentation_scope,
 )
-from lmnr.opentelemetry_lib.tracing.context import get_current_context
+from lmnr.sdk.laminar import Laminar
+from lmnr.sdk.log import get_default_logger
 
-# JSON-RPC "Invalid params", what mcp answers a `ValidationError` with
-_INVALID_PARAMS = -32602
+logger = get_default_logger(__name__)
+
+CallNext = Callable[[Any], Awaitable[Any]]
+
 SERVER_DISCOVER = "server/discover"
 
 
-def _start_server_span(to_wrap: WrappedFunctionSpec, ctx: Any) -> Span | None:
-    method: Any = getattr(ctx, "method", None)
-    if not isinstance(method, str):
-        return None
-    params: Any = getattr(ctx, "params", None) or {}
-    name: Any = params.get("name") if method == TOOLS_CALL else None
-    tool = name if isinstance(name, str) else None
-    span_name, span_type = name_and_type(method, tool)
-    # The server handles each request in a task of its own, so the client's
-    # context only arrives through `_meta`
-    parent = extract_trace_context(getattr(ctx, "meta", None), get_current_context())
-    span = safe_start_span(
-        name=span_name,
-        context=parent,
-        attributes={**attributes_for(method, tool), "mcp.request.id": str(ctx.request_id)},
-        span_type=span_type,
-        kind=SpanKind.SERVER,
+def _headers(ctx: Any) -> Mapping[str, str] | None:
+    headers: Any = getattr(getattr(ctx, "request", None), "headers", None)
+    if headers is None:
+        # the transport metadata of the request's dispatch context
+        outbound: Any = getattr(getattr(ctx, "session", None), "_request_outbound", None)
+        headers = getattr(getattr(outbound, "transport", None), "headers", None)
+    return cast(Mapping[str, str], headers) if isinstance(headers, Mapping) else None
+
+
+def _request_from_context(ctx: Any) -> McpRequest:
+    params = as_dict(getattr(ctx, "params", None))
+    params.pop("_meta", None)
+    headers = _headers(ctx)
+    session: Any = getattr(ctx, "session", None)
+    session_id: Any = getattr(getattr(session, "_connection", None), "session_id", None)
+    if not isinstance(session_id, str) and headers is not None:
+        session_id = headers.get("mcp-session-id")
+    client_params: Any = getattr(session, "client_params", None)
+    client_info: Any = getattr(client_params, "client_info", None)
+    request_id: Any = getattr(ctx, "request_id", None)
+    protocol_version: Any = getattr(ctx, "protocol_version", None)
+    return McpRequest(
+        method=str(getattr(ctx, "method", "")),
+        params=params,
+        meta=as_dict(getattr(ctx, "meta", None)),
+        request_id=str(request_id) if request_id is not None else None,
+        transport_session_id=session_id if isinstance(session_id, str) else None,
+        protocol_version=protocol_version if isinstance(protocol_version, str) else None,
+        http=headers is not None or None,
+        client_name=getattr(client_info, "name", None),
+        client_version=getattr(client_info, "version", None),
     )
-    if span is None:
-        return None
-    stamp_instrumentation_scope(span, to_wrap)
-    dont_throw(set_raw_input)(span, method, params)
-    return span
 
 
-def _record_server_error(span: Span, error: Exception) -> None:
-    if isinstance(error, ValidationError):
-        # pydantic messages quote the client's input
-        if not should_send_prompts():
-            error = Exception("Invalid request parameters")
-        record_error(span, error, "ValidationError")
-        set_status_code(span, _INVALID_PARAMS)
-    else:
-        # `MCPError` for a JSON-RPC error response, anything else a handler raised
-        record_error(span, error)
+async def _observe(
+    to_wrap: WrappedFunctionSpec, settings: McpServerSettings, ctx: Any, call_next: CallNext
+) -> Any:
+    method: Any = getattr(ctx, "method", None)
+    if (
+        not isinstance(method, str)
+        or getattr(ctx, "request_id", None) is None
+        or not settings.traces(method)
+    ):
+        # notifications, and what a wrapped server doesn't trace
+        result = await call_next(ctx)
+        return tools_with_context(settings, result) if method == TOOLS_LIST else result
+    try:
+        request = _request_from_context(ctx)
+        arguments, context_text = await split_context(settings, request)
+    except Exception:
+        logger.debug("Failed to read the MCP request", exc_info=True)
+        return await call_next(ctx)
+    if arguments is not None:
+        # before params validation, so strict schemas don't reject `context`
+        ctx = dataclasses.replace(ctx, params={**ctx.params, "arguments": arguments})
+    span = ServerSpan.start(to_wrap, settings, request, context_text)
+    return await span.run(call_next(ctx), record_result=True)
 
 
 async def _wrap_server_middleware(
@@ -112,38 +147,28 @@ async def _wrap_server_middleware(
     args: Sequence[Any],
     kwargs: dict[str, Any],
 ) -> Any:
-    """`OpenTelemetryMiddleware.__call__(ctx, call_next)`.
+    """`OpenTelemetryMiddleware.__call__(ctx, call_next)`, for every inbound message.
 
-    Wraps every inbound request, `initialize` included, and every notification.
+    `wrap_mcp_server` puts an instance carrying its settings first in the
+    server's middleware; every other instance records with `UNWRAPPED`.
     """
     ctx = get_arg(args, kwargs, 0, "ctx")
     call_next = get_arg(args, kwargs, 1, "call_next")
-    if (
-        ctx is None
-        or call_next is None
-        or context_api.get_value(context_api._SUPPRESS_INSTRUMENTATION_KEY)
-    ):
+    if ctx is None or call_next is None:
         return await wrapped(*args, **kwargs)
-    if getattr(ctx, "request_id", None) is None or is_observed_request(ctx):
-        # notifications are not traced, as on 1.x; a server wrapped with
-        # `wrap_mcp_server` gets its span (or none) from the wrapper
+    settings = settings_of(instance)
+    if settings is not None:
+        with settings.suppress_native():
+            return await _observe(to_wrap, settings, ctx, call_next)
+    if context_api.get_value(context_api._SUPPRESS_INSTRUMENTATION_KEY):
+        return await wrapped(*args, **kwargs)
+    if getattr(ctx, "request_id", None) is None:
+        # notifications are not traced, as on 1.x
         return await call_next(ctx)
-
-    span = _start_server_span(to_wrap, ctx)
-    if span is None:
-        # Laminar is not initialized: leave mcp's own span in place
+    if not Laminar.is_initialized():
+        # leave mcp's own span in place
         return await wrapped(*args, **kwargs)
-    try:
-        with use_span(span):
-            result = await call_next(ctx)
-        # a `CallToolResult` or a plain dict, `isError` included
-        record_result(span, result)
-    except Exception as e:
-        dont_throw(_record_server_error)(span, e)
-        raise
-    finally:
-        span.end()
-    return result
+    return await _observe(to_wrap, UNWRAPPED, ctx, call_next)
 
 
 async def _wrap_send_discover(

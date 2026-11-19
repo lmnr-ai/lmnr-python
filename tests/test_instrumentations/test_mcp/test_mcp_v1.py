@@ -66,6 +66,10 @@ def _one(spans: tuple[ReadableSpan, ...], name: str, kind: SpanKind) -> Readable
     return matching[0]
 
 
+def _ours(spans: tuple[ReadableSpan, ...]) -> list[ReadableSpan]:
+    return [s for s in spans if _attrs(s).get("lmnr.span.instrumentation_scope.name") == "mcp"]
+
+
 def _span_id(span: ReadableSpan) -> int:
     assert span.context is not None
     return span.context.span_id
@@ -106,7 +110,7 @@ async def test_tool_call_client_and_server_spans(span_exporter: InMemorySpanExpo
 
     spans = span_exporter.get_finished_spans()
     client_span = _one(spans, "add.tool", SpanKind.CLIENT)
-    server_span = _one(spans, "add.tool", SpanKind.SERVER)
+    server_span = _one(spans, "tools/call add", SpanKind.SERVER)
 
     attrs = _attrs(client_span)
     assert attrs["lmnr.span.type"] == "TOOL"
@@ -122,11 +126,15 @@ async def test_tool_call_client_and_server_spans(span_exporter: InMemorySpanExpo
     assert output["isError"] is False
     assert not _exception_events(client_span)
 
+    # the server span follows the MCP span contract, like a wrapped server's
     server_attrs = _attrs(server_span)
     assert server_attrs["lmnr.span.type"] == "TOOL"
-    assert server_attrs["mcp.request.id"]
-    assert json.loads(server_attrs["lmnr.span.input"]) == json.loads(attrs["lmnr.span.input"])
-    assert json.loads(server_attrs["lmnr.span.output"])["content"][0]["text"] == "5"
+    assert server_attrs["gen_ai.operation.name"] == "execute_tool"
+    assert server_attrs["jsonrpc.request.id"]
+    assert server_attrs["mcp.protocol.version"]
+    assert server_attrs["lmnr.mcp.client.name"] == "mcp"
+    assert json.loads(server_attrs["gen_ai.tool.call.arguments"]) == {"a": 2, "b": 3}
+    assert json.loads(server_attrs["gen_ai.tool.call.result"])["content"][0]["text"] == "5"
 
 
 @pytest.mark.asyncio
@@ -140,7 +148,7 @@ async def test_trace_context_propagates_from_client_to_server(
     spans = span_exporter.get_finished_spans()
     outer = _one(spans, "outer", SpanKind.INTERNAL)
     client_span = _one(spans, "add.tool", SpanKind.CLIENT)
-    server_span = _one(spans, "add.tool", SpanKind.SERVER)
+    server_span = _one(spans, "tools/call add", SpanKind.SERVER)
     inside_tool = _one(spans, "inside_tool", SpanKind.INTERNAL)
 
     trace_id = _trace_id(outer)
@@ -160,7 +168,7 @@ async def test_non_tool_requests(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     # `initialize` is answered by `ServerSession` itself: client span only
     initialize = _one(spans, "initialize.mcp", SpanKind.CLIENT)
-    assert not [s for s in _by_name(spans, "initialize.mcp") if s.kind == SpanKind.SERVER]
+    assert not [s for s in spans if s.kind == SpanKind.SERVER and "initialize" in s.name]
     assert _attrs(initialize)["mcp.method.name"] == "initialize"
 
     list_tools = _one(spans, "tools/list.mcp", SpanKind.CLIENT)
@@ -171,7 +179,7 @@ async def test_non_tool_requests(span_exporter: InMemorySpanExporter):
     output = json.loads(attrs["lmnr.span.output"])
     assert {t["name"] for t in output["tools"]} == {"add", "echo", "fail"}
 
-    server_list_tools = _one(spans, "tools/list.mcp", SpanKind.SERVER)
+    server_list_tools = _one(spans, "tools/list", SpanKind.SERVER)
     assert _parent_id(server_list_tools) == _span_id(list_tools)
 
 
@@ -182,15 +190,17 @@ async def test_tool_error_result(span_exporter: InMemorySpanExporter):
     assert result.isError is True
 
     spans = span_exporter.get_finished_spans()
-    for kind in (SpanKind.CLIENT, SpanKind.SERVER):
-        span = _one(spans, "fail.tool", kind)
+    for span, output_key in (
+        (_one(spans, "fail.tool", SpanKind.CLIENT), "lmnr.span.output"),
+        (_one(spans, "tools/call fail", SpanKind.SERVER), "gen_ai.tool.call.result"),
+    ):
         assert span.status.status_code == StatusCode.ERROR
         assert _attrs(span)["error.type"] == "tool_error"
         events = _exception_events(span)
         assert len(events) == 1
         assert events[0]["exception.type"] == "tool_error"
         assert "boom: bad input" in events[0]["exception.message"]
-        assert json.loads(_attrs(span)["lmnr.span.output"])["isError"] is True
+        assert json.loads(_attrs(span)[output_key])["isError"] is True
 
 
 @pytest.mark.asyncio
@@ -215,9 +225,12 @@ async def test_json_rpc_error(span_exporter: InMemorySpanExporter):
     assert events[0]["exception.type"] == "McpError"
     assert "Method not found" in events[0]["exception.message"]
 
-    server_span = _one(spans, "prompts/list.mcp", SpanKind.SERVER)
+    # the server span names the JSON-RPC code
+    server_span = _one(spans, "prompts/list", SpanKind.SERVER)
     assert server_span.status.status_code == StatusCode.ERROR
-    assert _exception_events(server_span)[0]["exception.type"] == "McpError"
+    assert _attrs(server_span)["error.type"] == "-32601"
+    assert _attrs(server_span)["rpc.response.status_code"] == "-32601"
+    assert _exception_events(server_span)[0]["exception.type"] == "-32601"
     assert _parent_id(server_span) == _span_id(client_span)
 
 
@@ -234,13 +247,15 @@ async def test_content_not_recorded_when_disabled(
     assert _by_name(spans, "echo.tool")
     assert MARKER not in _all_recorded_text(spans)
     for span in spans:
-        assert "lmnr.span.input" not in _attrs(span)
-        assert "lmnr.span.output" not in _attrs(span)
+        for key in ("input", "output"):
+            assert f"lmnr.span.{key}" not in _attrs(span)
+        for key in ("arguments", "result"):
+            assert f"gen_ai.tool.call.{key}" not in _attrs(span)
     # the failure is still marked, without the tool's message
-    fail = _one(spans, "fail.tool", SpanKind.CLIENT)
-    assert _exception_events(fail)[0]["exception.type"] == "tool_error"
+    for name, kind in (("fail.tool", SpanKind.CLIENT), ("tools/call fail", SpanKind.SERVER)):
+        assert _exception_events(_one(spans, name, kind))[0]["exception.type"] == "tool_error"
     # propagation is not content: the server span still joins the client's trace
-    server_echo = _one(spans, "echo.tool", SpanKind.SERVER)
+    server_echo = _one(spans, "tools/call echo", SpanKind.SERVER)
     assert _parent_id(server_echo) == _span_id(_one(spans, "echo.tool", SpanKind.CLIENT))
 
 
@@ -269,7 +284,7 @@ async def test_caller_traceparent_is_kept(span_exporter: InMemorySpanExporter):
     assert params.meta.model_extra == {"traceparent": traceparent}
 
     spans = span_exporter.get_finished_spans()
-    server_span = _one(spans, "add.tool", SpanKind.SERVER)
+    server_span = _one(spans, "tools/call add", SpanKind.SERVER)
     assert _trace_id(server_span) == remote_trace_id
     assert _parent_id(server_span) == remote_span_id
 
@@ -295,7 +310,7 @@ async def test_suppressed_instrumentation(span_exporter: InMemorySpanExporter):
         context_api.detach(token)
 
     # the in-memory server task is spawned under the suppressed context too
-    assert not [s for s in span_exporter.get_finished_spans() if s.name.endswith((".tool", ".mcp"))]
+    assert not _ours(span_exporter.get_finished_spans())
 
 
 @pytest.fixture
@@ -320,4 +335,4 @@ async def test_no_spans_after_uninstrument(
 ):
     async with create_connected_server_and_client_session(_server()) as client:
         _ = await client.call_tool("echo", {"text": "hi"})
-    assert not [s for s in span_exporter.get_finished_spans() if s.name.endswith((".tool", ".mcp"))]
+    assert not _ours(span_exporter.get_finished_spans())

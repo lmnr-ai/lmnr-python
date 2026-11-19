@@ -137,8 +137,8 @@ async def test_server_built_before_instrumentation_only_traces_tool_calls(
 
     assert "error" not in (responses[3] or {}), responses
     spans = {s.name: s for s in span_exporter.get_finished_spans()}
-    assert set(spans) == {"turn", "add.tool"}, sorted(spans)
-    tool_span = spans["add.tool"]
+    assert set(spans) == {"turn", "tools/call add"}, sorted(spans)
+    tool_span = spans["tools/call add"]
     assert tool_span.parent is not None
     assert tool_span.parent.span_id == ctx.span_id
     assert tool_span.context is not None

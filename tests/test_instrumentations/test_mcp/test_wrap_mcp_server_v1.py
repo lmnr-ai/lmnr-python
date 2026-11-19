@@ -34,12 +34,11 @@ from opentelemetry.trace import SpanKind, StatusCode
 from pydantic import AnyUrl
 
 from lmnr import Laminar, wrap_mcp_server
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.observed import (
-    OBSERVED_SERVER_ATTR,
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.context_field import (
+    CONTEXT_DESCRIPTION,
 )
-from lmnr.sdk.mcp_server.observe import CONTEXT_DESCRIPTION
-from lmnr.sdk.mcp_server.turns import turn_trace_id
-from lmnr.sdk.mcp_server.v1 import ObservedHandlers
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.settings import settings_of
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.turns import turn_trace_id
 
 MARKER = "content-marker-51d0"
 AI_INVOCATION = "io.modelcontextprotocol/aiInvocation"
@@ -200,7 +199,6 @@ async def test_own_context_untouched(span_exporter: InMemorySpanExporter):
 async def test_lowlevel_strict_schema(span_exporter: InMemorySpanExporter):
     received: list[dict[str, Any]] = []
     server = _wrapped_lowlevel(received)
-    assert isinstance(server.request_handlers, ObservedHandlers)
     async with create_connected_server_and_client_session(server) as client:
         listed = (await client.list_tools()).tools[0].inputSchema
         # validated against the original schema (`additionalProperties: false`)
@@ -245,7 +243,7 @@ async def test_errors(span_exporter: InMemorySpanExporter):
 
 
 @pytest.mark.asyncio
-async def test_raising_handler_class_name(span_exporter: InMemorySpanExporter):
+async def test_raising_and_missing_handlers(span_exporter: InMemorySpanExporter):
     server: Server = wrap_mcp_server(Server("raw"))
 
     @server.get_prompt()
@@ -260,9 +258,10 @@ async def test_raising_handler_class_name(span_exporter: InMemorySpanExporter):
             _ = await client.read_resource(AnyUrl("docs://x"))
 
     spans = span_exporter.get_finished_spans()
+    # `_handle_request` answers any other exception with JSON-RPC code 0
     prompt = _one_server_span(spans, "prompts/get missing")
-    assert _attrs(prompt)["error.type"] == "KeyError"
-    assert "rpc.response.status_code" not in _attrs(prompt)
+    assert _attrs(prompt)["error.type"] == "0"
+    assert _attrs(prompt)["rpc.response.status_code"] == "0"
     resource = _one_server_span(spans, "resources/read")
     assert _attrs(resource)["error.type"] == "-32601"
     assert _attrs(resource)["rpc.response.status_code"] == "-32601"
@@ -308,7 +307,9 @@ async def test_record_payloads_off(span_exporter: InMemorySpanExporter):
 async def test_turns(span_exporter: InMemorySpanExporter, no_client_spans: None):
     server = wrap_mcp_server(_fastmcp())
     now = [0.0]
-    getattr(server, OBSERVED_SERVER_ATTR).turns._clock = lambda: now[0]
+    settings = settings_of(server._mcp_server)
+    assert settings is not None and settings.turns is not None
+    settings.turns._clock = lambda: now[0]
     session = {"openai/session": "chat-9"}
     async with create_connected_server_and_client_session(server._mcp_server) as client:
         _ = await client.call_tool("add", {"a": 1, "b": 1}, meta=session)
@@ -364,10 +365,10 @@ async def test_session_turn_beats_client_traceparent(span_exporter: InMemorySpan
 def test_wrapping_twice_is_a_no_op():
     server = _fastmcp()
     wrap_mcp_server(server)
-    handlers = server._mcp_server.request_handlers
+    settings = settings_of(server._mcp_server)
+    assert settings is not None
     assert wrap_mcp_server(server) is server
-    assert server._mcp_server.request_handlers is handlers
-    assert type(dict.__getitem__(handlers, types.CallToolRequest)).__name__ == "function"
+    assert settings_of(server._mcp_server) is settings
 
 
 # --- FastMCP 3 (standalone `fastmcp`, on mcp 1.x) -----------------------------------

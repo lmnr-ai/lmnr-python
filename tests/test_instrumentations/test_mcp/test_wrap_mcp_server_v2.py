@@ -20,7 +20,6 @@ from fastmcp import FastMCP
 from mcp import Client, types
 from mcp.client._memory import InMemoryTransport
 from mcp.client.streamable_http import streamable_http_client
-from mcp.server import _otel
 from mcp.server.lowlevel.server import Server
 from mcp.server.mcpserver import MCPServer
 from mcp.shared.exceptions import MCPError
@@ -30,15 +29,21 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.trace import SpanKind, StatusCode
 
 from lmnr import Laminar, wrap_mcp_server
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.observed import (
-    OBSERVED_SERVER_ATTR,
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp import context_field
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp import server as server_module
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.context_field import (
+    CONTEXT_DESCRIPTION,
 )
-from lmnr.sdk.mcp_server import observe
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.settings import (
+    SETTINGS_ATTR,
+    McpServerSettings,
+    settings_of,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.turns import (
+    TurnTracker,
+    turn_trace_id,
+)
 from lmnr.sdk.mcp_server import wrap as wrap_module
-from lmnr.sdk.mcp_server.config import McpServerObservability
-from lmnr.sdk.mcp_server.observe import CONTEXT_DESCRIPTION
-from lmnr.sdk.mcp_server.turns import turn_trace_id
-from lmnr.sdk.mcp_server.v2 import ObservedServerMiddleware
 
 MARKER = "content-marker-7c1e"
 AI_INVOCATION = "io.modelcontextprotocol/aiInvocation"
@@ -164,10 +169,16 @@ def _exception_events(span: ReadableSpan) -> list[dict[str, Any]]:
     return [dict(e.attributes or {}) for e in span.events if e.name == "exception"]
 
 
-def _config(server: Any) -> McpServerObservability:
-    config = getattr(server, OBSERVED_SERVER_ATTR)
-    assert isinstance(config, McpServerObservability)
+def _config(server: Any) -> McpServerSettings:
+    config = settings_of(wrap_module._low_level_server(server))
+    assert config is not None
     return config
+
+
+def _turns(server: Any) -> TurnTracker:
+    turns = _config(server).turns
+    assert turns is not None
+    return turns
 
 
 def _never(_: object) -> bool:
@@ -247,16 +258,15 @@ async def test_context_injected_into_tools_list(
     span_exporter: InMemorySpanExporter, target: Target, caplog: pytest.LogCaptureFixture
 ):
     unwrapped = await _server().list_tools()
-    with caplog.at_level(logging.WARNING):
-        logger = observe.logger
-        logger.propagate = True
-        try:
-            server = wrap_mcp_server(_server())
-            async with Client(target(server)) as client:
-                tools = {t.name: t for t in (await client.list_tools()).tools}
-                _ = await client.list_tools(cache_mode="refresh")
-        finally:
-            logger.propagate = False
+    # the package logger above it doesn't propagate to root, so attach directly
+    context_field.logger.addHandler(caplog.handler)
+    try:
+        server = wrap_mcp_server(_server())
+        async with Client(target(server)) as client:
+            tools = {t.name: t for t in (await client.list_tools()).tools}
+            _ = await client.list_tools(cache_mode="refresh")
+    finally:
+        context_field.logger.removeHandler(caplog.handler)
 
     for name in ("add", "login", "fail"):
         schema = tools[name].input_schema
@@ -537,7 +547,7 @@ async def test_payloads_off_raising_handler(span_exporter: InMemorySpanExporter,
 async def test_session_turns(span_exporter: InMemorySpanExporter, no_client_spans: None):
     server = wrap_mcp_server(_server())
     now = [1000.0]
-    _config(server).turns._clock = lambda: now[0]
+    _turns(server)._clock = lambda: now[0]
     session = _meta({"openai/session": "chat-1"})
     async with Client(server) as client:
         _ = await client.call_tool("add", {"a": 1, "b": 1}, meta=session)
@@ -647,7 +657,7 @@ async def test_session_turn_beats_traceparent(
     remotes = [(0x1000 + i, 0x2000 + i) for i in range(3)]
     server = wrap_mcp_server(_server())
     now = [0.0]
-    _config(server).turns._clock = lambda: now[0]
+    _turns(server)._clock = lambda: now[0]
     async with Client(server) as client:
         for i, (trace_id, span_id) in enumerate(remotes[:2]):
             meta = {"openai/session": "chat-tp", "traceparent": _traceparent(trace_id, span_id)}
@@ -737,7 +747,7 @@ async def test_unforceable_provider_degrades_to_random(
     monkeypatch: pytest.MonkeyPatch,
     no_client_spans: None,
 ):
-    monkeypatch.setattr(observe, "can_force_trace_id", _never)
+    monkeypatch.setattr(server_module, "can_force_trace_id", _never)
     server = wrap_mcp_server(_server())
     meta = _meta({AI_INVOCATION: {"turnId": "turn-1"}})
     async with Client(server) as client:
@@ -751,10 +761,10 @@ def test_turn_gap_is_clamped(caplog: pytest.LogCaptureFixture, monkeypatch: pyte
     monkeypatch.setattr(wrap_module.logger, "propagate", True)
     with caplog.at_level(logging.WARNING):
         server = wrap_mcp_server(_server(), turn_gap_seconds=60)
-    assert _config(server).turns.turn_gap_seconds == 25
+    assert _turns(server).turn_gap_seconds == 25
     assert any("turn_gap_seconds" in r.getMessage() for r in caplog.records)
-    assert _config(wrap_mcp_server(_server(), turn_gap_seconds=5)).turns.turn_gap_seconds == 5
-    assert _config(wrap_mcp_server(_server())).turns.turn_gap_seconds == 20
+    assert _turns(wrap_mcp_server(_server(), turn_gap_seconds=5)).turn_gap_seconds == 5
+    assert _turns(wrap_mcp_server(_server())).turn_gap_seconds == 20
 
 
 def test_wrapping_twice_is_a_no_op():
@@ -763,22 +773,10 @@ def test_wrapping_twice_is_a_no_op():
     config = _config(server)
     assert wrap_mcp_server(server) is server
     assert _config(server) is config
+    # one `OpenTelemetryMiddleware`, outermost, carrying the settings
     middleware = server._lowlevel_server.middleware
-    assert sum(isinstance(m, ObservedServerMiddleware) for m in middleware) == 1
-    assert not any(type(m).__name__ == "OpenTelemetryMiddleware" for m in middleware)
-    assert isinstance(middleware[0], ObservedServerMiddleware)
-
-
-@pytest.mark.asyncio
-async def test_native_middleware_added_after_wrapping(
-    span_exporter: InMemorySpanExporter, target: Target
-):
-    server = wrap_mcp_server(_server())
-    # the instrumentor's replacement of it stands aside for the wrapped request
-    server._lowlevel_server.middleware.append(_otel.OpenTelemetryMiddleware())
-    async with Client(target(server)) as client:
-        _ = await client.call_tool("add", {"a": 1, "b": 2})
-    assert [s.name for s in _server_spans(span_exporter.get_finished_spans())] == ["tools/call add"]
+    assert sum(type(m).__name__ == "OpenTelemetryMiddleware" for m in middleware) == 1
+    assert getattr(middleware[0], SETTINGS_ATTR) is config
 
 
 def test_unsupported_object_is_returned_unchanged():

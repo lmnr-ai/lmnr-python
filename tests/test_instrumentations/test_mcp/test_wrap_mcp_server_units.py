@@ -9,14 +9,22 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.redaction import (
+    REDACTED,
+    is_secret_key,
+    normalize_keys,
+    redact,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.turns import (
+    TurnTracker,
+    turn_trace_id,
+)
 from lmnr.opentelemetry_lib.tracing.id_generator import (
     LaminarIdGenerator,
     can_force_trace_id,
     forced_trace_id,
 )
 from lmnr.opentelemetry_lib.tracing.tracer import get_laminar_tracer_provider
-from lmnr.sdk.mcp_server.redaction import REDACTED, is_secret_key, normalize_keys, redact
-from lmnr.sdk.mcp_server.turns import TurnTracker, turn_trace_id
 
 # shared with the TS SDK: both must agree
 SECRET = [

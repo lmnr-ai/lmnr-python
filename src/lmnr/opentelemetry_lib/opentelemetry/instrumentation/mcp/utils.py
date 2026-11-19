@@ -167,7 +167,7 @@ def _get(obj: Any, key: str) -> Any:
     return getattr(obj, key, None)
 
 
-def _first_text(result: Any) -> str | None:
+def first_text(result: Any) -> str | None:
     content: Any = _get(result, "content") or []
     if not isinstance(content, Sequence):
         return None
@@ -184,7 +184,7 @@ def record_tool_error(span: Span, result: Any) -> None:
     The tool's own error text is tool output, so it is withheld when content
     capture is off; the `tool_error` type still marks the failure.
     """
-    message = (_first_text(result) if should_send_prompts() else None) or "Tool returned an error"
+    message = (first_text(result) if should_send_prompts() else None) or "Tool returned an error"
     record_error(span, Exception(message), TOOL_ERROR)
 
 
