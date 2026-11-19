@@ -8,7 +8,9 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-install-project
 ENV PATH="/srv/app/.venv/bin:$PATH"
 
-COPY evals/image/shared/ /opt/harness/
+# Only what runs in the container: never the tasks (their tests/ hold the
+# reference answers).
+COPY evals/support/agent/seed.py evals/support/agent/run.py evals/support/agent/verify.py /opt/agent/
 COPY app/ ./app/
 
 WORKDIR /case

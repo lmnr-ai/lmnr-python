@@ -1,0 +1,4 @@
+# Harbor's dataset manifest. The name is the dataset's name in Laminar;
+# `lmnr-cli eval dataset push` adds a [[tasks]] pin per task.
+[dataset]
+name = "example/support"

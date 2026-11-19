@@ -18,7 +18,7 @@ import re
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 from opentelemetry.context import Context
 from opentelemetry.trace import Status, StatusCode
@@ -116,9 +116,10 @@ class LaminarPlugin:
       dataset name (e.g. `terminal-bench@2.0`). Env: `HARBOR_LAMINAR_GROUP`.
     - `dataset`: the Laminar eval dataset the job's tasks come from
       (`lmnr-cli eval dataset`), recorded on the evaluation.
-    - `task_hashes_file`: JSON file mapping each task dir name to its content
-      hash; a trial of a listed task records that hash as its task version.
-      Both are passed by `lmnr-cli eval run`.
+    - `task_hashes_file`: JSON file mapping each task dir name to its
+      `[task] name` and content hash (`{"refund": {"name": "acme/refund",
+      "hash": ...}}`); a trial of a listed task records both as its task
+      version. Both are passed by `lmnr-cli eval run`.
     - `trajectory_spans`: convert agent ATIF trajectories into LLM and tool
       spans. Defaults to true.
     - `fail_fast`: raise on Laminar errors instead of logging a warning and
@@ -152,7 +153,7 @@ class LaminarPlugin:
         self.group_name: str | None = str(resolved_group_name) if resolved_group_name else None
         self.dataset: str | None = str(dataset) if dataset else None
         self.task_hashes_file: str | None = str(task_hashes_file) if task_hashes_file else None
-        self._task_hashes: dict[str, str] = {}
+        self._task_hashes: dict[str, TaskVersion] = {}
         self.trajectory_spans: bool = (
             True if trajectory_spans is None else _parse_bool(trajectory_spans)
         )
@@ -384,10 +385,11 @@ class LaminarPlugin:
             if task_path is not None:
                 state.metadata["task_path"] = task_path
             task_dir = _task_dir_name(event)
-            if task_dir is not None and task_dir in self._task_hashes:
-                state.task_version_hash = self._task_hashes[task_dir]
+            version = self._task_hashes.get(task_dir) if task_dir is not None else None
+            if version is not None:
+                state.task_version_hash = version.hash
                 # With the evaluation's dataset, names the version in Laminar.
-                state.metadata["dataset_task"] = task_dir
+                state.metadata["dataset_task"] = version.name
             self._next_index += 1
             self._trials[event.trial_name] = state
         else:
@@ -703,8 +705,15 @@ def _default_group_name(job: "Job") -> str | None:
     return None
 
 
-def _read_task_hashes(path: str | None) -> dict[str, str]:
-    """`{task dir name: content hash}` from the CLI's `task_hashes_file`."""
+class TaskVersion(NamedTuple):
+    """A task's `[task] name` and content hash, from `task_hashes_file`."""
+
+    name: str
+    hash: str
+
+
+def _read_task_hashes(path: str | None) -> dict[str, TaskVersion]:
+    """`{task dir name: {name, hash}}` from the CLI's `task_hashes_file`."""
     if not path:
         return {}
     try:
@@ -715,7 +724,14 @@ def _read_task_hashes(path: str | None) -> dict[str, str]:
     if not isinstance(raw, dict):
         logger.warning(f"Task hashes in {path} are not a JSON object")
         return {}
-    return {k: v for k, v in raw.items() if isinstance(k, str) and isinstance(v, str)}
+    versions: dict[str, TaskVersion] = {}
+    for task_dir, entry in raw.items():
+        if not isinstance(task_dir, str) or not isinstance(entry, dict):
+            continue
+        name, content_hash = entry.get("name"), entry.get("hash")
+        if isinstance(name, str) and isinstance(content_hash, str):
+            versions[task_dir] = TaskVersion(name, content_hash)
+    return versions
 
 
 def _task_dir_name(event: "TrialHookEvent") -> str | None:

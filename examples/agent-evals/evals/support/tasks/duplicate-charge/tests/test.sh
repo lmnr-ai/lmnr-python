@@ -1,2 +1,2 @@
 #!/bin/bash
-python /tests/verify.py
+python /opt/agent/verify.py

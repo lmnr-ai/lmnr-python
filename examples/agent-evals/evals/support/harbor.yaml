@@ -6,3 +6,11 @@ agents:
 datasets:
   - path: tasks
 n_concurrent_trials: 4
+
+# The image tasks start from (task.toml's docker_image), built by lmnr-cli.
+# Paths are relative to this folder; the context is the example's root, so the
+# image copies the app's code.
+images:
+  refund-agent-evals:
+    dockerfile: agent/Dockerfile
+    context: ../..

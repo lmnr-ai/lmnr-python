@@ -1,3 +1,6 @@
+[task]
+name = "example/duplicate-charge"
+
 [environment]
 docker_image = "refund-agent-evals"
 workdir = "/case"

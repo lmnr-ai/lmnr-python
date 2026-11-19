@@ -340,20 +340,23 @@ async def test_local_run_has_no_hosted_metadata(client: MagicMock, tmp_path: Pat
 
 @pytest.mark.asyncio
 async def test_dataset_and_task_versions_are_recorded(client: MagicMock, tmp_path: Path):
-    # lmnr-cli passes the dataset name and a file of task dir -> content hash.
+    # lmnr-cli passes the dataset name and a file of task dir -> [task] name
+    # and content hash.
     refund_hash = "a" * 64
     hashes = tmp_path / "task-hashes.json"
-    hashes.write_text(json.dumps({"refund": refund_hash}))
+    hashes.write_text(
+        json.dumps({"refund": {"name": "acme/refund", "hash": refund_hash}, "bad": "x"})
+    )
     job = FakeJob(tmp_path / "job")
     dataset_dir = tmp_path / "evals" / "support"
     refund = make_task_dir(dataset_dir, "refund")
     unlisted = make_task_dir(dataset_dir, "unlisted")
     plugin = LaminarPlugin(
-        project_api_key="test_key", dataset="support", task_hashes_file=str(hashes)
+        project_api_key="test_key", dataset="acme/support", task_hashes_file=str(hashes)
     )
 
     await plugin.on_job_start(job)
-    assert client.evals.init.call_args.kwargs["dataset_v2_id"] == "support"
+    assert client.evals.init.call_args.kwargs["dataset_v2_id"] == "acme/support"
     for task_dir, trial in [(refund, "refund__a"), (unlisted, "unlisted__b")]:
         event = make_event(job, task_dir, trial, rewards={"reward": 1.0})
         await job.emit("start", event)
@@ -374,7 +377,7 @@ async def test_dataset_and_task_versions_are_recorded(client: MagicMock, tmp_pat
         )
         for dp in datapoints
     }
-    assert versions == {("refund__a", refund_hash, "refund"), ("unlisted__b", None, None)}
+    assert versions == {("refund__a", refund_hash, "acme/refund"), ("unlisted__b", None, None)}
     serialized = [dp.to_dict() for dp in datapoints]
     assert {d.get("taskVersionHash") for d in serialized} == {refund_hash, None}
 
