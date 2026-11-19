@@ -598,6 +598,66 @@ async def test_litellm_completion_async_streaming_records_usage_only_chunk(
     assert attributes["gen_ai.usage.cache_read.input_tokens"] == 4000
 
 
+def test_litellm_completion_streaming_closed_early_ends_span(
+    span_exporter: InMemorySpanExporter,
+):
+    """A consumer that stops reading mid-stream must not leak the span."""
+    span = Laminar.start_span("litellm.completion", span_type="LLM")
+    chunks: list[dict[str, Any]] = [
+        {
+            "id": "chatcmpl-test",
+            "model": "kimi-k3",
+            "choices": [{"index": 0, "delta": {"content": "Hel"}}],
+        },
+        {
+            "id": "chatcmpl-test",
+            "model": "kimi-k3",
+            "choices": [{"index": 0, "delta": {"content": "lo"}}],
+        },
+    ]
+
+    gen = process_completion_streaming_response(span, iter(chunks))
+    assert next(gen) == chunks[0]
+    gen.close()
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].attributes is not None
+    assert "Hel" in cast(str, spans[0].attributes["gen_ai.output.messages"])
+
+
+@pytest.mark.asyncio
+async def test_litellm_completion_async_streaming_closed_early_ends_span(
+    span_exporter: InMemorySpanExporter,
+):
+    span = Laminar.start_span("litellm.completion", span_type="LLM")
+    chunks: list[dict[str, Any]] = [
+        {
+            "id": "chatcmpl-test",
+            "model": "kimi-k3",
+            "choices": [{"index": 0, "delta": {"content": "Hel"}}],
+        },
+        {
+            "id": "chatcmpl-test",
+            "model": "kimi-k3",
+            "choices": [{"index": 0, "delta": {"content": "lo"}}],
+        },
+    ]
+
+    async def stream():
+        for chunk in chunks:
+            yield chunk
+
+    gen = process_completion_async_streaming_response(span, stream())
+    assert await gen.__anext__() == chunks[0]
+    await gen.aclose()
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].attributes is not None
+    assert "Hel" in cast(str, spans[0].attributes["gen_ai.output.messages"])
+
+
 @pytest.mark.asyncio
 async def test_litellm_completion_async_streaming_preserves_reasoning_deltas(
     span_exporter: InMemorySpanExporter,

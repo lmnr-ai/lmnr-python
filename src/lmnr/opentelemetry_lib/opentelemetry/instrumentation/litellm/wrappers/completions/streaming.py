@@ -239,16 +239,21 @@ def process_completion_streaming_response(
     record_raw_response: bool = False,
 ) -> Generator[T, None, None]:
     accumulated = _new_accumulated()
+    errored = False
     try:
         for item in response:
             _accumulate_chunk(accumulated, item)
             yield item
-        _set_accumulated_attributes(span, accumulated, record_raw_response)
     except Exception as e:
+        errored = True
         span.record_exception(e)
         span.set_status(Status(StatusCode.ERROR, str(e)))
         span.end()
         raise
+    finally:
+        # Also runs when the consumer stops early (GeneratorExit), so the span is always ended.
+        if not errored:
+            _set_accumulated_attributes(span, accumulated, record_raw_response)
 
 
 async def process_completion_async_streaming_response(
@@ -257,13 +262,18 @@ async def process_completion_async_streaming_response(
     record_raw_response: bool = False,
 ) -> AsyncGenerator[T, None]:
     accumulated = _new_accumulated()
+    errored = False
     try:
         async for item in response:
             _accumulate_chunk(accumulated, item)
             yield item
-        _set_accumulated_attributes(span, accumulated, record_raw_response)
     except Exception as e:
+        errored = True
         span.record_exception(e)
         span.set_status(Status(StatusCode.ERROR, str(e)))
         span.end()
         raise
+    finally:
+        # Also runs when the consumer stops early (GeneratorExit), so the span is always ended.
+        if not errored:
+            _set_accumulated_attributes(span, accumulated, record_raw_response)
