@@ -47,12 +47,11 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.fastmcp_compat imp
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.server import ServerSpan
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.settings import (
-    OFF,
     TOOLS_LIST,
     McpRequest,
-    McpServerSettings,
+    Mode,
     as_dict,
-    current_settings,
+    traces,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.utils import (
     ACTIVE_CLIENT_SPAN,
@@ -78,6 +77,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
     stamp_instrumentation_scope,
 )
+from lmnr.opentelemetry_lib.tracing.mcp_options import get_mcp_options
 from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.log import get_default_logger
 
@@ -124,7 +124,7 @@ def _request_from_context(ctx: Any) -> McpRequest:
 
 async def _observe(
     to_wrap: WrappedFunctionSpec,
-    settings: McpServerSettings,
+    mode: Mode,
     ctx: Any,
     call_next: CallNext,
     server: Any = None,
@@ -134,21 +134,21 @@ async def _observe(
     if (
         not isinstance(method, str)
         or getattr(ctx, "request_id", None) is None
-        or not settings.traces(method)
+        or not traces(mode, method)
     ):
         # notifications, and what observability mode doesn't trace
         result = await call_next(ctx)
-        return tools_with_context(settings, result) if method == TOOLS_LIST else result
+        return tools_with_context(mode, result) if method == TOOLS_LIST else result
     try:
         request = _request_from_context(ctx)
-        arguments, context_text = await split_context(settings, request, server)
+        arguments, context_text = await split_context(mode, request, server)
     except Exception:
         logger.debug("Failed to read the MCP request", exc_info=True)
         return await call_next(ctx)
     if arguments is not None:
         # before params validation, so strict schemas don't reject `context`
         ctx = dataclasses.replace(ctx, params={**ctx.params, "arguments": arguments})
-    span = ServerSpan.start(to_wrap, settings, request, context_text, suppress_native)
+    span = ServerSpan.start(to_wrap, mode, request, context_text, suppress_native)
     return await span.run(call_next(ctx), record_result=True)
 
 
@@ -164,8 +164,8 @@ def _wrap_compose_server_middleware(
     Only in MCP observability mode: the span goes around the whole chain.
     """
     chain = wrapped(*args, **kwargs)
-    settings = current_settings()
-    if settings.options is None:
+    mode = get_mcp_options()
+    if mode is None:
         return chain
     server: Any = getattr(instance, "server", None)
     suppress_native = native_span_suppression(server)
@@ -173,7 +173,7 @@ def _wrap_compose_server_middleware(
     async def observed(ctx: Any) -> Any:
         # also around FastMCP 4's own dispatch middleware, whose spans it turns off
         with suppress_native():
-            return await _observe(to_wrap, settings, ctx, chain, server, suppress_native)
+            return await _observe(to_wrap, mode, ctx, chain, server, suppress_native)
 
     return observed
 
@@ -190,7 +190,7 @@ async def _wrap_server_middleware(
     call_next = get_arg(args, kwargs, 1, "call_next")
     if ctx is None or call_next is None:
         return await wrapped(*args, **kwargs)
-    if current_settings().options is not None:
+    if get_mcp_options() is not None:
         # the runner hook already opened the span around the chain
         return await call_next(ctx)
     if context_api.get_value(context_api._SUPPRESS_INSTRUMENTATION_KEY):
@@ -201,7 +201,7 @@ async def _wrap_server_middleware(
     if not Laminar.is_initialized():
         # leave mcp's own span in place
         return await wrapped(*args, **kwargs)
-    return await _observe(to_wrap, OFF, ctx, call_next)
+    return await _observe(to_wrap, None, ctx, call_next)
 
 
 async def _wrap_send_discover(

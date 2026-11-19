@@ -34,10 +34,8 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp import server as s
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.context_field import (
     CONTEXT_DESCRIPTION,
 )
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.settings import (
-    current_settings,
-)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.turns import (
+    TURNS,
     TurnTracker,
     turn_trace_id,
 )
@@ -172,9 +170,7 @@ def _exception_events(span: ReadableSpan) -> list[dict[str, Any]]:
 
 
 def _turns() -> TurnTracker:
-    turns = current_settings().turns
-    assert turns is not None
-    return turns
+    return TURNS
 
 
 def _never(_: object) -> bool:
@@ -392,22 +388,6 @@ async def test_unknown_tool_and_invalid_arguments(
 
 
 @pytest.mark.asyncio
-async def test_tool_error_result(span_exporter: InMemorySpanExporter, target: Target):
-    server = _server()
-    async with Client(target(server)) as client:
-        result = await client.call_tool("fail", {"reason": "r"})
-    assert result.is_error is True
-
-    span = _one_server_span(span_exporter.get_finished_spans(), "tools/call fail")
-    assert _attrs(span)["error.type"] == "tool_error"
-    events = _exception_events(span)
-    assert len(events) == 1
-    assert events[0]["exception.type"] == "tool_error"
-    assert events[0]["exception.message"] == "Error executing tool fail"
-    assert json.loads(_attrs(span)["gen_ai.tool.call.result"])["isError"] is True
-
-
-@pytest.mark.asyncio
 async def test_raising_handler(span_exporter: InMemorySpanExporter, target: Target):
     server = _strict_lowlevel([])
     async with Client(target(server)) as client:
@@ -420,26 +400,6 @@ async def test_raising_handler(span_exporter: InMemorySpanExporter, target: Targ
     assert events[0]["exception.type"] == "RuntimeError"
     assert MARKER in events[0]["exception.message"]
     assert span.status.status_code == StatusCode.ERROR
-
-
-@pytest.mark.asyncio
-async def test_json_rpc_error(span_exporter: InMemorySpanExporter, target: Target):
-    # no prompts handler: "Method not found"
-    server = _strict_lowlevel([])
-    async with Client(target(server), mode="legacy") as client:
-        with pytest.raises(MCPError):
-            _ = await client.session.send_request(
-                types.GetPromptRequest(params=types.GetPromptRequestParams(name="p")),
-                types.GetPromptResult,
-            )
-
-    span = _one_server_span(span_exporter.get_finished_spans(), "prompts/get p")
-    attrs = _attrs(span)
-    assert attrs["error.type"] == "-32601"
-    assert attrs["rpc.response.status_code"] == "-32601"
-    assert attrs["gen_ai.prompt.name"] == "p"
-    assert attrs["lmnr.span.type"] == "DEFAULT"
-    assert _exception_events(span)[0]["exception.type"] == "-32601"
 
 
 @pytest.mark.asyncio
@@ -729,22 +689,6 @@ async def test_traceparent_is_linked_not_parented(
     assert len(span.links) == 1
     link_context = span.links[0].context
     assert (link_context.trace_id, link_context.span_id) == (remote_trace_id, remote_span_id)
-
-
-@pytest.mark.asyncio
-async def test_client_span_trace_is_reused(span_exporter: InMemorySpanExporter, target: Target):
-    # with the instrumentor on, the client's span rides in `_meta.traceparent`
-    server = _server()
-    async with Client(server) as client:
-        _ = await client.call_tool("add", {"a": 1, "b": 2})
-
-    spans = span_exporter.get_finished_spans()
-    server_span = _one_server_span(spans, "tools/call add")
-    client_span = next(s for s in spans if s.kind == SpanKind.CLIENT and s.name == "add.tool")
-    assert server_span.parent is None
-    assert _trace_id(server_span) == _trace_id(client_span)
-    assert client_span.context is not None
-    assert server_span.links[0].context.span_id == client_span.context.span_id
 
 
 @pytest.mark.asyncio

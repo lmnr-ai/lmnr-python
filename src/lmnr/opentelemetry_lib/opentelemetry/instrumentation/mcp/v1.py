@@ -35,7 +35,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.settings import (
     TOOLS_LIST,
     McpRequest,
     as_dict,
-    current_settings,
+    traces,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.utils import (
     ACTIVE_CLIENT_SPAN,
@@ -50,6 +50,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.utils import (
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
 )
+from lmnr.opentelemetry_lib.tracing.mcp_options import get_mcp_options
 from lmnr.sdk.log import get_default_logger
 
 logger = get_default_logger(__name__)
@@ -178,24 +179,24 @@ async def _wrap_handle_request(
     req = get_arg(args, kwargs, 1, "req")
     if message is None or req is None:
         return await wrapped(*args, **kwargs)
-    settings = current_settings()
+    mode = get_mcp_options()
     suppress_native: Callable[[], AbstractContextManager[Any]] = nullcontext
-    if settings.options is not None:
+    if mode is not None:
         suppress_native = native_span_suppression(instance)
     elif context_api.get_value(context_api._SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
     with suppress_native():
         method: Any = getattr(req, "method", None)
-        if not isinstance(method, str) or not settings.traces(method):
+        if not isinstance(method, str) or not traces(mode, method):
             if method == TOOLS_LIST:
-                on_response = functools.partial(tools_with_context, settings)
+                on_response = functools.partial(tools_with_context, mode)
                 args, kwargs = replace_arg(
                     args, kwargs, 0, "message", _Responder(message, on_response)
                 )
             return await wrapped(*args, **kwargs)
         try:
             request = _request_from(message, req, get_arg(args, kwargs, 2, "session"))
-            arguments, context_text = await split_context(settings, request, instance)
+            arguments, context_text = await split_context(mode, request, instance)
             if arguments is not None:
                 # before the handler, which is where 1.x validates arguments
                 params = req.params.model_copy(update={"arguments": arguments})
@@ -205,7 +206,7 @@ async def _wrap_handle_request(
         except Exception:
             logger.debug("Failed to read the MCP request", exc_info=True)
             return await wrapped(*args, **kwargs)
-        span = ServerSpan.start(to_wrap, settings, request, context_text, suppress_native)
+        span = ServerSpan.start(to_wrap, mode, request, context_text, suppress_native)
         args, kwargs = replace_arg(
             args, kwargs, 0, "message", _Responder(message, _recording(span))
         )

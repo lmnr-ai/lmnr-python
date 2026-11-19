@@ -38,8 +38,7 @@ from lmnr import Laminar, McpOptions
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.context_field import (
     CONTEXT_DESCRIPTION,
 )
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.settings import current_settings
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.turns import turn_trace_id
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.turns import TURNS, turn_trace_id
 
 MARKER = "content-marker-51d0"
 AI_INVOCATION = "io.modelcontextprotocol/aiInvocation"
@@ -314,9 +313,7 @@ async def test_record_payloads_off(span_exporter: InMemorySpanExporter, mcp_mode
 async def test_turns(span_exporter: InMemorySpanExporter, no_client_spans: None):
     server = _fastmcp()
     now = [0.0]
-    turns = current_settings().turns
-    assert turns is not None
-    turns._clock = lambda: now[0]
+    TURNS._clock = lambda: now[0]
     session = {"openai/session": "chat-9"}
     async with create_connected_server_and_client_session(server._mcp_server) as client:
         _ = await client.call_tool("add", {"a": 1, "b": 1}, meta=session)

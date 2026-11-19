@@ -1,23 +1,22 @@
-"""What a server's request spans record (`McpServerSettings`) and what a request carries.
+"""MCP observability mode as the hooks read it, and what a request carries.
 
-`Laminar.initialize(mcp=...)` turns MCP observability mode on for the process
-(`tracing/mcp_options.py`); `current_settings()` gives the hooks in `v1.py` /
-`v2.py` its settings, or `OFF` without it. Nothing else changes between the two.
+`Laminar.initialize(mcp=...)` stores the mode (`tracing/mcp_options.py`); the
+hooks in `v1.py` / `v2.py` read it per request with `get_mcp_options()`, None
+being mode off. Nothing else changes between the two modes.
 """
 
 from __future__ import annotations
 
-import threading
-from collections.abc import Awaitable, Callable, Mapping
+import functools
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, cast
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.redaction import normalize_keys
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.turns import TurnTracker
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     should_send_prompts,
 )
-from lmnr.opentelemetry_lib.tracing.mcp_options import ResolvedMcpOptions, get_mcp_options
+from lmnr.opentelemetry_lib.tracing.mcp_options import ResolvedMcpOptions
 
 TOOLS_CALL = "tools/call"
 PROMPTS_GET = "prompts/get"
@@ -29,53 +28,28 @@ OBSERVED_METHODS = frozenset({TOOLS_CALL, PROMPTS_GET, RESOURCES_READ})
 AI_INVOCATION_META_KEY = "io.modelcontextprotocol/aiInvocation"
 OPENAI_SESSION_META_KEY = "openai/session"
 
-# A tool's advertised input schema by name, or None when unknown.
-SchemaLookup = Callable[[str], Awaitable[Mapping[str, Any] | None]]
+# None: mode off
+Mode = ResolvedMcpOptions | None
 
 
-@dataclass(eq=False)
-class McpServerSettings:
-    # None with the mode off: spans are parented on the client's `traceparent`
-    # and every request is traced. Set: root spans grouped by turn.
-    options: ResolvedMcpOptions | None = None
-    turns: TurnTracker | None = None
-    redact_keys: frozenset[str] = frozenset()
-    # tool names seen in `tools/list` that declare their own `context`
-    own_context_tools: set[str] = field(default_factory=set[str])
-    warned_tools: set[str] = field(default_factory=set[str])
-    lock: threading.Lock = field(default_factory=threading.Lock)
-
-    def traces(self, method: str) -> bool:
-        return self.options is None or method in OBSERVED_METHODS
-
-    def payloads(self) -> bool:
-        """Record arguments, results and context (`LMNR_TRACE_CONTENT=false` also turns it off)."""
-        return (self.options is None or self.options.record_payloads) and should_send_prompts()
-
-    def context_field(self) -> bool:
-        """Inject / strip the `context` argument."""
-        return self.options is not None and self.options.context and self.payloads()
+def traces(mode: Mode, method: str) -> bool:
+    return mode is None or method in OBSERVED_METHODS
 
 
-OFF = McpServerSettings()
-_on: McpServerSettings | None = None
+def payloads(mode: Mode) -> bool:
+    """Record arguments, results and context (`LMNR_TRACE_CONTENT=false` also turns it off)."""
+    return (mode is None or mode.record_payloads) and should_send_prompts()
 
 
-def current_settings() -> McpServerSettings:
-    """The process's settings: `OFF`, or one set per `Laminar.initialize(mcp=...)`."""
-    global _on
-    options = get_mcp_options()
-    if options is None:
-        return OFF
-    settings = _on
-    if settings is None or settings.options is not options:
-        # a re-initialize starts fresh turns
-        settings = _on = McpServerSettings(
-            options=options,
-            turns=TurnTracker(options.turn_gap_seconds),
-            redact_keys=normalize_keys(options.redact_keys),
-        )
-    return settings
+def context_field(mode: Mode) -> bool:
+    """Inject / strip the `context` argument."""
+    return mode is not None and mode.context and payloads(mode)
+
+
+@functools.cache
+def redact_keys(mode: Mode) -> frozenset[str]:
+    """The customer's extra secret keys, normalized."""
+    return normalize_keys(mode.redact_keys) if mode is not None else frozenset()
 
 
 @dataclass

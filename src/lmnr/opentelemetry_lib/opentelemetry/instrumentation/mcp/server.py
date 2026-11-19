@@ -2,7 +2,7 @@
 
 `v1.py` (`Server._handle_request`) and `v2.py` (the server middleware chain)
 read an `McpRequest` off their SDK and drive a `ServerSpan` around the handler.
-What differs is the `McpServerSettings` (`Laminar.initialize(mcp=...)`):
+What differs is the mode (`Laminar.initialize(mcp=...)`):
 
 - off (the default): every request, parented on the client's `_meta.traceparent`
   (claude_agent nests SDK MCP tool calls under its agent span this way);
@@ -35,9 +35,11 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.settings import (
     RESOURCES_READ,
     TOOLS_CALL,
     McpRequest,
-    McpServerSettings,
+    Mode,
+    payloads,
+    redact_keys,
 )
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.turns import turn_trace_id
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.turns import TURNS, turn_trace_id
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.utils import (
     TOOL_ERROR,
     dump,
@@ -107,7 +109,7 @@ def _forced_trace_id_supported() -> bool:
 
 
 def _start_attributes(
-    settings: McpServerSettings, request: McpRequest, context_text: str | None
+    mode: Mode, request: McpRequest, context_text: str | None
 ) -> dict[str, AttributeValue]:
     method = request.method
     target = request.target
@@ -132,7 +134,7 @@ def _start_attributes(
     if request.http:
         optional["network.transport"] = "tcp"
         optional["network.protocol.name"] = "http"
-    if settings.payloads():
+    if payloads(mode):
         if method == RESOURCES_READ:
             optional["mcp.resource.uri"] = _string(request.params.get("uri"))
         optional["lmnr.mcp.context"] = context_text or trimmed_context(
@@ -141,10 +143,10 @@ def _start_attributes(
         if method == TOOLS_CALL:
             # lifted into the TOOL span's input by ingestion
             optional["gen_ai.tool.call.arguments"] = json_dumps(
-                redact(request.params.get("arguments") or {}, settings.redact_keys)
+                redact(request.params.get("arguments") or {}, redact_keys(mode))
             )
         elif request.params:
-            optional[SPAN_INPUT] = json_dumps(redact(request.params, settings.redact_keys))
+            optional[SPAN_INPUT] = json_dumps(redact(request.params, redact_keys(mode)))
     attributes.update({k: v for k, v in optional.items() if v})
     return attributes
 
@@ -154,11 +156,11 @@ class ServerSpan:
 
     def __init__(
         self,
-        settings: McpServerSettings,
+        mode: Mode,
         request: McpRequest,
         suppress_native: Callable[[], AbstractContextManager[Any]],
     ) -> None:
-        self.settings: McpServerSettings = settings
+        self.mode: Mode = mode
         self.request: McpRequest = request
         # turns the framework's own spans off while the handler runs (FastMCP)
         self.suppress_native: Callable[[], AbstractContextManager[Any]] = suppress_native
@@ -169,7 +171,7 @@ class ServerSpan:
     def start(
         cls,
         to_wrap: WrappedFunctionSpec,
-        settings: McpServerSettings,
+        mode: Mode,
         request: McpRequest,
         context_text: str | None = None,
         suppress_native: Callable[[], AbstractContextManager[Any]] = nullcontext,
@@ -177,7 +179,7 @@ class ServerSpan:
         # With the mode off the hooks skip requests under OTel's
         # suppress-instrumentation flag; observability mode's root spans ignore
         # it (an in-process caller's flag is not the server's).
-        server_span = cls(settings, request, suppress_native)
+        server_span = cls(mode, request, suppress_native)
         if Laminar.is_initialized():
             dont_throw(server_span._start)(to_wrap, context_text)
         return server_span
@@ -188,7 +190,7 @@ class ServerSpan:
         with get_tracer_with_context() as (tracer, current):
             links: list[Link] | None = None
             trace_id: int | None = None
-            if self.settings.turns is None:
+            if self.mode is None:
                 # the client's span when it sent one; the server handles each
                 # request in a task of its own, so `_meta` is the only carrier
                 parent = extract_trace_context(request.meta, current) or current
@@ -203,7 +205,7 @@ class ServerSpan:
                     name,
                     context=parent,
                     kind=SpanKind.SERVER,
-                    attributes=_start_attributes(self.settings, request, context_text),
+                    attributes=_start_attributes(self.mode, request, context_text),
                     links=links,
                 )
         stamp_instrumentation_scope(span, to_wrap)
@@ -213,12 +215,14 @@ class ServerSpan:
         # turn id > session turn tracker > client traceparent > random. A
         # traceparent only starts a session's turn, never splits it:
         # OTel-instrumented clients send a fresh one per call.
-        turns = self.settings.turns
+        assert self.mode is not None
         session_id = self.request.session_id
         turn_id = _string(self.request.ai_invocation.get("turnId"))
         trace_id = turn_trace_id(session_id, turn_id) if turn_id is not None else None
-        if turns is not None and session_id is not None:
-            trace_id = turns.begin(session_id, trace_id, remote_trace_id)
+        if session_id is not None:
+            trace_id = TURNS.begin(
+                session_id, self.mode.turn_gap_seconds, trace_id, remote_trace_id
+            )
             self._tracked_session = session_id
         elif trace_id is None:
             trace_id = remote_trace_id
@@ -265,9 +269,9 @@ class ServerSpan:
             return
         # as it goes on the wire (1.x wraps results in a `RootModel`)
         result = dump(getattr(result, "root", result))
-        payloads = self.settings.payloads()
-        if payloads:
-            recorded = json_dumps(redact(result, self.settings.redact_keys))
+        recording = payloads(self.mode)
+        if recording:
+            recorded = json_dumps(redact(result, redact_keys(self.mode)))
             key = "gen_ai.tool.call.result" if self.request.method == TOOLS_CALL else SPAN_OUTPUT
             span.set_attribute(key, recorded)
         if self.request.method == TOOLS_CALL and is_tool_error(result):
@@ -275,7 +279,7 @@ class ServerSpan:
             error_type = (
                 INVALID_PARAMS if text and _INVALID_PARAMS_TEXT.search(text) else TOOL_ERROR
             )
-            self._record_failure(error_type, (text if payloads else None) or TOOL_ERROR_MESSAGE)
+            self._record_failure(error_type, (text if recording else None) or TOOL_ERROR_MESSAGE)
 
     @dont_throw
     def record_exception(self, error: BaseException) -> None:
@@ -290,14 +294,14 @@ class ServerSpan:
             # gets -32602 "Invalid request parameters"
             self._record_error(INVALID_PARAMS_CODE, str(error), error)
         else:
-            message = str(error) if self.settings.payloads() else None
+            message = str(error) if payloads(self.mode) else None
             self._record_failure(type(error).__name__, message or type(error).__name__, error)
 
     def _record_error(self, code: Any, message: Any, error: Exception | None = None) -> None:
         if self.span is None:
             return
         set_status_code(self.span, code)
-        text = message if isinstance(message, str) and self.settings.payloads() else None
+        text = message if isinstance(message, str) and payloads(self.mode) else None
         self._record_failure(str(code), text or f"JSON-RPC error {code}", error)
 
     def _record_failure(
@@ -306,13 +310,13 @@ class ServerSpan:
         if self.span is None:
             return
         # without payloads, never the raised exception (its text may be input)
-        exception = error if error is not None and self.settings.payloads() else Exception(message)
+        exception = error if error is not None and payloads(self.mode) else Exception(message)
         record_error(self.span, exception, error_type)
 
     @dont_throw
     def end(self) -> None:
-        if self._tracked_session is not None and self.settings.turns is not None:
-            self.settings.turns.end(self._tracked_session)
+        if self._tracked_session is not None:
+            TURNS.end(self._tracked_session)
             self._tracked_session = None
         if self.span is not None:
             self.span.end()

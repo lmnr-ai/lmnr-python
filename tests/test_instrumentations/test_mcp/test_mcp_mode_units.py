@@ -16,10 +16,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.redaction import (
     normalize_keys,
     redact,
 )
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.settings import (
-    OFF,
-    current_settings,
-)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.settings import redact_keys
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.turns import (
     TurnTracker,
     turn_trace_id,
@@ -31,6 +28,7 @@ from lmnr.opentelemetry_lib.tracing.id_generator import (
 )
 from lmnr.opentelemetry_lib.tracing.mcp_options import (
     ResolvedMcpOptions,
+    get_mcp_options,
     reset_mcp_options,
     resolve_mcp_options,
     set_mcp_options,
@@ -97,20 +95,15 @@ def test_turn_gap_is_clamped(caplog: pytest.LogCaptureFixture):
     assert sum("turn_gap_seconds" in r.getMessage() for r in caplog.records) == 2
 
 
-def test_settings_follow_initialize():
+def test_initialize_sets_the_mode():
     try:
-        assert current_settings() is OFF
         set_mcp_options({"turn_gap_seconds": 7, "redact_keys": ["Customer-Id"]})
-        settings = current_settings()
-        assert settings is current_settings()
-        assert settings.turns is not None and settings.turns.turn_gap_seconds == 7
-        assert settings.redact_keys == frozenset({"customerid"})
-        # a re-initialize starts with fresh turns
-        set_mcp_options(True)
-        assert current_settings() is not settings
+        mode = get_mcp_options()
+        assert mode is not None and mode.turn_gap_seconds == 7
+        assert redact_keys(mode) == frozenset({"customerid"})
     finally:
         reset_mcp_options()
-    assert current_settings() is OFF
+    assert get_mcp_options() is None
 
 
 @pytest.mark.parametrize("key", SECRET)
@@ -158,43 +151,43 @@ def test_turn_trace_id_is_deterministic():
 
 def test_turn_tracker_gap_and_in_flight():
     now = [0.0]
-    tracker = TurnTracker(20, clock=lambda: now[0])
-    first = tracker.begin("s")
+    tracker = TurnTracker(clock=lambda: now[0])
+    first = tracker.begin("s", 20)
     tracker.end("s")
     now[0] = 20
-    assert tracker.begin("s") == first  # at most `gap` after the last activity
+    assert tracker.begin("s", 20) == first  # at most `gap` after the last activity
     # a call still in flight keeps the turn open however long it runs
     now[0] = 100
-    assert tracker.begin("s") == first
+    assert tracker.begin("s", 20) == first
     tracker.end("s")
     tracker.end("s")
     now[0] = 120
-    assert tracker.begin("s") == first  # the end at 100 was activity
+    assert tracker.begin("s", 20) == first  # the end at 100 was activity
     tracker.end("s")
     now[0] = 140.5
-    second = tracker.begin("s")
+    second = tracker.begin("s", 20)
     assert second != first
     tracker.end("s")
     # a new turn may be seeded (client traceparent); a current one is kept
     now[0] = 200
-    assert tracker.begin("s", None, 0x55) == 0x55
-    assert tracker.begin("s", None, 0x66) == 0x55
+    assert tracker.begin("s", 20, None, 0x55) == 0x55
+    assert tracker.begin("s", 20, None, 0x66) == 0x55
     # an explicit (turn id) trace becomes the session's turn
-    assert tracker.begin("s", 0xABC) == 0xABC
-    assert tracker.begin("s") == 0xABC
+    assert tracker.begin("s", 20, 0xABC) == 0xABC
+    assert tracker.begin("s", 20) == 0xABC
 
 
 def test_turn_tracker_is_capped():
     now = [0.0]
-    tracker = TurnTracker(20, max_sessions=3, clock=lambda: now[0])
+    tracker = TurnTracker(max_sessions=3, clock=lambda: now[0])
     for i in range(3):
-        _ = tracker.begin(f"s{i}")
+        _ = tracker.begin(f"s{i}", 20)
         tracker.end(f"s{i}")
     now[0] = 5
-    _ = tracker.begin("busy")  # evicts the oldest idle one
+    _ = tracker.begin("busy", 20)  # evicts the oldest idle one
     assert len(tracker) == 3
     now[0] = 100
-    _ = tracker.begin("late")  # idle past the gap: evicted lazily
+    _ = tracker.begin("late", 20)  # idle past the gap: evicted lazily
     assert len(tracker) <= 3
 
 

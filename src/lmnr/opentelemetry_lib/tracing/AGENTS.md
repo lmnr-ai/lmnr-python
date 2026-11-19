@@ -18,7 +18,7 @@
 
 ## MCP observability option (`mcp_options.py`, leaf)
 
-- `Laminar.initialize(mcp=True | McpOptions)` resolves into `ResolvedMcpOptions` here (`context`, `record_payloads`, `redact_keys`, `turn_gap_seconds`: default 20, clamped to 25 because Signals analyse a trace after 30 s of quiet; invalid values warn and use the default). `shutdown` resets it. Same pattern as `instrument_options`: the MCP instrumentation reads it per request (`instrumentation/mcp/settings.py::current_settings`), never at instrument time. The TS SDK has the same `mcp` option (`turnGapMs` there).
+- `Laminar.initialize(mcp=True | McpOptions)` resolves into `ResolvedMcpOptions` here (`context`, `record_payloads`, `redact_keys`, `turn_gap_seconds`: default 20, clamped to 25 because Signals analyse a trace after 30 s of quiet; invalid values warn and use the default). `shutdown` resets it. Same pattern as `instrument_options`: the MCP instrumentation reads it per request (`get_mcp_options()` in the `v1.py` / `v2.py` hooks), never at instrument time. The TS SDK has the same `mcp` option (`turnGapMs` there).
 
 ## Default instrument set
 

@@ -7,13 +7,15 @@ that declares its own `context` is left alone.
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Awaitable, Mapping
 from typing import Any, cast
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.settings import (
     TOOLS_CALL,
     McpRequest,
-    McpServerSettings,
+    Mode,
+    context_field,
 )
 from lmnr.sdk.log import get_default_logger
 
@@ -27,6 +29,12 @@ CONTEXT_DESCRIPTION = (
 )
 MAX_CONTEXT_CHARS = 1000
 
+# Tool names seen in `tools/list` that declare their own `context`, across the
+# process (another server copy may serve the call).
+_own_context_tools: set[str] = set()
+_warned_tools: set[str] = set()
+_lock = threading.Lock()
+
 
 def trimmed_context(value: Any) -> str | None:
     if not isinstance(value, str):
@@ -35,9 +43,7 @@ def trimmed_context(value: Any) -> str | None:
     return value[:MAX_CONTEXT_CHARS] or None
 
 
-def _schema_with_context(
-    settings: McpServerSettings, tool_name: str, schema: Any
-) -> Mapping[str, Any] | None:
+def _schema_with_context(tool_name: str, schema: Any) -> Mapping[str, Any] | None:
     """`schema` plus the optional `context` property, or None to leave it alone.
 
     A tool that already declares `context` keeps its schema untouched and is
@@ -52,13 +58,13 @@ def _schema_with_context(
         return None
     properties = cast(Mapping[str, Any], properties or {})
     own = CONTEXT_ARGUMENT in properties
-    with settings.lock:
+    with _lock:
         if own:
-            settings.own_context_tools.add(tool_name)
-            warn = tool_name not in settings.warned_tools
-            settings.warned_tools.add(tool_name)
+            _own_context_tools.add(tool_name)
+            warn = tool_name not in _warned_tools
+            _warned_tools.add(tool_name)
         else:
-            settings.own_context_tools.discard(tool_name)
+            _own_context_tools.discard(tool_name)
             warn = False
     if warn:
         logger.warning(
@@ -77,13 +83,13 @@ def _schema_with_context(
     }
 
 
-def _tool_with_context(settings: McpServerSettings, tool: Any) -> Any:
+def _tool_with_context(tool: Any) -> Any:
     if isinstance(tool, Mapping):
         tool_dict = cast(Mapping[str, Any], tool)
         name = tool_dict.get("name")
         if not isinstance(name, str):
             return tool_dict
-        schema = _schema_with_context(settings, name, tool_dict.get("inputSchema"))
+        schema = _schema_with_context(name, tool_dict.get("inputSchema"))
         return tool_dict if schema is None else {**tool_dict, "inputSchema": schema}
     model: Any = tool
     name = getattr(model, "name", None)
@@ -91,30 +97,30 @@ def _tool_with_context(settings: McpServerSettings, tool: Any) -> Any:
     attr = "input_schema" if "input_schema" in fields else "inputSchema"
     if not isinstance(name, str) or attr not in fields:
         return model
-    schema = _schema_with_context(settings, name, getattr(model, attr, None))
+    schema = _schema_with_context(name, getattr(model, attr, None))
     return model if schema is None else model.model_copy(update={attr: dict(schema)})
 
 
-def tools_with_context(settings: McpServerSettings, result: Any) -> Any:
+def tools_with_context(mode: Mode, result: Any) -> Any:
     """A copy of a `tools/list` result whose tools advertise `context`.
 
     Handles wire dicts (mcp 2.x middleware), `ListToolsResult` models and
     1.x's `ServerResult` root model. Returns `result` itself when the field is
     off or the shape is unknown. Never raises.
     """
-    if not settings.context_field():
+    if not context_field(mode):
         return result
     try:
-        return _tools_with_context(settings, result)
+        return _tools_with_context(result)
     except Exception:
         logger.debug("Failed to add `context` to the MCP tools list", exc_info=True)
         return result
 
 
-def _tools_with_context(settings: McpServerSettings, result: Any) -> Any:
+def _tools_with_context(result: Any) -> Any:
     root = getattr(result, "root", None)
     if root is not None and hasattr(result, "model_dump"):
-        new_root = _tools_with_context(settings, root)
+        new_root = _tools_with_context(root)
         return result if new_root is root else type(result)(new_root)
     if isinstance(result, Mapping):
         result_dict = cast(Mapping[str, Any], result)
@@ -123,13 +129,13 @@ def _tools_with_context(settings: McpServerSettings, result: Any) -> Any:
             return result
         return {
             **result_dict,
-            "tools": [_tool_with_context(settings, t) for t in cast(list[Any], tools)],
+            "tools": [_tool_with_context(t) for t in cast(list[Any], tools)],
         }
     tools = getattr(result, "tools", None)
     if not isinstance(tools, list) or not hasattr(result, "model_copy"):
         return result
     return result.model_copy(
-        update={"tools": [_tool_with_context(settings, t) for t in cast(list[Any], tools)]}
+        update={"tools": [_tool_with_context(t) for t in cast(list[Any], tools)]}
     )
 
 
@@ -147,7 +153,7 @@ async def _registered_schema(server: Any, tool_name: str) -> Any:
     return None
 
 
-async def _declares_own_context(settings: McpServerSettings, server: Any, tool_name: str) -> bool:
+async def _declares_own_context(server: Any, tool_name: str) -> bool:
     """Whether the tool's real schema has a `context` property.
 
     The server's own registry wins (another server copy may have served
@@ -161,21 +167,21 @@ async def _declares_own_context(settings: McpServerSettings, server: Any, tool_n
     if isinstance(schema, Mapping):
         properties = cast(Mapping[str, Any], schema).get("properties")
         return isinstance(properties, Mapping) and CONTEXT_ARGUMENT in properties
-    with settings.lock:
-        return tool_name in settings.own_context_tools
+    with _lock:
+        return tool_name in _own_context_tools
 
 
 async def split_context(
-    settings: McpServerSettings, request: McpRequest, server: Any
+    mode: Mode, request: McpRequest, server: Any
 ) -> tuple[dict[str, Any] | None, str | None]:
     """(arguments for the handler, or None to keep them; the `context` text). Never raises."""
-    if request.method != TOOLS_CALL or not settings.context_field():
+    if request.method != TOOLS_CALL or not context_field(mode):
         return None, None
     arguments: Any = request.params.get("arguments")
     name = request.target
     if not isinstance(arguments, Mapping) or CONTEXT_ARGUMENT not in arguments or name is None:
         return None, None
-    if await _declares_own_context(settings, server, name):
+    if await _declares_own_context(server, name):
         return None, None
     arguments = cast(Mapping[str, Any], arguments)
     stripped = {k: v for k, v in arguments.items() if k != CONTEXT_ARGUMENT}
