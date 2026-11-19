@@ -1,79 +1,81 @@
 """What a server's request spans record (`McpServerSettings`) and what a request carries.
 
-`wrap_mcp_server` attaches settings to a server (`SETTINGS_ATTR`); every other
-server is recorded with `UNWRAPPED`. The server hooks in `v1.py` / `v2.py` read
-them; nothing else changes between wrapped and unwrapped servers.
+`Laminar.initialize(mcp=...)` turns MCP observability mode on for the process
+(`tracing/mcp_options.py`); `current_settings()` gives the hooks in `v1.py` /
+`v2.py` its settings, or `OFF` without it. Nothing else changes between the two.
 """
 
 from __future__ import annotations
 
 import threading
 from collections.abc import Awaitable, Callable, Mapping
-from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, field
 from typing import Any, cast
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.redaction import normalize_keys
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.turns import TurnTracker
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     should_send_prompts,
 )
+from lmnr.opentelemetry_lib.tracing.mcp_options import ResolvedMcpOptions, get_mcp_options
 
 TOOLS_CALL = "tools/call"
 PROMPTS_GET = "prompts/get"
 RESOURCES_READ = "resources/read"
 TOOLS_LIST = "tools/list"
-# what a wrapped server traces; listing, `initialize`, `ping` would mint noise traces
-WRAPPED_METHODS = frozenset({TOOLS_CALL, PROMPTS_GET, RESOURCES_READ})
+# what MCP observability mode traces; listing, `initialize`, `ping` would mint noise traces
+OBSERVED_METHODS = frozenset({TOOLS_CALL, PROMPTS_GET, RESOURCES_READ})
 
 AI_INVOCATION_META_KEY = "io.modelcontextprotocol/aiInvocation"
 OPENAI_SESSION_META_KEY = "openai/session"
-
-# on the low-level `Server` (and, on mcp 2.x, its `OpenTelemetryMiddleware`)
-SETTINGS_ATTR = "_lmnr_mcp_server_settings"
 
 # A tool's advertised input schema by name, or None when unknown.
 SchemaLookup = Callable[[str], Awaitable[Mapping[str, Any] | None]]
 
 
-def _no_suppression() -> AbstractContextManager[Any]:
-    return nullcontext()
-
-
 @dataclass(eq=False)
 class McpServerSettings:
-    # None for an unwrapped server: spans are parented on the client's
-    # `traceparent` and every request is traced. Set: root spans grouped by turn.
+    # None with the mode off: spans are parented on the client's `traceparent`
+    # and every request is traced. Set: root spans grouped by turn.
+    options: ResolvedMcpOptions | None = None
     turns: TurnTracker | None = None
-    context: bool = False
-    record_payloads: bool = True
     redact_keys: frozenset[str] = frozenset()
-    # the framework's lookup of a tool's schema; None when the server has none
-    lookup_tool_schema: SchemaLookup | None = None
-    # turns the framework's own (native) spans off for the block (FastMCP)
-    suppress_native: Callable[[], AbstractContextManager[Any]] = _no_suppression
     # tool names seen in `tools/list` that declare their own `context`
     own_context_tools: set[str] = field(default_factory=set[str])
     warned_tools: set[str] = field(default_factory=set[str])
     lock: threading.Lock = field(default_factory=threading.Lock)
 
     def traces(self, method: str) -> bool:
-        return self.turns is None or method in WRAPPED_METHODS
+        return self.options is None or method in OBSERVED_METHODS
 
     def payloads(self) -> bool:
         """Record arguments, results and context (`LMNR_TRACE_CONTENT=false` also turns it off)."""
-        return self.record_payloads and should_send_prompts()
+        return (self.options is None or self.options.record_payloads) and should_send_prompts()
 
     def context_field(self) -> bool:
         """Inject / strip the `context` argument."""
-        return self.context and self.payloads()
+        return self.options is not None and self.options.context and self.payloads()
 
 
-UNWRAPPED = McpServerSettings()
+OFF = McpServerSettings()
+_on: McpServerSettings | None = None
 
 
-def settings_of(obj: object) -> McpServerSettings | None:
-    settings = getattr(obj, SETTINGS_ATTR, None)
-    return settings if isinstance(settings, McpServerSettings) else None
+def current_settings() -> McpServerSettings:
+    """The process's settings: `OFF`, or one set per `Laminar.initialize(mcp=...)`."""
+    global _on
+    options = get_mcp_options()
+    if options is None:
+        return OFF
+    settings = _on
+    if settings is None or settings.options is not options:
+        # a re-initialize starts fresh turns
+        settings = _on = McpServerSettings(
+            options=options,
+            turns=TurnTracker(options.turn_gap_seconds),
+            redact_keys=normalize_keys(options.redact_keys),
+        )
+    return settings
 
 
 @dataclass

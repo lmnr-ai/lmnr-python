@@ -1,15 +1,15 @@
-"""`wrap_mcp_server` on mcp 2.x (`MCPServer`, low-level `Server`) and FastMCP 4.
+"""MCP observability mode (`Laminar.initialize(mcp=...)`) on mcp 2.x (`MCPServer`,
+low-level `Server`) and FastMCP 4.
 
 Client and server run in-process through the real SDKs: `Client(server)`
 (`DirectDispatcher`) and `Client(InMemoryTransport(server))` (JSON-RPC
 dispatcher). The session-wide `McpInstrumentor` is on, so every test also
-checks that a wrapped server's request gets exactly one SERVER span.
+checks that a request gets exactly one SERVER span.
 """
 
 from __future__ import annotations
 
 import json
-import logging
 from collections.abc import Callable, Iterator
 from typing import Any
 
@@ -28,28 +28,30 @@ from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import SpanKind, StatusCode
 
-from lmnr import Laminar, wrap_mcp_server
+from lmnr import Laminar, McpOptions
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp import context_field
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp import server as server_module
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.context_field import (
     CONTEXT_DESCRIPTION,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.settings import (
-    SETTINGS_ATTR,
-    McpServerSettings,
-    settings_of,
+    current_settings,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.turns import (
     TurnTracker,
     turn_trace_id,
 )
-from lmnr.sdk.mcp_server import wrap as wrap_module
 
 MARKER = "content-marker-7c1e"
 AI_INVOCATION = "io.modelcontextprotocol/aiInvocation"
 CLIENT_INFO = types.Implementation(name="claude-code", version="2.1.0")
 
 Target = Callable[[Any], Any]
+
+pytestmark = pytest.mark.usefixtures("mcp_mode")
+
+# the `mcp_mode` fixture (conftest.py)
+SetMcpMode = Callable[[bool | McpOptions | None], None]
 
 
 def _server() -> MCPServer:
@@ -169,14 +171,8 @@ def _exception_events(span: ReadableSpan) -> list[dict[str, Any]]:
     return [dict(e.attributes or {}) for e in span.events if e.name == "exception"]
 
 
-def _config(server: Any) -> McpServerSettings:
-    config = settings_of(wrap_module._low_level_server(server))
-    assert config is not None
-    return config
-
-
-def _turns(server: Any) -> TurnTracker:
-    turns = _config(server).turns
+def _turns() -> TurnTracker:
+    turns = current_settings().turns
     assert turns is not None
     return turns
 
@@ -200,7 +196,7 @@ def _text(result: Any) -> str:
 
 @pytest.mark.asyncio
 async def test_tool_call_span(span_exporter: InMemorySpanExporter, target: Target):
-    server = wrap_mcp_server(_server())
+    server = _server()
     async with Client(target(server), client_info=CLIENT_INFO) as client:
         _ = await client.list_tools()
         result = await client.call_tool("add", {"a": 2, "b": 3})
@@ -241,7 +237,7 @@ async def test_tool_call_span(span_exporter: InMemorySpanExporter, target: Targe
 
 @pytest.mark.asyncio
 async def test_legacy_handshake_client_info(span_exporter: InMemorySpanExporter, target: Target):
-    server = wrap_mcp_server(_server())
+    server = _server()
     async with Client(target(server), client_info=CLIENT_INFO, mode="legacy") as client:
         _ = await client.call_tool("add", {"a": 1, "b": 1})
 
@@ -257,11 +253,11 @@ async def test_legacy_handshake_client_info(span_exporter: InMemorySpanExporter,
 async def test_context_injected_into_tools_list(
     span_exporter: InMemorySpanExporter, target: Target, caplog: pytest.LogCaptureFixture
 ):
-    unwrapped = await _server().list_tools()
+    registered = await _server().list_tools()
     # the package logger above it doesn't propagate to root, so attach directly
     context_field.logger.addHandler(caplog.handler)
     try:
-        server = wrap_mcp_server(_server())
+        server = _server()
         async with Client(target(server)) as client:
             tools = {t.name: t for t in (await client.list_tools()).tools}
             _ = await client.list_tools(cache_mode="refresh")
@@ -276,12 +272,12 @@ async def test_context_injected_into_tools_list(
         }
         assert "context" not in schema.get("required", [])
         # everything else is as the server declared it
-        original = next(t for t in unwrapped if t.name == name).input_schema
+        original = next(t for t in registered if t.name == name).input_schema
         assert {k: v for k, v in schema["properties"].items() if k != "context"} == original[
             "properties"
         ]
     # the tool's own `context` is left alone, with one warning naming it
-    original_note = next(t for t in unwrapped if t.name == "note").input_schema
+    original_note = next(t for t in registered if t.name == "note").input_schema
     assert tools["note"].input_schema == original_note
     warnings = [r for r in caplog.records if "'note'" in r.getMessage()]
     assert len(warnings) == 1
@@ -295,7 +291,7 @@ async def test_context_stripped_before_validation_and_recorded(
     span_exporter: InMemorySpanExporter, target: Target
 ):
     received: list[dict[str, Any]] = []
-    server = wrap_mcp_server(_strict_lowlevel(received))
+    server = _strict_lowlevel(received)
     goal = "  Find the onboarding doc for a new hire  "
     async with Client(target(server)) as client:
         listed = (await client.list_tools()).tools[0].input_schema
@@ -317,7 +313,7 @@ async def test_context_stripped_before_validation_and_recorded(
 @pytest.mark.asyncio
 async def test_call_without_context(span_exporter: InMemorySpanExporter, target: Target):
     received: list[dict[str, Any]] = []
-    server = wrap_mcp_server(_strict_lowlevel(received))
+    server = _strict_lowlevel(received)
     async with Client(target(server)) as client:
         result = await client.call_tool("search", {"query": "x"})
     assert result.is_error is False
@@ -328,7 +324,7 @@ async def test_call_without_context(span_exporter: InMemorySpanExporter, target:
 
 @pytest.mark.asyncio
 async def test_context_is_capped(span_exporter: InMemorySpanExporter, target: Target):
-    server = wrap_mcp_server(_strict_lowlevel([]))
+    server = _strict_lowlevel([])
     async with Client(target(server)) as client:
         _ = await client.call_tool("search", {"query": "x", "context": "y" * 5000})
     attrs = _attrs(_one_server_span(span_exporter.get_finished_spans(), "tools/call search"))
@@ -337,7 +333,7 @@ async def test_context_is_capped(span_exporter: InMemorySpanExporter, target: Ta
 
 @pytest.mark.asyncio
 async def test_user_intent_fallback(span_exporter: InMemorySpanExporter, target: Target):
-    server = wrap_mcp_server(_server())
+    server = _server()
     async with Client(target(server)) as client:
         _ = await client.call_tool(
             "add", {"a": 1, "b": 2}, meta=_meta({AI_INVOCATION: {"userIntent": "plan a budget"}})
@@ -348,7 +344,7 @@ async def test_user_intent_fallback(span_exporter: InMemorySpanExporter, target:
 
 @pytest.mark.asyncio
 async def test_tool_with_own_context_untouched(span_exporter: InMemorySpanExporter, target: Target):
-    server = wrap_mcp_server(_server())
+    server = _server()
     # no `tools/list` first: the framework's schema lookup decides
     async with Client(target(server)) as client:
         result = await client.call_tool("note", {"context": "mine", "text": "t"})
@@ -359,9 +355,12 @@ async def test_tool_with_own_context_untouched(span_exporter: InMemorySpanExport
 
 
 @pytest.mark.asyncio
-async def test_context_off(span_exporter: InMemorySpanExporter, target: Target):
+async def test_context_off(
+    span_exporter: InMemorySpanExporter, target: Target, mcp_mode: SetMcpMode
+):
     received: list[dict[str, Any]] = []
-    server = wrap_mcp_server(_strict_lowlevel(received), context=False)
+    mcp_mode({"context": False})
+    server = _strict_lowlevel(received)
     async with Client(target(server)) as client:
         listed = (await client.list_tools()).tools[0].input_schema
         result = await client.call_tool("search", {"query": "x", "context": "goal"})
@@ -375,7 +374,7 @@ async def test_context_off(span_exporter: InMemorySpanExporter, target: Target):
 async def test_unknown_tool_and_invalid_arguments(
     span_exporter: InMemorySpanExporter, target: Target
 ):
-    server = wrap_mcp_server(_server())
+    server = _server()
     async with Client(target(server)) as client:
         unknown = await client.call_tool("nope", {})
         invalid = await client.call_tool("add", {"a": "x"})
@@ -394,7 +393,7 @@ async def test_unknown_tool_and_invalid_arguments(
 
 @pytest.mark.asyncio
 async def test_tool_error_result(span_exporter: InMemorySpanExporter, target: Target):
-    server = wrap_mcp_server(_server())
+    server = _server()
     async with Client(target(server)) as client:
         result = await client.call_tool("fail", {"reason": "r"})
     assert result.is_error is True
@@ -410,7 +409,7 @@ async def test_tool_error_result(span_exporter: InMemorySpanExporter, target: Ta
 
 @pytest.mark.asyncio
 async def test_raising_handler(span_exporter: InMemorySpanExporter, target: Target):
-    server = wrap_mcp_server(_strict_lowlevel([]))
+    server = _strict_lowlevel([])
     async with Client(target(server)) as client:
         with pytest.raises(MCPError):
             _ = await client.call_tool("explode", {})
@@ -426,7 +425,7 @@ async def test_raising_handler(span_exporter: InMemorySpanExporter, target: Targ
 @pytest.mark.asyncio
 async def test_json_rpc_error(span_exporter: InMemorySpanExporter, target: Target):
     # no prompts handler: "Method not found"
-    server = wrap_mcp_server(_strict_lowlevel([]))
+    server = _strict_lowlevel([])
     async with Client(target(server), mode="legacy") as client:
         with pytest.raises(MCPError):
             _ = await client.session.send_request(
@@ -445,7 +444,7 @@ async def test_json_rpc_error(span_exporter: InMemorySpanExporter, target: Targe
 
 @pytest.mark.asyncio
 async def test_prompt_and_resource_spans(span_exporter: InMemorySpanExporter, target: Target):
-    server = wrap_mcp_server(_server())
+    server = _server()
     async with Client(target(server)) as client:
         _ = await client.get_prompt("summarize", {"topic": "otel"})
         _ = await client.read_resource("docs://intro")
@@ -469,8 +468,9 @@ async def test_prompt_and_resource_spans(span_exporter: InMemorySpanExporter, ta
 
 
 @pytest.mark.asyncio
-async def test_redaction(span_exporter: InMemorySpanExporter, target: Target):
-    server = wrap_mcp_server(_server(), redact_keys=["User"])
+async def test_redaction(span_exporter: InMemorySpanExporter, target: Target, mcp_mode: SetMcpMode):
+    mcp_mode({"redact_keys": ["User"]})
+    server = _server()
     async with Client(target(server)) as client:
         result = await client.call_tool("login", {"user": "ann", "password": MARKER})
     # the handler result is unchanged
@@ -490,8 +490,11 @@ async def test_redaction(span_exporter: InMemorySpanExporter, target: Target):
 
 
 @pytest.mark.asyncio
-async def test_record_payloads_off(span_exporter: InMemorySpanExporter, target: Target):
-    server = wrap_mcp_server(_server(), record_payloads=False)
+async def test_record_payloads_off(
+    span_exporter: InMemorySpanExporter, target: Target, mcp_mode: SetMcpMode
+):
+    mcp_mode({"record_payloads": False})
+    server = _server()
     async with Client(target(server)) as client:
         listed = {t.name: t for t in (await client.list_tools()).tools}
         _ = await client.call_tool(
@@ -531,8 +534,11 @@ async def test_record_payloads_off(span_exporter: InMemorySpanExporter, target: 
 
 
 @pytest.mark.asyncio
-async def test_payloads_off_raising_handler(span_exporter: InMemorySpanExporter, target: Target):
-    server = wrap_mcp_server(_strict_lowlevel([]), record_payloads=False)
+async def test_payloads_off_raising_handler(
+    span_exporter: InMemorySpanExporter, target: Target, mcp_mode: SetMcpMode
+):
+    mcp_mode({"record_payloads": False})
+    server = _strict_lowlevel([])
     async with Client(target(server)) as client:
         with pytest.raises(MCPError):
             _ = await client.call_tool("explode", {})
@@ -545,9 +551,9 @@ async def test_payloads_off_raising_handler(span_exporter: InMemorySpanExporter,
 
 @pytest.mark.asyncio
 async def test_session_turns(span_exporter: InMemorySpanExporter, no_client_spans: None):
-    server = wrap_mcp_server(_server())
+    server = _server()
     now = [1000.0]
-    _turns(server)._clock = lambda: now[0]
+    _turns()._clock = lambda: now[0]
     session = _meta({"openai/session": "chat-1"})
     async with Client(server) as client:
         _ = await client.call_tool("add", {"a": 1, "b": 1}, meta=session)
@@ -577,7 +583,7 @@ async def test_session_turns(span_exporter: InMemorySpanExporter, no_client_span
 
 @pytest.mark.asyncio
 async def test_streamable_http_session(span_exporter: InMemorySpanExporter):
-    server = wrap_mcp_server(_server())
+    server = _server()
     # the host must pass the transport's DNS-rebinding check
     url = "http://127.0.0.1:8000/mcp"
     app = server.streamable_http_app(json_response=True)
@@ -615,7 +621,7 @@ async def test_streamable_http_session(span_exporter: InMemorySpanExporter):
 
 @pytest.mark.asyncio
 async def test_turn_id(span_exporter: InMemorySpanExporter, no_client_spans: None):
-    server = wrap_mcp_server(_server())
+    server = _server()
     meta = _meta({"openai/session": "s-1", AI_INVOCATION: {"turnId": "turn-42"}})
     async with Client(server) as client:
         _ = await client.call_tool("add", {"a": 1, "b": 1}, meta=meta)
@@ -655,9 +661,9 @@ async def test_session_turn_beats_traceparent(
 ):
     # an OTel-instrumented client sends a fresh `traceparent` (new trace) per call
     remotes = [(0x1000 + i, 0x2000 + i) for i in range(3)]
-    server = wrap_mcp_server(_server())
+    server = _server()
     now = [0.0]
-    _turns(server)._clock = lambda: now[0]
+    _turns()._clock = lambda: now[0]
     async with Client(server) as client:
         for i, (trace_id, span_id) in enumerate(remotes[:2]):
             meta = {"openai/session": "chat-tp", "traceparent": _traceparent(trace_id, span_id)}
@@ -688,7 +694,7 @@ async def test_session_turn_beats_traceparent(
 async def test_turn_id_beats_session_and_traceparent(
     span_exporter: InMemorySpanExporter, no_client_spans: None
 ):
-    server = wrap_mcp_server(_server())
+    server = _server()
     async with Client(server) as client:
         meta = {
             "openai/session": "s-9",
@@ -708,7 +714,7 @@ async def test_traceparent_is_linked_not_parented(
     remote_trace_id = 0x0AF7651916CD43DD8448EB211C80319C
     remote_span_id = 0xB7AD6B7169203331
     traceparent = f"00-{remote_trace_id:032x}-{remote_span_id:016x}-01"
-    server = wrap_mcp_server(_server())
+    server = _server()
     async with Client(server) as client:
         request = types.CallToolRequest(
             params=types.CallToolRequestParams(
@@ -728,7 +734,7 @@ async def test_traceparent_is_linked_not_parented(
 @pytest.mark.asyncio
 async def test_client_span_trace_is_reused(span_exporter: InMemorySpanExporter, target: Target):
     # with the instrumentor on, the client's span rides in `_meta.traceparent`
-    server = wrap_mcp_server(_server())
+    server = _server()
     async with Client(server) as client:
         _ = await client.call_tool("add", {"a": 1, "b": 2})
 
@@ -748,7 +754,7 @@ async def test_unforceable_provider_degrades_to_random(
     no_client_spans: None,
 ):
     monkeypatch.setattr(server_module, "can_force_trace_id", _never)
-    server = wrap_mcp_server(_server())
+    server = _server()
     meta = _meta({AI_INVOCATION: {"turnId": "turn-1"}})
     async with Client(server) as client:
         _ = await client.call_tool("add", {"a": 1, "b": 1}, meta=meta)
@@ -757,40 +763,16 @@ async def test_unforceable_provider_degrades_to_random(
     assert span.parent is None
 
 
-def test_turn_gap_is_clamped(caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(wrap_module.logger, "propagate", True)
-    with caplog.at_level(logging.WARNING):
-        server = wrap_mcp_server(_server(), turn_gap_seconds=60)
-    assert _turns(server).turn_gap_seconds == 25
-    assert any("turn_gap_seconds" in r.getMessage() for r in caplog.records)
-    assert _turns(wrap_mcp_server(_server(), turn_gap_seconds=5)).turn_gap_seconds == 5
-    assert _turns(wrap_mcp_server(_server())).turn_gap_seconds == 20
-
-
-def test_wrapping_twice_is_a_no_op():
-    server = _server()
-    assert wrap_mcp_server(server) is server
-    config = _config(server)
-    assert wrap_mcp_server(server) is server
-    assert _config(server) is config
-    # one `OpenTelemetryMiddleware`, outermost, carrying the settings
-    middleware = server._lowlevel_server.middleware
-    assert sum(type(m).__name__ == "OpenTelemetryMiddleware" for m in middleware) == 1
-    assert getattr(middleware[0], SETTINGS_ATTR) is config
-
-
-def test_unsupported_object_is_returned_unchanged():
-    thing = object()
-    assert wrap_mcp_server(thing) is thing
-
-
 @pytest.mark.asyncio
-async def test_results_unchanged(span_exporter: InMemorySpanExporter, target: Target):
+async def test_results_unchanged(
+    span_exporter: InMemorySpanExporter, target: Target, mcp_mode: SetMcpMode
+):
+    async with Client(target(_server())) as client:
+        observed = await client.call_tool("login", {"user": "u", "password": "p"})
+    mcp_mode(None)
     async with Client(target(_server())) as client:
         plain = await client.call_tool("login", {"user": "u", "password": "p"})
-    async with Client(target(wrap_mcp_server(_server()))) as client:
-        wrapped = await client.call_tool("login", {"user": "u", "password": "p"})
-    assert wrapped.model_dump() == plain.model_dump()
+    assert observed.model_dump() == plain.model_dump()
 
 
 @pytest.mark.asyncio
@@ -799,7 +781,7 @@ async def test_not_initialized(
 ):
     monkeypatch.setattr(Laminar, "is_initialized", staticmethod(_not_initialized))
     received: list[dict[str, Any]] = []
-    server = wrap_mcp_server(_strict_lowlevel(received))
+    server = _strict_lowlevel(received)
     async with Client(target(server)) as client:
         result = await client.call_tool("search", {"query": "q", "context": "goal"})
     assert result.is_error is False
@@ -843,7 +825,7 @@ def _fastmcp(cls: type[FastMCP] = FastMCP) -> FastMCP:
 
 @pytest.mark.asyncio
 async def test_fastmcp_tool_call(span_exporter: InMemorySpanExporter):
-    server = wrap_mcp_server(_fastmcp())
+    server = _fastmcp()
     async with FastMCPClient(server) as client:
         tools = {t.name: t for t in await client.list_tools()}
         # FastMCP rejects unexpected arguments: `context` must be gone first
@@ -867,7 +849,7 @@ async def test_fastmcp_tool_call(span_exporter: InMemorySpanExporter):
 
 @pytest.mark.asyncio
 async def test_fastmcp_subclass_native_spans_suppressed(span_exporter: InMemorySpanExporter):
-    server = wrap_mcp_server(_fastmcp(_FastMCPSubclass))
+    server = _fastmcp(_FastMCPSubclass)
     async with FastMCPClient(server) as client:
         result = await client.call_tool("add", {"a": 2, "b": 3})
     assert result.data == 5
@@ -879,7 +861,7 @@ async def test_fastmcp_subclass_native_spans_suppressed(span_exporter: InMemoryS
 
 @pytest.mark.asyncio
 async def test_fastmcp_errors(span_exporter: InMemorySpanExporter):
-    server = wrap_mcp_server(_fastmcp())
+    server = _fastmcp()
     async with FastMCPClient(server) as client:
         for name, arguments in (("fail", {"reason": "r"}), ("nope", {}), ("add", {"a": "x"})):
             result = await client.call_tool(name, arguments, raise_on_error=False)
@@ -893,9 +875,10 @@ async def test_fastmcp_errors(span_exporter: InMemorySpanExporter):
 
 
 @pytest.mark.asyncio
-async def test_fastmcp_unwrapped_keeps_native_spans(span_exporter: InMemorySpanExporter):
-    # wrapping one server does not silence another
-    _ = wrap_mcp_server(_fastmcp())
+async def test_fastmcp_mode_off_keeps_native_spans(
+    span_exporter: InMemorySpanExporter, mcp_mode: SetMcpMode
+):
+    mcp_mode(None)
     async with FastMCPClient(_fastmcp()) as client:
         _ = await client.call_tool("add", {"a": 1, "b": 2})
     assert _fastmcp_server_spans(span_exporter.get_finished_spans())

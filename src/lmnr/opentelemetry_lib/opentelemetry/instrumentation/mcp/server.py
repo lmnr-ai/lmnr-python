@@ -1,15 +1,14 @@
-"""The SERVER span of an MCP request: one code path for mcp 1.x and 2.x, wrapped or not.
+"""The SERVER span of an MCP request: one code path for mcp 1.x and 2.x, mode on or off.
 
-`v1.py` (`Server._handle_request`) and `v2.py` (`OpenTelemetryMiddleware.__call__`)
+`v1.py` (`Server._handle_request`) and `v2.py` (the server middleware chain)
 read an `McpRequest` off their SDK and drive a `ServerSpan` around the handler.
-What differs between servers is their `McpServerSettings`:
+What differs is the `McpServerSettings` (`Laminar.initialize(mcp=...)`):
 
-- unwrapped servers: every request, parented on the client's `_meta.traceparent`
+- off (the default): every request, parented on the client's `_meta.traceparent`
   (claude_agent nests SDK MCP tool calls under its agent span this way);
-- servers passed to `wrap_mcp_server`: `tools/call`, `prompts/get` and
-  `resources/read` only, each a ROOT span whose trace id groups one user turn
-  and which LINKS to the client's `traceparent` (the trace view drops spans
-  whose parent is missing).
+- MCP observability mode: `tools/call`, `prompts/get` and `resources/read`
+  only, each a ROOT span whose trace id groups one user turn and which LINKS to
+  the client's `traceparent` (the trace view drops spans whose parent is missing).
 
 Names, attributes, payloads and error types are the same for both.
 """
@@ -17,14 +16,13 @@ Names, attributes, payloads and error types are the same for both.
 from __future__ import annotations
 
 import re
-from collections.abc import Awaitable, Generator
-from contextlib import contextmanager
+from collections.abc import Awaitable, Callable, Generator
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from typing import Any
 
 from opentelemetry import trace
 from opentelemetry.context import Context
 from opentelemetry.trace import Link, Span, SpanKind
-from opentelemetry.trace.status import Status, StatusCode
 from opentelemetry.util.types import AttributeValue
 from pydantic import ValidationError
 
@@ -41,9 +39,14 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.settings import (
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.turns import turn_trace_id
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.utils import (
+    TOOL_ERROR,
+    dump,
+    error_code,
     extract_trace_context,
     first_text,
     is_tool_error,
+    record_error,
+    set_status_code,
     use_span,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
@@ -60,7 +63,6 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
     SPAN_OUTPUT,
     SPAN_TYPE,
 )
-from lmnr.opentelemetry_lib.tracing.context import get_event_attributes_from_context
 from lmnr.opentelemetry_lib.tracing.id_generator import can_force_trace_id, forced_trace_id
 from lmnr.opentelemetry_lib.tracing.tracer import (
     get_laminar_tracer_provider,
@@ -72,8 +74,8 @@ from lmnr.sdk.utils import json_dumps
 
 logger = get_default_logger(__name__)
 
-TOOL_ERROR = "tool_error"
-INVALID_PARAMS = "-32602"
+INVALID_PARAMS_CODE = -32602
+INVALID_PARAMS = str(INVALID_PARAMS_CODE)
 TOOL_ERROR_MESSAGE = "Tool returned an error"
 
 # How SDKs word an unknown tool or rejected arguments when they fold it into an
@@ -89,14 +91,6 @@ _warned_unforceable = False
 
 def _string(value: Any) -> str | None:
     return value if isinstance(value, str) and value else None
-
-
-def _wire(value: Any) -> Any:
-    """A result as it goes on the wire (1.x wraps results in a `RootModel`)."""
-    value = getattr(value, "root", value)
-    if hasattr(value, "model_dump") and not isinstance(value, type):
-        return value.model_dump(by_alias=True, mode="json", exclude_none=True)
-    return value
 
 
 def _forced_trace_id_supported() -> bool:
@@ -158,9 +152,16 @@ def _start_attributes(
 class ServerSpan:
     """The span of one request. One that could not start records nothing."""
 
-    def __init__(self, settings: McpServerSettings, request: McpRequest) -> None:
+    def __init__(
+        self,
+        settings: McpServerSettings,
+        request: McpRequest,
+        suppress_native: Callable[[], AbstractContextManager[Any]],
+    ) -> None:
         self.settings: McpServerSettings = settings
         self.request: McpRequest = request
+        # turns the framework's own spans off while the handler runs (FastMCP)
+        self.suppress_native: Callable[[], AbstractContextManager[Any]] = suppress_native
         self.span: Span | None = None
         self._tracked_session: str | None = None
 
@@ -170,12 +171,13 @@ class ServerSpan:
         to_wrap: WrappedFunctionSpec,
         settings: McpServerSettings,
         request: McpRequest,
-        context_text: str | None,
+        context_text: str | None = None,
+        suppress_native: Callable[[], AbstractContextManager[Any]] = nullcontext,
     ) -> ServerSpan:
-        # The hooks skip unwrapped servers under OTel's suppress-instrumentation
-        # flag; a wrapped server's root span ignores it (an in-process caller's
-        # flag is not the server's).
-        server_span = cls(settings, request)
+        # With the mode off the hooks skip requests under OTel's
+        # suppress-instrumentation flag; observability mode's root spans ignore
+        # it (an in-process caller's flag is not the server's).
+        server_span = cls(settings, request, suppress_native)
         if Laminar.is_initialized():
             dont_throw(server_span._start)(to_wrap, context_text)
         return server_span
@@ -233,7 +235,7 @@ class ServerSpan:
         # `use_span` attaches Laminar's context as the global OTel context,
         # which drops values set on the previous one (FastMCP 4's suppression
         # key), so suppress again inside
-        with use_span(self.span), self.settings.suppress_native():
+        with use_span(self.span), self.suppress_native():
             yield
 
     async def run(self, handler: Awaitable[Any], *, record_result: bool) -> Any:
@@ -259,9 +261,10 @@ class ServerSpan:
         if type(result).__name__ == "ErrorData":
             # mcp 1.x answers a failed request with one (`McpError`, or code 0
             # for any other exception a handler raised)
-            self._record_error(str(getattr(result, "code", "")), getattr(result, "message", None))
+            self._record_error(getattr(result, "code", None), getattr(result, "message", None))
             return
-        result = _wire(result)
+        # as it goes on the wire (1.x wraps results in a `RootModel`)
+        result = dump(getattr(result, "root", result))
         payloads = self.settings.payloads()
         if payloads:
             recorded = json_dumps(redact(result, self.settings.redact_keys))
@@ -278,44 +281,33 @@ class ServerSpan:
     def record_exception(self, error: BaseException) -> None:
         if self.span is None or not isinstance(error, Exception):
             return
-        code = getattr(getattr(error, "error", None), "code", None)
+        code = error_code(error)
         if isinstance(code, int):
             # `McpError` (1.x) / `MCPError` (2.x): a JSON-RPC error response
-            self._record_error(str(code), getattr(getattr(error, "error", None), "message", None))
+            self._record_error(code, getattr(getattr(error, "error", None), "message", None))
         elif isinstance(error, ValidationError):
             # mcp 2.x validates params inside the middleware chain; the client
             # gets -32602 "Invalid request parameters"
-            self._record_error(INVALID_PARAMS, str(error), error)
+            self._record_error(INVALID_PARAMS_CODE, str(error), error)
         else:
             message = str(error) if self.settings.payloads() else None
             self._record_failure(type(error).__name__, message or type(error).__name__, error)
 
-    def _record_error(self, code: str, message: Any, error: Exception | None = None) -> None:
+    def _record_error(self, code: Any, message: Any, error: Exception | None = None) -> None:
         if self.span is None:
             return
-        self.span.set_attribute("rpc.response.status_code", code)
+        set_status_code(self.span, code)
         text = message if isinstance(message, str) and self.settings.payloads() else None
-        self._record_failure(code, text or f"JSON-RPC error {code}", error)
+        self._record_failure(str(code), text or f"JSON-RPC error {code}", error)
 
     def _record_failure(
         self, error_type: str, message: str, error: Exception | None = None
     ) -> None:
-        span = self.span
-        if span is None:
+        if self.span is None:
             return
-        span.set_attribute("error.type", error_type)
-        # the `exception` event (not the status) marks the span failed in Laminar;
         # without payloads, never the raised exception (its text may be input)
         exception = error if error is not None and self.settings.payloads() else Exception(message)
-        span.record_exception(
-            exception,
-            attributes={
-                **get_event_attributes_from_context(),
-                "exception.type": error_type,
-                "exception.message": message,
-            },
-        )
-        span.set_status(Status(StatusCode.ERROR, message))
+        record_error(self.span, exception, error_type)
 
     @dont_throw
     def end(self) -> None:

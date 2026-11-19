@@ -68,6 +68,7 @@ from lmnr.opentelemetry_lib.tracing.instrument_options import (
     set_instrument_options,
 )
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
+from lmnr.opentelemetry_lib.tracing.mcp_options import reset_mcp_options, set_mcp_options
 from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
@@ -88,6 +89,7 @@ from .types import (
     LaminarSpanContext,
     LaminarSpanContextDict,
     LaminarSpanType,
+    McpOptions,
     MetadataType,
     SessionRecordingOptions,
     TraceType,
@@ -262,6 +264,7 @@ class Laminar:
         write_trajectory: bool = True,
         bridges: list[Bridge | str] | set[Bridge | str] | tuple[Bridge | str, ...] | None = None,
         instrument_options: InstrumentOptions | None = None,
+        mcp: bool | McpOptions | None = None,
     ):
         """Initialize Laminar context across the application.
         This method must be called before using any other Laminar methods or
@@ -354,6 +357,16 @@ class Laminar:
                 `LMNR_LANGGRAPH_RECORD_GRAPH=false`); this argument wins over\
                 it. Unknown instruments and options are ignored with a warning.\
                 Defaults to None.
+            mcp (bool | McpOptions | None, optional): MCP observability\
+                mode, for a process that runs an MCP server. Every\
+                `tools/call`, `prompts/get` and `resources/read` it handles\
+                becomes a root span, one trace per user turn (calls of one\
+                session at most `turn_gap_seconds` apart), linked to the\
+                client's span; tools get an optional `context` argument for\
+                the user's goal. `True` uses the defaults; a dict sets\
+                `context`, `record_payloads`, `redact_keys` and\
+                `turn_gap_seconds`. Off (the default), MCP server spans are\
+                children of the calling client's span. Defaults to None.
 
         Environment:
             LMNR_TRAJECTORY_PATH: write the run as an lmnr-atif trajectory\
@@ -371,6 +384,7 @@ class Laminar:
             return
 
         set_instrument_options(instrument_options)
+        set_mcp_options(mcp)
         enabled_bridges = resolve_bridges(bridges)
 
         cls.__project_api_key = project_api_key or from_env("LMNR_PROJECT_API_KEY")
@@ -1919,6 +1933,7 @@ class Laminar:
             set_inherit_global_context(False)
             shutdown_tracing()
             reset_instrument_options()
+            reset_mcp_options()
             cls.__initialized = False
             # Clear the one-shot debug-runtime state so a subsequent
             # initialize() re-reads LMNR_DEBUG* instead of resurrecting the

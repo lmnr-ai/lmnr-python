@@ -26,10 +26,8 @@ from dataclasses import dataclass
 from opentelemetry.sdk.trace.id_generator import RandomIdGenerator
 from opentelemetry.trace import INVALID_TRACE_ID
 
-DEFAULT_TURN_GAP_SECONDS = 20.0
-# Signals wait until a trace has been quiet for 30 s before analysing it, so a
-# turn gap at or above that would let a Signal run mid-turn.
-MAX_TURN_GAP_SECONDS = 25.0
+from lmnr.opentelemetry_lib.tracing.mcp_options import DEFAULT_TURN_GAP_SECONDS
+
 MAX_TRACKED_SESSIONS = 10_000
 
 _ids = RandomIdGenerator()

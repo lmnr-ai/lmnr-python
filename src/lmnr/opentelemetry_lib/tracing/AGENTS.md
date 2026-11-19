@@ -13,8 +13,12 @@
 
 ## Id generator (`id_generator.py`, leaf)
 
-- Laminar's `TracerProvider` is built with `LaminarIdGenerator`: OTel's random ids, except that a root span started inside `forced_trace_id(trace_id)` (a contextvar) gets that trace id. OTel asks the generator only for spans without a valid parent, so the forced id never reaches children. `wrap_mcp_server` uses it to put the calls of one user turn in one trace while every call stays a root span (`sdk/mcp_server/AGENTS.md`). Never emulate this with a fake remote parent: the dangling parent span id makes the span invisible in the trace view.
-- A provider Laminar did not build ignores the contextvar (random ids); `can_force_trace_id(provider)` tells the two apart. In this SDK that only happens when a `LaminarSpanProcessor` is attached to the user's own provider without `Laminar.initialize`, where Laminar's instrumentations (and `wrap_mcp_server`) open no spans anyway; callers must still degrade to a random trace id, never fail.
+- Laminar's `TracerProvider` is built with `LaminarIdGenerator`: OTel's random ids, except that a root span started inside `forced_trace_id(trace_id)` (a contextvar) gets that trace id. OTel asks the generator only for spans without a valid parent, so the forced id never reaches children. MCP observability mode (`Laminar.initialize(mcp=...)`) uses it to put the calls of one user turn in one trace while every call stays a root span (`opentelemetry/instrumentation/mcp/AGENTS.md`). Never emulate this with a fake remote parent: the dangling parent span id makes the span invisible in the trace view.
+- A provider Laminar did not build ignores the contextvar (random ids); `can_force_trace_id(provider)` tells the two apart. In this SDK that only happens when a `LaminarSpanProcessor` is attached to the user's own provider without `Laminar.initialize`, where Laminar's instrumentations (MCP observability mode included) open no spans anyway; callers must still degrade to a random trace id, never fail.
+
+## MCP observability option (`mcp_options.py`, leaf)
+
+- `Laminar.initialize(mcp=True | McpOptions)` resolves into `ResolvedMcpOptions` here (`context`, `record_payloads`, `redact_keys`, `turn_gap_seconds`: default 20, clamped to 25 because Signals analyse a trace after 30 s of quiet; invalid values warn and use the default). `shutdown` resets it. Same pattern as `instrument_options`: the MCP instrumentation reads it per request (`instrumentation/mcp/settings.py::current_settings`), never at instrument time. The TS SDK has the same `mcp` option (`turnGapMs` there).
 
 ## Default instrument set
 

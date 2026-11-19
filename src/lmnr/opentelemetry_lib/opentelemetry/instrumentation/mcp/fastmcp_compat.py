@@ -1,9 +1,9 @@
-"""Turning FastMCP's own spans off for a wrapped server's requests.
+"""Turning FastMCP's own spans off in MCP observability mode.
 
 Standalone FastMCP (`fastmcp`) opens native SERVER spans of its own on the
-global tracer provider, which is Laminar's once Laminar is initialized. A
-wrapped server must produce exactly one span per request, so the wrapper runs
-every request of the server with FastMCP's spans suppressed:
+global tracer provider, which is Laminar's once Laminar is initialized. In MCP
+observability mode a request must produce exactly one span, so the server hooks
+run every request of a FastMCP server with FastMCP's spans suppressed:
 
 - FastMCP 4 (on mcp 2.x) ships `fastmcp.telemetry.suppress_fastmcp_telemetry()`,
   a scoped switch to its `propagation_only` mode.
@@ -17,9 +17,10 @@ every request of the server with FastMCP's spans suppressed:
 
 from __future__ import annotations
 
+import functools
 import importlib
 from collections.abc import Callable, Generator
-from contextlib import AbstractContextManager, contextmanager
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from contextvars import ContextVar
 from typing import Any, cast
 
@@ -44,11 +45,6 @@ class _PassThroughTracer(NoOpTracer):
 
 
 _PASS_THROUGH = _PassThroughTracer()
-
-
-def is_fastmcp_server(server: object) -> bool:
-    # the MRO, not just the class: a user's `class MyServer(FastMCP)` lives in their package
-    return any(cls.__module__.split(".")[0] == "fastmcp" for cls in type(server).__mro__)
 
 
 @contextmanager
@@ -83,15 +79,21 @@ def install_fastmcp3_suppression() -> bool:
     return True
 
 
-def native_span_suppression(server: object) -> Callable[[], AbstractContextManager[Any]] | None:
-    """The block that turns `server`'s FastMCP spans off, or None for other servers."""
-    if not is_fastmcp_server(server):
-        return None
+def native_span_suppression(server: object) -> Callable[[], AbstractContextManager[Any]]:
+    """The block that turns `server`'s FastMCP spans off (a no-op for other servers)."""
+    return _suppression_for(type(server))
+
+
+@functools.cache
+def _suppression_for(server_type: type) -> Callable[[], AbstractContextManager[Any]]:
+    # the MRO, not just the class: a user's `class MyServer(FastMCP)` lives in their package
+    if not any(cls.__module__.split(".")[0] == "fastmcp" for cls in server_type.__mro__):
+        return nullcontext
     try:
         telemetry = importlib.import_module("fastmcp.telemetry")
     except Exception:
         logger.debug("Failed to import fastmcp.telemetry", exc_info=True)
-        return None
+        return nullcontext
     suppress: Any = getattr(telemetry, "suppress_fastmcp_telemetry", None)
     if callable(suppress):
         # FastMCP 4+
@@ -102,4 +104,4 @@ def native_span_suppression(server: object) -> Callable[[], AbstractContextManag
         "Laminar could not turn off this FastMCP version's own spans; "
         + "each MCP request may show up twice."
     )
-    return None
+    return nullcontext

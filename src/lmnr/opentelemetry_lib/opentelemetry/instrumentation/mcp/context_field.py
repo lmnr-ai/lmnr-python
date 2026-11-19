@@ -1,4 +1,4 @@
-"""The optional `context` argument a wrapped server's tools advertise.
+"""The optional `context` argument tools advertise in MCP observability mode.
 
 Injected into `tools/list` results and stripped from `tools/call` arguments
 before the SDK validates them (FastMCP rejects unexpected arguments). A tool
@@ -7,7 +7,7 @@ that declares its own `context` is left alone.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Awaitable, Mapping
 from typing import Any, cast
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.settings import (
@@ -133,27 +133,40 @@ def _tools_with_context(settings: McpServerSettings, result: Any) -> Any:
     )
 
 
-async def _declares_own_context(settings: McpServerSettings, tool_name: str) -> bool:
+async def _registered_schema(server: Any, tool_name: str) -> Any:
+    """The tool's input schema from the low-level `server`'s registry, or None."""
+    # mcp 2.x `Server` (set by `MCPServer` and FastMCP 4)
+    schema_of: Any = getattr(server, "get_tool_input_schema", None)
+    if callable(schema_of):
+        schema: Any = schema_of(tool_name)
+        return await cast(Awaitable[Any], schema) if isinstance(schema, Awaitable) else schema
+    # mcp 1.x `Server`: its `tools/list` cache, refreshed from the list handler when missing
+    cached: Any = getattr(server, "_get_cached_tool_definition", None)
+    if callable(cached):
+        return getattr(await cast(Any, cached)(tool_name), "inputSchema", None)
+    return None
+
+
+async def _declares_own_context(settings: McpServerSettings, server: Any, tool_name: str) -> bool:
     """Whether the tool's real schema has a `context` property.
 
-    The framework's own registry wins (another server copy may have served
+    The server's own registry wins (another server copy may have served
     `tools/list`); without one, what this process saw in `tools/list`.
     """
-    if settings.lookup_tool_schema is not None:
-        try:
-            schema = await settings.lookup_tool_schema(tool_name)
-        except Exception:
-            logger.debug("Failed to look up the schema of MCP tool %r", tool_name, exc_info=True)
-            schema = None
-        if schema is not None:
-            properties = schema.get("properties")
-            return isinstance(properties, Mapping) and CONTEXT_ARGUMENT in properties
+    try:
+        schema = await _registered_schema(server, tool_name)
+    except Exception:
+        logger.debug("Failed to look up the schema of MCP tool %r", tool_name, exc_info=True)
+        schema = None
+    if isinstance(schema, Mapping):
+        properties = cast(Mapping[str, Any], schema).get("properties")
+        return isinstance(properties, Mapping) and CONTEXT_ARGUMENT in properties
     with settings.lock:
         return tool_name in settings.own_context_tools
 
 
 async def split_context(
-    settings: McpServerSettings, request: McpRequest
+    settings: McpServerSettings, request: McpRequest, server: Any
 ) -> tuple[dict[str, Any] | None, str | None]:
     """(arguments for the handler, or None to keep them; the `context` text). Never raises."""
     if request.method != TOOLS_CALL or not settings.context_field():
@@ -162,7 +175,7 @@ async def split_context(
     name = request.target
     if not isinstance(arguments, Mapping) or CONTEXT_ARGUMENT not in arguments or name is None:
         return None, None
-    if await _declares_own_context(settings, name):
+    if await _declares_own_context(settings, server, name):
         return None, None
     arguments = cast(Mapping[str, Any], arguments)
     stripped = {k: v for k, v in arguments.items() if k != CONTEXT_ARGUMENT}

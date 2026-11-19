@@ -419,6 +419,23 @@ class TemporalInstrumentOptions(TypedDict, total=False):
     record_activity_output: bool
 
 
+class McpOptions(TypedDict, total=False):
+    """MCP observability mode, `Laminar.initialize(mcp=...)`. `mcp=True` takes the defaults."""
+
+    #: Add an optional `context` argument to every tool in `tools/list`, asking
+    #: the model for one sentence on the user's overall goal. Stripped before
+    #: the tool runs and recorded as `lmnr.mcp.context`. Defaults to True.
+    context: bool
+    #: Record arguments, results and `context`, with secret-looking keys
+    #: redacted. False keeps names, counts and errors only. Defaults to True.
+    record_payloads: bool
+    #: Extra key names whose values are redacted, on top of the built-in ones.
+    redact_keys: list[str]
+    #: Calls of one session at most this far apart share a trace. Defaults to
+    #: 20; at most 25 (under the 30 s Signals settle window).
+    turn_gap_seconds: float
+
+
 class InstrumentOptions(TypedDict, total=False):
     """Per-instrumentation options for `Laminar.initialize(instrument_options=...)`.
 

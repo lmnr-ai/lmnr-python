@@ -1,8 +1,9 @@
-"""`wrap_mcp_server` on mcp 1.x (`FastMCP`, low-level `Server`) and FastMCP 3.
+"""MCP observability mode (`Laminar.initialize(mcp=...)`) on mcp 1.x (`FastMCP`,
+low-level `Server`) and FastMCP 3.
 
 Client and server talk over mcp's in-memory transport. The session-wide
-`McpInstrumentor` is on, so every test also checks that a wrapped server's
-request gets exactly one SERVER span. The FastMCP 3 tests run only with
+`McpInstrumentor` is on, so every test also checks that a request gets exactly
+one SERVER span. The FastMCP 3 tests run only with
 `fastmcp` 3.x installed:
 `uv run --with mcp==1.30.0 --with fastmcp==3.4.9 pytest <this file>`.
 """
@@ -17,7 +18,7 @@ request gets exactly one SERVER span. The FastMCP 3 tests run only with
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from importlib.metadata import version
 from typing import Any
 
@@ -33,16 +34,21 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.trace import SpanKind, StatusCode
 from pydantic import AnyUrl
 
-from lmnr import Laminar, wrap_mcp_server
+from lmnr import Laminar, McpOptions
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.context_field import (
     CONTEXT_DESCRIPTION,
 )
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.settings import settings_of
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.settings import current_settings
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.turns import turn_trace_id
 
 MARKER = "content-marker-51d0"
 AI_INVOCATION = "io.modelcontextprotocol/aiInvocation"
 CLIENT_INFO = types.Implementation(name="cursor-vscode", version="1.4.0")
+
+pytestmark = pytest.mark.usefixtures("mcp_mode")
+
+# the `mcp_mode` fixture (conftest.py)
+SetMcpMode = Callable[[bool | McpOptions | None], None]
 
 
 def _fastmcp() -> FastMCP:
@@ -77,9 +83,9 @@ def _fastmcp() -> FastMCP:
     return server
 
 
-def _wrapped_lowlevel(received: list[dict[str, Any]]) -> Server:
-    """A low-level server wrapped BEFORE its handlers are registered."""
-    server: Server = wrap_mcp_server(Server("strict"))
+def _strict_lowlevel(received: list[dict[str, Any]]) -> Server:
+    """A low-level server with a strict tool schema."""
+    server: Server = Server("strict")
 
     @server.list_tools()
     async def list_tools() -> list[types.Tool]:
@@ -141,7 +147,7 @@ def _exception_events(span: ReadableSpan) -> list[dict[str, Any]]:
 
 @pytest.mark.asyncio
 async def test_tool_call_span(span_exporter: InMemorySpanExporter):
-    server = wrap_mcp_server(_fastmcp())
+    server = _fastmcp()
     async with create_connected_server_and_client_session(
         server._mcp_server, client_info=CLIENT_INFO
     ) as client:
@@ -158,7 +164,7 @@ async def test_tool_call_span(span_exporter: InMemorySpanExporter):
     assert tools["note"].inputSchema == _fastmcp()._tool_manager.get_tool("note").parameters
 
     spans = span_exporter.get_finished_spans()
-    # the instrumentor stands aside for a wrapped server: one SERVER span
+    # one SERVER span: listing is not traced
     assert [s.name for s in _server_spans(spans)] == ["tools/call add"]
     span = _one_server_span(spans, "tools/call add")
     assert span.parent is None
@@ -187,7 +193,7 @@ async def test_tool_call_span(span_exporter: InMemorySpanExporter):
 
 @pytest.mark.asyncio
 async def test_own_context_untouched(span_exporter: InMemorySpanExporter):
-    server = wrap_mcp_server(_fastmcp())
+    server = _fastmcp()
     async with create_connected_server_and_client_session(server._mcp_server) as client:
         result = await client.call_tool("note", {"context": "mine", "text": "t"})
     assert result.content[0].text == "mine|t"
@@ -198,7 +204,7 @@ async def test_own_context_untouched(span_exporter: InMemorySpanExporter):
 @pytest.mark.asyncio
 async def test_lowlevel_strict_schema(span_exporter: InMemorySpanExporter):
     received: list[dict[str, Any]] = []
-    server = _wrapped_lowlevel(received)
+    server = _strict_lowlevel(received)
     async with create_connected_server_and_client_session(server) as client:
         listed = (await client.list_tools()).tools[0].inputSchema
         # validated against the original schema (`additionalProperties: false`)
@@ -229,7 +235,7 @@ async def test_lowlevel_strict_schema(span_exporter: InMemorySpanExporter):
 
 @pytest.mark.asyncio
 async def test_errors(span_exporter: InMemorySpanExporter):
-    server = wrap_mcp_server(_fastmcp())
+    server = _fastmcp()
     async with create_connected_server_and_client_session(server._mcp_server) as client:
         fail = await client.call_tool("fail", {"reason": "r"})
         unknown = await client.call_tool("nope", {})
@@ -244,7 +250,7 @@ async def test_errors(span_exporter: InMemorySpanExporter):
 
 @pytest.mark.asyncio
 async def test_raising_and_missing_handlers(span_exporter: InMemorySpanExporter):
-    server: Server = wrap_mcp_server(Server("raw"))
+    server: Server = Server("raw")
 
     @server.get_prompt()
     async def get_prompt(name: str, arguments: dict[str, str] | None) -> types.GetPromptResult:
@@ -269,7 +275,7 @@ async def test_raising_and_missing_handlers(span_exporter: InMemorySpanExporter)
 
 @pytest.mark.asyncio
 async def test_prompt_and_resource(span_exporter: InMemorySpanExporter):
-    server = wrap_mcp_server(_fastmcp())
+    server = _fastmcp()
     async with create_connected_server_and_client_session(server._mcp_server) as client:
         _ = await client.get_prompt("summarize", {"topic": "otel"})
         _ = await client.read_resource(AnyUrl("docs://intro"))
@@ -287,8 +293,9 @@ async def test_prompt_and_resource(span_exporter: InMemorySpanExporter):
 
 
 @pytest.mark.asyncio
-async def test_record_payloads_off(span_exporter: InMemorySpanExporter):
-    server = wrap_mcp_server(_fastmcp(), record_payloads=False)
+async def test_record_payloads_off(span_exporter: InMemorySpanExporter, mcp_mode: SetMcpMode):
+    mcp_mode({"record_payloads": False})
+    server = _fastmcp()
     async with create_connected_server_and_client_session(server._mcp_server) as client:
         listed = {t.name: t for t in (await client.list_tools()).tools}
         _ = await client.call_tool("add", {"a": 1, "b": 2})
@@ -305,11 +312,11 @@ async def test_record_payloads_off(span_exporter: InMemorySpanExporter):
 
 @pytest.mark.asyncio
 async def test_turns(span_exporter: InMemorySpanExporter, no_client_spans: None):
-    server = wrap_mcp_server(_fastmcp())
+    server = _fastmcp()
     now = [0.0]
-    settings = settings_of(server._mcp_server)
-    assert settings is not None and settings.turns is not None
-    settings.turns._clock = lambda: now[0]
+    turns = current_settings().turns
+    assert turns is not None
+    turns._clock = lambda: now[0]
     session = {"openai/session": "chat-9"}
     async with create_connected_server_and_client_session(server._mcp_server) as client:
         _ = await client.call_tool("add", {"a": 1, "b": 1}, meta=session)
@@ -328,7 +335,7 @@ async def test_turns(span_exporter: InMemorySpanExporter, no_client_spans: None)
 
 @pytest.mark.asyncio
 async def test_client_traceparent_is_linked(span_exporter: InMemorySpanExporter):
-    server = wrap_mcp_server(_fastmcp())
+    server = _fastmcp()
     async with create_connected_server_and_client_session(server._mcp_server) as client:
         _ = await client.call_tool("add", {"a": 1, "b": 2})
     spans = span_exporter.get_finished_spans()
@@ -343,7 +350,7 @@ async def test_client_traceparent_is_linked(span_exporter: InMemorySpanExporter)
 @pytest.mark.asyncio
 async def test_session_turn_beats_client_traceparent(span_exporter: InMemorySpanExporter):
     # the instrumentor's client span: a fresh `traceparent` (new trace) per call
-    server = wrap_mcp_server(_fastmcp())
+    server = _fastmcp()
     session = {"openai/session": "chat-tp"}
     async with create_connected_server_and_client_session(server._mcp_server) as client:
         _ = await client.call_tool("add", {"a": 1, "b": 1}, meta=session)
@@ -360,15 +367,6 @@ async def test_session_turn_beats_client_traceparent(span_exporter: InMemorySpan
         assert server_span.parent is None
         assert client_span.context is not None
         assert server_span.links[0].context.span_id == client_span.context.span_id
-
-
-def test_wrapping_twice_is_a_no_op():
-    server = _fastmcp()
-    wrap_mcp_server(server)
-    settings = settings_of(server._mcp_server)
-    assert settings is not None
-    assert wrap_mcp_server(server) is server
-    assert settings_of(server._mcp_server) is settings
 
 
 # --- FastMCP 3 (standalone `fastmcp`, on mcp 1.x) -----------------------------------
@@ -395,7 +393,7 @@ def _fastmcp3() -> Any:
 
 @pytest.mark.asyncio
 async def test_fastmcp3(span_exporter: InMemorySpanExporter):
-    server = wrap_mcp_server(_fastmcp3())
+    server = _fastmcp3()
     from fastmcp import Client as FastMCP3Client
 
     async with FastMCP3Client(server) as client:

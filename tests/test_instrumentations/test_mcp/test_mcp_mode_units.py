@@ -1,8 +1,9 @@
-"""`wrap_mcp_server` pieces that don't need an MCP server: redaction, turns, ids."""
+"""MCP observability pieces that don't need an MCP server: options, redaction, turns, ids."""
 
 from __future__ import annotations
 
 import hashlib
+import logging
 
 import pytest
 from opentelemetry.sdk.trace import TracerProvider
@@ -15,6 +16,10 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.redaction import (
     normalize_keys,
     redact,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.settings import (
+    OFF,
+    current_settings,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.turns import (
     TurnTracker,
     turn_trace_id,
@@ -24,6 +29,13 @@ from lmnr.opentelemetry_lib.tracing.id_generator import (
     can_force_trace_id,
     forced_trace_id,
 )
+from lmnr.opentelemetry_lib.tracing.mcp_options import (
+    ResolvedMcpOptions,
+    reset_mcp_options,
+    resolve_mcp_options,
+    set_mcp_options,
+)
+from lmnr.opentelemetry_lib.tracing.mcp_options import logger as options_logger
 from lmnr.opentelemetry_lib.tracing.tracer import get_laminar_tracer_provider
 
 # shared with the TS SDK: both must agree
@@ -55,6 +67,50 @@ NOT_SECRET = [
     "path",
     "keyword",
 ]
+
+
+def test_options_resolve():
+    assert resolve_mcp_options(None) is None
+    assert resolve_mcp_options(False) is None
+    assert resolve_mcp_options(True) == ResolvedMcpOptions()
+    assert resolve_mcp_options({}) == ResolvedMcpOptions(
+        context=True, record_payloads=True, redact_keys=(), turn_gap_seconds=20
+    )
+    assert resolve_mcp_options(
+        {"context": False, "record_payloads": False, "redact_keys": ["x"], "turn_gap_seconds": 5}
+    ) == ResolvedMcpOptions(
+        context=False, record_payloads=False, redact_keys=("x",), turn_gap_seconds=5
+    )
+
+
+def test_turn_gap_is_clamped(caplog: pytest.LogCaptureFixture):
+    # Laminar's loggers don't propagate
+    options_logger.addHandler(caplog.handler)
+    try:
+        with caplog.at_level(logging.WARNING):
+            options = resolve_mcp_options({"turn_gap_seconds": 60})
+            invalid = resolve_mcp_options({"turn_gap_seconds": -1})
+    finally:
+        options_logger.removeHandler(caplog.handler)
+    assert options is not None and options.turn_gap_seconds == 25
+    assert invalid is not None and invalid.turn_gap_seconds == 20
+    assert sum("turn_gap_seconds" in r.getMessage() for r in caplog.records) == 2
+
+
+def test_settings_follow_initialize():
+    try:
+        assert current_settings() is OFF
+        set_mcp_options({"turn_gap_seconds": 7, "redact_keys": ["Customer-Id"]})
+        settings = current_settings()
+        assert settings is current_settings()
+        assert settings.turns is not None and settings.turns.turn_gap_seconds == 7
+        assert settings.redact_keys == frozenset({"customerid"})
+        # a re-initialize starts with fresh turns
+        set_mcp_options(True)
+        assert current_settings() is not settings
+    finally:
+        reset_mcp_options()
+    assert current_settings() is OFF
 
 
 @pytest.mark.parametrize("key", SECRET)

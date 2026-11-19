@@ -9,8 +9,12 @@ them. Instead of enriching them, these wrappers take their place:
 - `OpenTelemetryMiddleware.__call__`, the server middleware every `Server`
   installs by default, is replaced (the native span is never opened) by the
   shared server span (`server.py`) around the rest of the chain. Servers that
-  removed the middleware get no server spans, as without us, unless
-  `wrap_mcp_server` put one back.
+  removed the middleware get no server spans, as without us.
+- In MCP observability mode (`Laminar.initialize(mcp=...)`) the span wraps the
+  whole middleware chain instead (`ServerRunner._compose_server_middleware`,
+  which knows its server; `ctx` does not), so it runs before params validation
+  and also covers servers without the middleware (FastMCP 4 replaces it with
+  its own). The middleware then just calls on.
 - `ClientSession.send_request` / `ServerSession.send_request` get the same
   CLIENT span wrapper as 1.x (`v1.wrap_send_request`). The typed request and
   result give the span its input / output, and it covers the in-process
@@ -27,7 +31,7 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Awaitable, Callable, Generator, Mapping, Sequence
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from typing import Any, cast
 
 from opentelemetry import context as context_api
@@ -38,14 +42,17 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.context_field impo
     split_context,
     tools_with_context,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.fastmcp_compat import (
+    native_span_suppression,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.server import ServerSpan
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.settings import (
+    OFF,
     TOOLS_LIST,
-    UNWRAPPED,
     McpRequest,
     McpServerSettings,
     as_dict,
-    settings_of,
+    current_settings,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.utils import (
     ACTIVE_CLIENT_SPAN,
@@ -116,7 +123,12 @@ def _request_from_context(ctx: Any) -> McpRequest:
 
 
 async def _observe(
-    to_wrap: WrappedFunctionSpec, settings: McpServerSettings, ctx: Any, call_next: CallNext
+    to_wrap: WrappedFunctionSpec,
+    settings: McpServerSettings,
+    ctx: Any,
+    call_next: CallNext,
+    server: Any = None,
+    suppress_native: Callable[[], AbstractContextManager[Any]] = nullcontext,
 ) -> Any:
     method: Any = getattr(ctx, "method", None)
     if (
@@ -124,20 +136,46 @@ async def _observe(
         or getattr(ctx, "request_id", None) is None
         or not settings.traces(method)
     ):
-        # notifications, and what a wrapped server doesn't trace
+        # notifications, and what observability mode doesn't trace
         result = await call_next(ctx)
         return tools_with_context(settings, result) if method == TOOLS_LIST else result
     try:
         request = _request_from_context(ctx)
-        arguments, context_text = await split_context(settings, request)
+        arguments, context_text = await split_context(settings, request, server)
     except Exception:
         logger.debug("Failed to read the MCP request", exc_info=True)
         return await call_next(ctx)
     if arguments is not None:
         # before params validation, so strict schemas don't reject `context`
         ctx = dataclasses.replace(ctx, params={**ctx.params, "arguments": arguments})
-    span = ServerSpan.start(to_wrap, settings, request, context_text)
+    span = ServerSpan.start(to_wrap, settings, request, context_text, suppress_native)
     return await span.run(call_next(ctx), record_result=True)
+
+
+def _wrap_compose_server_middleware(
+    to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., CallNext],
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> CallNext:
+    """`ServerRunner._compose_server_middleware(inner)`, per inbound message.
+
+    Only in MCP observability mode: the span goes around the whole chain.
+    """
+    chain = wrapped(*args, **kwargs)
+    settings = current_settings()
+    if settings.options is None:
+        return chain
+    server: Any = getattr(instance, "server", None)
+    suppress_native = native_span_suppression(server)
+
+    async def observed(ctx: Any) -> Any:
+        # also around FastMCP 4's own dispatch middleware, whose spans it turns off
+        with suppress_native():
+            return await _observe(to_wrap, settings, ctx, chain, server, suppress_native)
+
+    return observed
 
 
 async def _wrap_server_middleware(
@@ -147,19 +185,14 @@ async def _wrap_server_middleware(
     args: Sequence[Any],
     kwargs: dict[str, Any],
 ) -> Any:
-    """`OpenTelemetryMiddleware.__call__(ctx, call_next)`, for every inbound message.
-
-    `wrap_mcp_server` puts an instance carrying its settings first in the
-    server's middleware; every other instance records with `UNWRAPPED`.
-    """
+    """`OpenTelemetryMiddleware.__call__(ctx, call_next)`, for every inbound message."""
     ctx = get_arg(args, kwargs, 0, "ctx")
     call_next = get_arg(args, kwargs, 1, "call_next")
     if ctx is None or call_next is None:
         return await wrapped(*args, **kwargs)
-    settings = settings_of(instance)
-    if settings is not None:
-        with settings.suppress_native():
-            return await _observe(to_wrap, settings, ctx, call_next)
+    if current_settings().options is not None:
+        # the runner hook already opened the span around the chain
+        return await call_next(ctx)
     if context_api.get_value(context_api._SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
     if getattr(ctx, "request_id", None) is None:
@@ -168,7 +201,7 @@ async def _wrap_server_middleware(
     if not Laminar.is_initialized():
         # leave mcp's own span in place
         return await wrapped(*args, **kwargs)
-    return await _observe(to_wrap, UNWRAPPED, ctx, call_next)
+    return await _observe(to_wrap, OFF, ctx, call_next)
 
 
 async def _wrap_send_discover(
@@ -278,6 +311,13 @@ V2_WRAPPED_FUNCTIONS: list[WrappedFunctionSpec] = [
         method_name="__call__",
         is_async=True,
         wrapper_function=_wrap_server_middleware,
+    ),
+    WrappedFunctionSpec(
+        package_name="mcp.server.runner",
+        object_name="ServerRunner",
+        method_name="_compose_server_middleware",
+        is_async=False,
+        wrapper_function=_wrap_compose_server_middleware,
     ),
     WrappedFunctionSpec(
         package_name="mcp.shared.jsonrpc_dispatcher",

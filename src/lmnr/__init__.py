@@ -14,11 +14,11 @@ from .sdk.datasets import EvaluationDataset, LaminarDataset
 from .sdk.decorators import observe
 from .sdk.evaluations import evaluate
 from .sdk.laminar import Laminar
-from .sdk.mcp_server import wrap_mcp_server
 from .sdk.types import (
     InstrumentOptions,
     LaminarSpanContext,
     MaskInputOptions,
+    McpOptions,
     SessionRecordingOptions,
 )
 
@@ -41,10 +41,10 @@ __all__ = [
     "LaminarSpanContext",
     "LaminarSpanProcessor",
     "MaskInputOptions",
+    "McpOptions",
     "SessionRecordingOptions",
     "evaluate",
     "get_laminar_tracer_provider",
     "get_tracer",
     "observe",
-    "wrap_mcp_server",
 ]

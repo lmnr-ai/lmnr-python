@@ -55,7 +55,7 @@ _propagator = TraceContextTextMapPropagator()
 ACTIVE_CLIENT_SPAN: ContextVar[Span | None] = ContextVar("lmnr_mcp_client_span", default=None)
 
 
-def _dump(model: Any) -> Any:
+def dump(model: Any) -> Any:
     # the same shape mcp puts on the wire
     if hasattr(model, "model_dump"):
         return model.model_dump(by_alias=True, mode="json", exclude_none=True)
@@ -113,7 +113,7 @@ def set_input(span: Span, request: Any) -> None:
             "arguments": getattr(getattr(root, "params", None), "arguments", None) or {},
         }
     else:
-        span_input = _dump(root)
+        span_input = dump(root)
     set_span_attribute(span, SPAN_INPUT, json_dumps(span_input))
 
 
@@ -135,7 +135,7 @@ def set_raw_input(span: Span, method: str, params: Mapping[str, Any] | None) -> 
 def set_output(span: Span, result: Any) -> None:
     if not should_send_prompts():
         return
-    set_span_attribute(span, SPAN_OUTPUT, json_dumps(_dump(result)))
+    set_span_attribute(span, SPAN_OUTPUT, json_dumps(dump(result)))
 
 
 def record_error(span: Span, error: Exception, error_type: str | None = None) -> None:
@@ -204,7 +204,7 @@ def with_trace_context(request: Any, span: Span) -> Any:
     mutated: on any failure the original is returned as-is.
     """
     try:
-        data: Any = _dump(request)
+        data: Any = dump(request)
         if not isinstance(data, dict):
             return request
         params: Any = cast(dict[str, Any], data).setdefault("params", {})

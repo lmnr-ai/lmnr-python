@@ -146,7 +146,7 @@ async def test_tool_call_client_and_server_spans(
     assert output["isError"] is False
     assert not _exception_events(client_span)
 
-    # the server span follows the MCP span contract, like a wrapped server's
+    # the server span follows the MCP span contract, as in MCP observability mode
     server_attrs = _attrs(server_span)
     assert server_attrs["lmnr.span.type"] == "TOOL"
     assert server_attrs["lmnr.span.instrumentation_scope.name"] == "mcp"

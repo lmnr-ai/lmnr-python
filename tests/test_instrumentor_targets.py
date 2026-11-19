@@ -45,6 +45,7 @@ _MCP_V2_TARGETS = {
     ("mcp.client.session", "ClientSession.send_discover"),
     ("mcp.server.session", "ServerSession.send_request"),
     ("mcp.server._otel", "OpenTelemetryMiddleware.__call__"),
+    ("mcp.server.runner", "ServerRunner._compose_server_middleware"),
     ("mcp.shared.jsonrpc_dispatcher", "otel_span"),
 }
 
