@@ -66,6 +66,7 @@ dev = [
   "claude-agent-sdk==0.2.168",
   "cohere==7.3.0",
   "daytona==0.225.0",
+  "fastmcp==4.2.2",
   "google-adk==2.14.0",
   "google-cloud-aiplatform==2.6.0",
   "google-genai==2.33.0",

@@ -20,6 +20,7 @@ from opentelemetry.trace import Span, SpanKind
 from typing_extensions import override
 from wrapt import ObjectProxy
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.observed import is_observed_server
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.utils import (
     ACTIVE_CLIENT_SPAN,
     extract_trace_context,
@@ -133,6 +134,8 @@ async def _wrap_handle_request(
         message is None
         or request is None
         or context_api.get_value(context_api._SUPPRESS_INSTRUMENTATION_KEY)
+        # `wrap_mcp_server` opens this server's spans itself
+        or is_observed_server(instance)
     ):
         return await wrapped(*args, **kwargs)
 

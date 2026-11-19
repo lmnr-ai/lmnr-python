@@ -33,6 +33,7 @@ from opentelemetry import trace
 from opentelemetry.trace import Span, SpanKind
 from pydantic import ValidationError
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.observed import is_observed_request
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.mcp.utils import (
     ACTIVE_CLIENT_SPAN,
     TOOLS_CALL,
@@ -123,8 +124,9 @@ async def _wrap_server_middleware(
         or context_api.get_value(context_api._SUPPRESS_INSTRUMENTATION_KEY)
     ):
         return await wrapped(*args, **kwargs)
-    if getattr(ctx, "request_id", None) is None:
-        # notifications are not traced, as on 1.x
+    if getattr(ctx, "request_id", None) is None or is_observed_request(ctx):
+        # notifications are not traced, as on 1.x; a server wrapped with
+        # `wrap_mcp_server` gets its span (or none) from the wrapper
         return await call_next(ctx)
 
     span = _start_server_span(to_wrap, ctx)

@@ -22,7 +22,7 @@ Instruments the MCP Python SDK (`mcp`), 1.x and 2.x, plus FastMCP 2.x, which run
   - `mcp.server.lowlevel.server.Server._handle_request` emits a SERVER span per incoming request; the handler (so the tool's own code) runs inside it.
 - **`initialize` has no server span**: `ServerSession._received_request` answers it itself, so it never reaches `_handle_request`.
 - `Server._handle_request` never raises handler errors (unless `raise_exceptions=True`): it turns them into `ErrorData` and calls `message.respond`. So the server wrapper swaps `message` for `_TracedResponder`, a wrapt proxy whose `respond` records the output / error on the span. `ErrorData` is recorded as an `exception` event of type `McpError`.
-- FastMCP 3+ ships native spans of its own; mcp 1.x + FastMCP 3 would put both in Laminar's tracer provider. Not handled.
+- FastMCP 3+ ships native spans of its own; mcp 1.x + FastMCP 3 would put both in Laminar's tracer provider. Not handled by the instrumentor; `wrap_mcp_server` suppresses them for the servers it wraps.
 
 ## mcp 2.x (`v2.py`)
 
@@ -36,6 +36,14 @@ mcp 2.x opens its own spans (tracer `mcp-python-sdk`, client span `MCP send {met
 - **Error mapping**: `MCPServer` (2.x's FastMCP) masks tool exceptions as `"Error executing tool {name}"` in an `is_error` result. A `pydantic.ValidationError` from params validation is recorded as `ValidationError` with status code `-32602`, and its message (which quotes the client's input) is replaced when content capture is off. Other errors are `MCPError` (status code from its `ErrorData`) or whatever the handler raised.
 - **Caller-set `traceparent`**: on the JSON-RPC dispatcher, mcp itself calls `inject(out_meta)` with the current context and overwrites a `traceparent` the caller put in `_meta`, with or without us. With us, the current span is our client span, so the server nests under it. Only `DirectDispatcher` keeps the caller's value. We leave mcp's propagation alone.
 - **claude_agent**: `claude_agent/sdk_mcp.py` wraps the middleware instance in `_ToolCallsOnly`, which still calls the instance's `__call__`. With both instrumentors on, SDK MCP servers get our `tools/call` TOOL span (parented through the `_meta.traceparent` claude_agent stamps), not the native one.
+
+## Servers wrapped with `wrap_mcp_server` (`lmnr/sdk/mcp_server/`)
+
+- `wrap_mcp_server` gives a server the MCP-observability span contract (root spans, turn grouping, `context` field, redaction). Its spans come from the wrapper, not from this instrumentor, and the instrumentor's SERVER wrappers stand aside for it, so a request still gets exactly one SERVER span. Unwrapped servers are unaffected; CLIENT spans are unaffected for both.
+- `observed.py` is the leaf both sides import: `OBSERVED_SERVER_ATTR` (set on the wrapped low-level `Server`) and `OBSERVED_REQUEST` (the `ServerSession` of the wrapped request being handled).
+  - 1.x: `_wrap_handle_request` passes through when `is_observed_server(instance)`.
+  - 2.x: the wrapper removes `OpenTelemetryMiddleware` from the wrapped server, so `_wrap_server_middleware` never runs for it; if one is added back, `is_observed_request(ctx)` makes it pass through.
+- With both on, a client in the same process sends its CLIENT span in `_meta.traceparent`; the wrapped server's span reuses that trace id and LINKS to the client span instead of nesting under it (the contract wants roots). Details: `lmnr/sdk/mcp_server/AGENTS.md`.
 
 ## Context propagation
 

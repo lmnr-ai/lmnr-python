@@ -52,6 +52,7 @@ lmnr datasets pull <id>       # Pull dataset
 - `client/` - HTTP clients (`LaminarClient`, `AsyncLaminarClient`) for API interactions
 - `debug/` - debug mode / replay (cross-language parity surface with the TS SDK)
 - `trajectory/` - lmnr-atif, Laminar's extension to Harbor's ATIF trajectory format (spec in `spec/lmnr-atif/`)
+- `mcp_server/` - `wrap_mcp_server` (MCP observability: one root span per MCP server request, turn grouping, `context` field), built on the MCP instrumentor
 
 ### OpenTelemetry Layer (`src/lmnr/opentelemetry_lib/`)
 - `tracing/instruments.py` - `Instruments` enum listing all auto-instrumentable providers
@@ -115,9 +116,10 @@ LMNR_{INSTRUMENT}_{OPTION}  # Per-instrumentation options, e.g. LMNR_LANGGRAPH_R
 - `src/lmnr/sdk/AGENTS.md` - logging, HTTP error reporting, `json_dumps` / bytes, eval trace type
 - `src/lmnr/sdk/debug/AGENTS.md` - debug mode / replay, TS parity
 - `src/lmnr/sdk/trajectory/AGENTS.md` - lmnr-atif spec location, version bumps, schema/doc/fixture sync, harbor validation
+- `src/lmnr/sdk/mcp_server/AGENTS.md` - `wrap_mcp_server`: span contract shared with the TS SDK, what mcp 2.x / FastMCP emit natively, layering with `McpInstrumentor`, forced trace ids, `context` field, FastMCP native-span suppression
 - `src/lmnr/opentelemetry_lib/bridges/AGENTS.md` - `bridges=` option, the `LaminarBridge` contract shared with the TS SDK
 - `src/lmnr/opentelemetry_lib/bridges/langfuse/AGENTS.md` - Langfuse bridge: copy-on-end (never mutate Langfuse's spans), private provider, export-filter mirroring, usage/metadata shapes per langfuse major, version overlays in CI
-- `src/lmnr/opentelemetry_lib/tracing/AGENTS.md` - import-cycle wiring, tracing singleton + provider reuse, default instrument set, per-instrumentation options (`instrument_options`), span batching / export, release stamp, trajectory file (`LMNR_TRAJECTORY_PATH`), payload size limit
+- `src/lmnr/opentelemetry_lib/tracing/AGENTS.md` - import-cycle wiring, tracing singleton + provider reuse, default instrument set, per-instrumentation options (`instrument_options`), span batching / export, release stamp, trajectory file (`LMNR_TRAJECTORY_PATH`), payload size limit, forced-trace-id generator
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/AGENTS.md` - instrumentor structure, error status (exception events), GenAI message attributes
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/anthropic/AGENTS.md` - structured output, `with_raw_response`, native OTel spans (dropped unless content mode), stream manager + error spans, anthropic 2.x / `httpx2`
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/claude_agent/AGENTS.md` - settings.json precedence, proxy

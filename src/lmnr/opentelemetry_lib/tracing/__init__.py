@@ -16,6 +16,7 @@ from opentelemetry.sdk.trace.export import SpanExporter
 from lmnr.opentelemetry_lib.tracing.attributes import TRACER_NAME
 from lmnr.opentelemetry_lib.tracing.context import setup_thread_context_inheritance
 from lmnr.opentelemetry_lib.tracing.exporter import LaminarLogExporter
+from lmnr.opentelemetry_lib.tracing.id_generator import LaminarIdGenerator
 from lmnr.opentelemetry_lib.tracing.instruments import (
     Instruments,
     init_instrumentations,
@@ -163,7 +164,12 @@ def init_tracing(
         )
 
         if _tracer_provider is None:
-            _tracer_provider = TracerProvider(resource=resource, span_limits=_span_limits())
+            _tracer_provider = TracerProvider(
+                resource=resource,
+                span_limits=_span_limits(),
+                # random ids, plus forced trace ids for MCP server root spans
+                id_generator=LaminarIdGenerator(),
+            )
             global_provider = trace.get_tracer_provider()
             if set_global_tracer_provider and isinstance(
                 global_provider, trace.ProxyTracerProvider

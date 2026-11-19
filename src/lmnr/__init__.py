@@ -14,6 +14,7 @@ from .sdk.datasets import EvaluationDataset, LaminarDataset
 from .sdk.decorators import observe
 from .sdk.evaluations import evaluate
 from .sdk.laminar import Laminar
+from .sdk.mcp_server import wrap_mcp_server
 from .sdk.types import (
     InstrumentOptions,
     LaminarSpanContext,
@@ -45,4 +46,5 @@ __all__ = [
     "get_laminar_tracer_provider",
     "get_tracer",
     "observe",
+    "wrap_mcp_server",
 ]
