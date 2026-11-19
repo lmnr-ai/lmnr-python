@@ -164,24 +164,12 @@ def _handle_streaming_response(
             logger.debug("Failed to record raw response", exc_info=True)
 
 
-@dont_throw
-def build_from_streaming_response(
-    span: Span,
-    response: Iterator[ParsedMessageStreamEvent],
-    _instance: Any,
-    _kwargs: dict[str, Any],
-    record_raw_response: bool = False,
-) -> Generator[ParsedMessageStreamEvent]:
-    complete_response = _new_complete_response()
-
-    try:
-        for item in response:
-            yield item
-            _process_response_item(item, complete_response)
-    except Exception as e:
-        record_span_error(span, e)
-        raise
-
+def _finish_stream(
+    span: Span, complete_response: CompleteResponse, record_raw_response: bool
+) -> None:
+    """Set what was accumulated so far and end the span (no-op if already ended)."""
+    if not span.is_recording():
+        return
     set_span_attribute(span, GEN_AI_RESPONSE_ID, complete_response.get("id"))
     set_span_attribute(
         span,
@@ -208,6 +196,27 @@ def build_from_streaming_response(
     if span.is_recording():
         span.set_status(Status(StatusCode.OK))
         span.end()
+
+
+@dont_throw
+def build_from_streaming_response(
+    span: Span,
+    response: Iterator[ParsedMessageStreamEvent],
+    _instance: Any,
+    _kwargs: dict[str, Any],
+    record_raw_response: bool = False,
+) -> Generator[ParsedMessageStreamEvent]:
+    complete_response = _new_complete_response()
+
+    try:
+        for item in response:
+            yield item
+            _process_response_item(item, complete_response)
+    except Exception as e:
+        record_span_error(span, e)
+        raise
+    finally:
+        _finish_stream(span, complete_response, record_raw_response)
 
 
 @dont_throw
@@ -226,33 +235,8 @@ async def abuild_from_streaming_response(
     except Exception as e:
         record_span_error(span, e)
         raise
-
-    set_span_attribute(span, GEN_AI_RESPONSE_ID, complete_response.get("id"))
-    set_span_attribute(
-        span,
-        "anthropic.response.service_tier",
-        complete_response.get("service_tier"),
-    )
-
-    try:
-        usage = complete_response.get("usage")
-        prompt_tokens = (usage.get("input_tokens", 0) or 0) if usage else 0
-        completion_tokens = (usage.get("output_tokens", 0) or 0) if usage else 0
-
-        _set_token_usage(
-            span,
-            complete_response,
-            prompt_tokens,
-            completion_tokens,
-        )
-    except Exception:
-        logger.warning("Failed to set token usage", exc_info=True)
-
-    _handle_streaming_response(span, complete_response, record_raw_response)
-
-    if span.is_recording():
-        span.set_status(Status(StatusCode.OK))
-        span.end()
+    finally:
+        _finish_stream(span, complete_response, record_raw_response)
 
 
 class WrappedMessageStreamManager:
