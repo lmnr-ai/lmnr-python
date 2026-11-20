@@ -1745,6 +1745,20 @@ def test_litellm_completion_via_responses_bridge_creates_one_span(
             "role": "assistant",
             "tool_calls": None,
             "function_call": None,
+            "provider_specific_fields": {
+                "openai_responses_replay": {
+                    "checksum": "535d035257a42f6fbf948766139d5d95fe828bd31bd7ca4ac323bbcfdfd72390",
+                    "items": [
+                        {
+                            "parts": [
+                                6,
+                            ],
+                            "type": "message",
+                        },
+                    ],
+                    "version": 1,
+                },
+            },
         }
     ]
     assert response.choices[0].message.content == "Paris."
