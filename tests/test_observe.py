@@ -444,6 +444,10 @@ def _merge(a: int, b: int, /, *rest: int, sep: str = ", ") -> None: ...
 def _everything(a: int, b: int = 2, *args: int, c: int, d: int = 4, **kwargs: int) -> None: ...
 
 
+@observe()
+def _lookup(key: str, /, **filters: str) -> None: ...
+
+
 @pytest.mark.parametrize(
     ("call", "expected_input"),
     [
@@ -481,6 +485,16 @@ def _everything(a: int, b: int = 2, *args: int, c: int, d: int = 4, **kwargs: in
             lambda: _everything(a=1, c=5),
             {"a": 1, "b": 2, "args": [], "c": 5, "d": 4},
             id="all-by-keyword",
+        ),
+        pytest.param(
+            lambda: _lookup("user:1", key="tenant"),
+            {"key": "user:1", "filters": {"key": "tenant"}},
+            id="kwargs-key-shadows-positional-only",
+        ),
+        pytest.param(
+            lambda: _everything(1, 2, 3, c=5, args=6),
+            {"a": 1, "b": 2, "args": [3], "c": 5, "d": 4, "kwargs": {"args": 6}},
+            id="kwargs-key-shadows-var-positional",
         ),
     ],
 )
