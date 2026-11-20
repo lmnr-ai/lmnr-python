@@ -62,4 +62,4 @@ The case folders are committed here so the example runs as it is. In your own pr
 npx lmnr-cli@latest eval dataset push
 ```
 
-This uploads each case, pins its version in `tasks/dataset.toml`, and adds `*/tasks/*` (except `dataset.toml`) to `evals/.gitignore`. Teammates get the pinned cases with `npx lmnr-cli@latest eval dataset pull` before running them: `eval run` runs the cases in `tasks/` as they are and never pulls. The project's **Eval datasets** page lists each case and its versions.
+This uploads each case, pins its version in `tasks/dataset.toml`, and adds `*/tasks/*` (except `dataset.toml`) to `evals/.gitignore`. Teammates get the pinned cases with `npx lmnr-cli@latest eval dataset pull` before running them: `eval run` runs the cases in `tasks/` as they are and never pulls. The project's **Datasets** page lists each case and its versions.
