@@ -4,7 +4,7 @@ Guidance for coding agents working in this repository. Module-specific knowledge
 
 ## Project Overview
 
-Laminar Python SDK - tracing and evaluation framework for LLM applications. Provides automatic instrumentation for LLM providers (OpenAI, Anthropic, Groq, etc.), manual tracing via decorators, and an evaluation framework for testing LLM outputs.
+Laminar Python SDK - tracing and evaluation framework for AI agents (Laminar is an observability platform for AI agents). Provides automatic instrumentation for LLM providers (OpenAI, Anthropic, Groq, etc.), manual tracing via decorators, and an evaluation framework for testing LLM outputs.
 
 ## Commands
 
