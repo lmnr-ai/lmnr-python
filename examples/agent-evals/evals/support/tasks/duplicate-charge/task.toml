@@ -1,5 +1,5 @@
 [task]
-name = "example/duplicate-charge"
+name = "refund-agent/duplicate-charge"
 
 [environment]
 docker_image = "refund-agent-evals"
