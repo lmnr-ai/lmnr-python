@@ -1,3 +1,4 @@
+# Every case's verifier: tests/test.sh runs it with that case's expected.json.
 import json
 import sqlite3
 

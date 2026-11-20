@@ -15,11 +15,13 @@ class SupportAgent(BaseInstalledAgent):
     async def run(
         self, instruction: str, environment: BaseEnvironment, context: AgentContext
     ) -> None:
+        # This case's database, then the agent on its ticket (both in the image).
+        await self.exec_as_agent(environment, command="python /opt/agent/seed.py")
         # "anthropic/claude-sonnet-5" -> "claude-sonnet-5"
         model = (self.model_name or "").split("/", 1)[-1]
         await self.exec_as_agent(
             environment,
-            command="python /opt/harness/run_case.py",
+            command="python /opt/agent/run.py",
             env={"AGENT_MODEL": model},
             timeout_sec=240,
         )

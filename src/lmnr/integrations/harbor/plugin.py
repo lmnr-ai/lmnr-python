@@ -12,12 +12,13 @@ recorded step. Verifier rewards become evaluation scores.
 """
 
 import asyncio
+import json
 import os
 import re
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 from opentelemetry.context import Context
 from opentelemetry.trace import Status, StatusCode
@@ -79,6 +80,8 @@ class _TrialState:
     task_id: str
     data: dict[str, Any]
     metadata: dict[str, Any]
+    # The task version the trial ran, when the CLI passed the dataset's task hashes.
+    task_version_hash: str | None = None
     root_span: Any = None
     trace_id: uuid.UUID | None = None
     cancelled: bool = False
@@ -111,6 +114,12 @@ class LaminarPlugin:
       Harbor job name. Env: `HARBOR_LAMINAR_EVALUATION`.
     - `group_name`: evaluation group used to compare runs. Defaults to the
       dataset name (e.g. `terminal-bench@2.0`). Env: `HARBOR_LAMINAR_GROUP`.
+    - `dataset`: the Laminar eval dataset the job's tasks come from
+      (`lmnr-cli eval dataset`), recorded on the evaluation.
+    - `task_hashes_file`: JSON file mapping each task dir name to its
+      `[task] name` and content hash (`{"refund": {"name": "acme/refund",
+      "hash": ...}}`); a trial of a listed task records both as its task
+      version. Both are passed by `lmnr-cli eval run`.
     - `trajectory_spans`: convert agent ATIF trajectories into LLM and tool
       spans. Defaults to true.
     - `fail_fast`: raise on Laminar errors instead of logging a warning and
@@ -127,6 +136,8 @@ class LaminarPlugin:
         grpc_port: int | None = None,
         evaluation_name: str | None = None,
         group_name: str | None = None,
+        dataset: str | None = None,
+        task_hashes_file: str | None = None,
         trajectory_spans: bool | str | None = None,
         fail_fast: bool | str | None = None,
     ):
@@ -140,6 +151,9 @@ class LaminarPlugin:
         )
         resolved_group_name = group_name or from_env("HARBOR_LAMINAR_GROUP")
         self.group_name: str | None = str(resolved_group_name) if resolved_group_name else None
+        self.dataset: str | None = str(dataset) if dataset else None
+        self.task_hashes_file: str | None = str(task_hashes_file) if task_hashes_file else None
+        self._task_hashes: dict[str, TaskVersion] = {}
         self.trajectory_spans: bool = (
             True if trajectory_spans is None else _parse_bool(trajectory_spans)
         )
@@ -268,6 +282,7 @@ class LaminarPlugin:
             for agent in config.agents
         ]
         hosted_metadata = self._hosted_metadata()
+        self._task_hashes = _read_task_hashes(self.task_hashes_file)
         evaluation = await self._client.evals.init(
             name=self.evaluation_name or config.job_name,
             group_name=self._resolved_group_name,
@@ -278,6 +293,7 @@ class LaminarPlugin:
                 "agents": agents,
             },
             hosted_metadata=hosted_metadata,
+            dataset_v2_id=self.dataset,
         )
         self._eval_id = evaluation.get("id")
         self._project_id = str(evaluation.get("projectId"))
@@ -368,6 +384,12 @@ class LaminarPlugin:
             task_path = self._task_path(event)
             if task_path is not None:
                 state.metadata["task_path"] = task_path
+            task_dir = _task_dir_name(event)
+            version = self._task_hashes.get(task_dir) if task_dir is not None else None
+            if version is not None:
+                state.task_version_hash = version.hash
+                # With the evaluation's dataset, names the version in Laminar.
+                state.metadata["dataset_task"] = version.name
             self._next_index += 1
             self._trials[event.trial_name] = state
         else:
@@ -410,6 +432,7 @@ class LaminarPlugin:
             target={},
             index=state.index,
             task_id=state.task_id,
+            task_version_hash=state.task_version_hash,
             trace_id=state.trace_id,
             executor_span_id=_uuid(span_context.span_id),
             metadata=state.metadata,
@@ -526,6 +549,7 @@ class LaminarPlugin:
             id=state.datapoint_id,
             index=state.index,
             task_id=state.task_id,
+            task_version_hash=state.task_version_hash,
             data=state.data,
             target={},
             executor_output=self._executor_output(event),
@@ -679,6 +703,42 @@ def _default_group_name(job: "Job") -> str | None:
         except Exception:
             return None
     return None
+
+
+class TaskVersion(NamedTuple):
+    """A task's `[task] name` and content hash, from `task_hashes_file`."""
+
+    name: str
+    hash: str
+
+
+def _read_task_hashes(path: str | None) -> dict[str, TaskVersion]:
+    """`{task dir name: {name, hash}}` from the CLI's `task_hashes_file`."""
+    if not path:
+        return {}
+    try:
+        raw = json.loads(Path(path).read_text())
+    except Exception as e:
+        logger.warning(f"Can't read task hashes from {path}: {e}")
+        return {}
+    if not isinstance(raw, dict):
+        logger.warning(f"Task hashes in {path} are not a JSON object")
+        return {}
+    versions: dict[str, TaskVersion] = {}
+    for task_dir, entry in raw.items():
+        if not isinstance(task_dir, str) or not isinstance(entry, dict):
+            continue
+        name, content_hash = entry.get("name"), entry.get("hash")
+        if isinstance(name, str) and isinstance(content_hash, str):
+            versions[task_dir] = TaskVersion(name, content_hash)
+    return versions
+
+
+def _task_dir_name(event: "TrialHookEvent") -> str | None:
+    try:
+        return Path(event.config.task.get_local_path()).name or None
+    except Exception:
+        return None
 
 
 def _read_instruction(event: "TrialHookEvent") -> str | None:

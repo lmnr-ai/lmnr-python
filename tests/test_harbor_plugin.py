@@ -339,6 +339,59 @@ async def test_local_run_has_no_hosted_metadata(client: MagicMock, tmp_path: Pat
 
 
 @pytest.mark.asyncio
+async def test_dataset_and_task_versions_are_recorded(client: MagicMock, tmp_path: Path):
+    # lmnr-cli passes the dataset name and a file of task dir -> [task] name
+    # and content hash.
+    refund_hash = "a" * 64
+    hashes = tmp_path / "task-hashes.json"
+    hashes.write_text(
+        json.dumps({"refund": {"name": "acme/refund", "hash": refund_hash}, "bad": "x"})
+    )
+    job = FakeJob(tmp_path / "job")
+    dataset_dir = tmp_path / "evals" / "support"
+    refund = make_task_dir(dataset_dir, "refund")
+    unlisted = make_task_dir(dataset_dir, "unlisted")
+    plugin = LaminarPlugin(
+        project_api_key="test_key", dataset="acme/support", task_hashes_file=str(hashes)
+    )
+
+    await plugin.on_job_start(job)
+    assert client.evals.init.call_args.kwargs["dataset_v2_id"] == "acme/support"
+    for task_dir, trial in [(refund, "refund__a"), (unlisted, "unlisted__b")]:
+        event = make_event(job, task_dir, trial, rewards={"reward": 1.0})
+        await job.emit("start", event)
+        await job.emit("end", event)
+    await plugin.on_job_end(SimpleNamespace())
+
+    datapoints = saved_datapoints(client)
+    # The partial datapoint saved at trial start carries the version too.
+    assert {type(dp) for dp in datapoints} == {
+        PartialEvaluationDatapoint,
+        EvaluationResultDatapoint,
+    }
+    versions = {
+        (
+            (dp.metadata or {})["trial_name"],
+            dp.task_version_hash,
+            (dp.metadata or {}).get("dataset_task"),
+        )
+        for dp in datapoints
+    }
+    assert versions == {("refund__a", refund_hash, "acme/refund"), ("unlisted__b", None, None)}
+    serialized = [dp.to_dict() for dp in datapoints]
+    assert {d.get("taskVersionHash") for d in serialized} == {refund_hash, None}
+
+
+@pytest.mark.asyncio
+async def test_no_dataset_by_default(client: MagicMock, tmp_path: Path):
+    plugin = LaminarPlugin(
+        project_api_key="test_key", task_hashes_file=str(tmp_path / "missing.json")
+    )
+    await plugin.on_job_start(FakeJob(tmp_path / "job"))
+    assert client.evals.init.call_args.kwargs["dataset_v2_id"] is None
+
+
+@pytest.mark.asyncio
 async def test_unlinked_evaluation_records_no_task_paths(
     client: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
