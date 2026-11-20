@@ -2,7 +2,7 @@
 
 Python SDK for [Laminar](https://www.laminar.sh).
 
-[Laminar](https://www.laminar.sh) is an open-source observability platform for AI agents. It traces every agent run, analyzes each trace to catch failures, and alerts you when a run goes wrong. This SDK instruments your agent with OpenTelemetry-compatible tracing and runs evals against it.
+[Laminar](https://www.laminar.sh) is an open-source observability platform for AI agents. It traces every agent run, analyzes each trace with [flow-1](https://laminar.sh/blog/flow-1), our own model trained for agent trace analysis, and alerts you when a run goes wrong. flow-1 matches frontier models on failure detection at a fraction of the cost, so you can analyze every run instead of a sample. This SDK instruments your agent with OpenTelemetry-compatible tracing and runs evals against it.
 
 Check our [open-source repo](https://github.com/lmnr-ai/lmnr) and don't forget to star it ⭐
 

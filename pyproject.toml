@@ -7,7 +7,7 @@
 [project]
 name = "lmnr"
 version = "0.9.1"
-description = "Python SDK for Laminar, the open-source observability platform for AI agents"
+description = "Python SDK for Laminar, the open-source observability platform for AI agents, with flow-1, its own model for agent trace analysis"
 keywords = ["laminar", "lmnr", "observability", "ai-agents", "agent-observability", "opentelemetry", "tracing", "evals"]
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
