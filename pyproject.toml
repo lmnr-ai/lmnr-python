@@ -77,7 +77,7 @@ dev = [
   "langchain-openai==1.7.0",
   "langfuse==5.2.0",
   "langgraph==1.2.14",
-  "litellm==1.108.0",
+  "litellm==1.109.1",
   "mcp==2.3.0",
   "openai==3.44.0",
   "openai-agents==0.24.0",
