@@ -16,10 +16,6 @@ requires-python = ">=3.11,<4"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 dependencies = [
-  # grpcio used to have some issues with improper shutdown.
-  # Fixed in opentelemetry-exporter-otlp-proto-grpc >=1.31.0.
-  # Fixed in grpc >= 1.80.0. Remaining related issue to track
-  # https://github.com/grpc/grpc/issues/41672
   "blake3 (>=1.0.0,<2.0.0)",
   "grpcio>=1",
   "httpx (>=0.24.0,<1.0.0)",
