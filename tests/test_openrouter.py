@@ -420,3 +420,29 @@ def test_openrouter_chat_error(span_exporter: InMemorySpanExporter):
     assert span.status.status_code == StatusCode.ERROR
     assert attributes["error.type"]
     assert attributes["gen_ai.request.model"] == "openai/this-model-does-not-exist"
+
+
+def test_aggregate_chat_chunks_keeps_reasoning():
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openrouter.span_utils import (
+        aggregate_chat_chunks,
+    )
+
+    def chunk(delta: dict[str, Any], finish_reason: str | None = None):
+        return {
+            "id": "gen-1",
+            "model": MODEL,
+            "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}],
+        }
+
+    result = aggregate_chat_chunks(
+        [
+            chunk({"role": "assistant", "reasoning": "The user wants "}),
+            chunk({"reasoning": "the capital."}),
+            chunk({"content": "Paris"}),
+            chunk({}, "stop"),
+        ]
+    )
+
+    message = result["choices"][0]["message"]
+    assert message["content"] == "Paris"
+    assert message["reasoning"] == "The user wants the capital."
