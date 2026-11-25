@@ -69,7 +69,7 @@ _tracer_provider: TracerProvider | None = None
 _logger_provider: LoggerProvider | None = None
 
 
-def _span_limits() -> SpanLimits:
+def span_limits() -> SpanLimits:
     """Raise the 128-attribute default (each GenAI message is several
     attributes) on Laminar's own provider only, unless the user set a limit."""
     if os.getenv("OTEL_ATTRIBUTE_COUNT_LIMIT") or os.getenv("OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT"):
@@ -163,7 +163,7 @@ def init_tracing(
         )
 
         if _tracer_provider is None:
-            _tracer_provider = TracerProvider(resource=resource, span_limits=_span_limits())
+            _tracer_provider = TracerProvider(resource=resource, span_limits=span_limits())
             global_provider = trace.get_tracer_provider()
             if set_global_tracer_provider and isinstance(
                 global_provider, trace.ProxyTracerProvider

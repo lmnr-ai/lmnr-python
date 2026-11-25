@@ -1,0 +1,3159 @@
+{
+ "langchain_openai_tools": [
+  {
+   "op": "create",
+   "run": {
+    "attachments": {},
+    "dotted_order": "20261125T121323632207Z01a2129f-f930-72fb-b506-675a4cf2e102",
+    "events": [
+     {
+      "name": "start",
+      "time": "2026-11-25T12:13:23.632207+00:00"
+     }
+    ],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "revision_id": "0.9.2-dirty",
+      "thread_id": "th-1"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langchain-core",
+      "library_version": "1.6.9",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-f930-72fb-b506-675a4cf2e102",
+    "inputs": {
+     "input": "Weather in Paris?"
+    },
+    "name": "RunnableSequence",
+    "outputs": {},
+    "run_type": "chain",
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:13:23.632207+00:00",
+    "tags": [
+     "lc-tag"
+    ],
+    "trace_id": "01a2129f-f930-72fb-b506-675a4cf2e102"
+   }
+  },
+  {
+   "op": "create",
+   "run": {
+    "attachments": {},
+    "dotted_order": "20261125T121323632207Z01a2129f-f930-72fb-b506-675a4cf2e102.20261125T121323632623Z01a2129f-f930-72fb-b506-675ba8d0e1e1",
+    "events": [
+     {
+      "name": "start",
+      "time": "2026-11-25T12:13:23.632623+00:00"
+     }
+    ],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "revision_id": "0.9.2-dirty",
+      "thread_id": "th-1"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langchain-core",
+      "library_version": "1.6.9",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-f930-72fb-b506-675ba8d0e1e1",
+    "inputs": {
+     "input": "Weather in Paris?"
+    },
+    "name": "weather_agent",
+    "outputs": {},
+    "parent_run_id": "01a2129f-f930-72fb-b506-675a4cf2e102",
+    "run_type": "chain",
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:13:23.632623+00:00",
+    "tags": [
+     "lc-tag",
+     "seq:step:1"
+    ],
+    "trace_id": "01a2129f-f930-72fb-b506-675a4cf2e102"
+   }
+  },
+  {
+   "op": "create",
+   "run": {
+    "attachments": {},
+    "dotted_order": "20261125T121323632207Z01a2129f-f930-72fb-b506-675a4cf2e102.20261125T121323632623Z01a2129f-f930-72fb-b506-675ba8d0e1e1.20261125T121323633293Z01a2129f-f931-73b9-8669-4839d52fa403",
+    "events": [
+     {
+      "name": "start",
+      "time": "2026-11-25T12:13:23.633293+00:00"
+     }
+    ],
+    "extra": {
+     "batch_size": 1,
+     "invocation_params": {
+      "_type": "openai-chat",
+      "model": "gpt-4o-mini",
+      "model_name": "gpt-4o-mini",
+      "stop": null,
+      "stream": false,
+      "temperature": 0.1,
+      "tools": [
+       {
+        "function": {
+         "description": "Weather in a city",
+         "name": "get_weather",
+         "parameters": {
+          "properties": {
+           "city": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "city"
+          ],
+          "type": "object"
+         }
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "_type": "openai-chat",
+      "lc_versions": {
+       "langchain": "1.4.4",
+       "langchain-core": "1.6.9",
+       "langchain-openai": "1.7.0"
+      },
+      "ls_integration": "langchain_chat_model",
+      "ls_model_name": "gpt-4o-mini",
+      "ls_model_type": "chat",
+      "ls_provider": "openai",
+      "ls_temperature": 0.1,
+      "model": "gpt-4o-mini",
+      "model_name": "gpt-4o-mini",
+      "revision_id": "0.9.2-dirty",
+      "stop": null,
+      "stream": false,
+      "temperature": 0.1,
+      "thread_id": "th-1"
+     },
+     "options": {
+      "stop": null
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langchain-core",
+      "library_version": "1.6.9",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-f931-73b9-8669-4839d52fa403",
+    "inputs": {
+     "messages": [
+      [
+       {
+        "id": [
+         "langchain",
+         "schema",
+         "messages",
+         "HumanMessage"
+        ],
+        "kwargs": {
+         "content": "Weather in Paris?",
+         "type": "human"
+        },
+        "lc": 1,
+        "type": "constructor"
+       }
+      ]
+     ]
+    },
+    "name": "ChatOpenAI",
+    "outputs": {},
+    "parent_run_id": "01a2129f-f930-72fb-b506-675ba8d0e1e1",
+    "run_type": "llm",
+    "serialized": {
+     "id": [
+      "langchain",
+      "chat_models",
+      "openai",
+      "ChatOpenAI"
+     ],
+     "kwargs": {
+      "model_name": "gpt-4o-mini",
+      "openai_api_key": {
+       "id": [
+        "OPENAI_API_KEY"
+       ],
+       "lc": 1,
+       "type": "secret"
+      },
+      "temperature": 0.1
+     },
+     "lc": 1,
+     "name": "ChatOpenAI",
+     "type": "constructor"
+    },
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:13:23.633293+00:00",
+    "tags": [
+     "lc-tag"
+    ],
+    "trace_id": "01a2129f-f930-72fb-b506-675a4cf2e102"
+   }
+  },
+  {
+   "op": "update",
+   "run": {
+    "dotted_order": "20261125T121323632207Z01a2129f-f930-72fb-b506-675a4cf2e102.20261125T121323632623Z01a2129f-f930-72fb-b506-675ba8d0e1e1.20261125T121323633293Z01a2129f-f931-73b9-8669-4839d52fa403",
+    "end_time": "2026-11-25T12:13:23.635468+00:00",
+    "events": [
+     {
+      "name": "start",
+      "time": "2026-11-25T12:13:23.633293+00:00"
+     },
+     {
+      "name": "end",
+      "time": "2026-11-25T12:13:23.635468+00:00"
+     }
+    ],
+    "extra": {
+     "batch_size": 1,
+     "invocation_params": {
+      "_type": "openai-chat",
+      "model": "gpt-4o-mini",
+      "model_name": "gpt-4o-mini",
+      "stop": null,
+      "stream": false,
+      "temperature": 0.1,
+      "tools": [
+       {
+        "function": {
+         "description": "Weather in a city",
+         "name": "get_weather",
+         "parameters": {
+          "properties": {
+           "city": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "city"
+          ],
+          "type": "object"
+         }
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "_type": "openai-chat",
+      "lc_versions": {
+       "langchain": "1.4.4",
+       "langchain-core": "1.6.9",
+       "langchain-openai": "1.7.0"
+      },
+      "ls_integration": "langchain_chat_model",
+      "ls_model_name": "gpt-4o-mini",
+      "ls_model_type": "chat",
+      "ls_provider": "openai",
+      "ls_temperature": 0.1,
+      "model": "gpt-4o-mini",
+      "model_name": "gpt-4o-mini",
+      "revision_id": "0.9.2-dirty",
+      "stop": null,
+      "stream": false,
+      "temperature": 0.1,
+      "thread_id": "th-1",
+      "usage_metadata": {
+       "input_token_details": {
+        "cache_read": 4
+       },
+       "input_tokens": 20,
+       "output_token_details": {
+        "reasoning": 2
+       },
+       "output_tokens": 5,
+       "total_tokens": 25
+      }
+     },
+     "options": {
+      "stop": null
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langchain-core",
+      "library_version": "1.6.9",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     },
+     "tool_call_count": 1
+    },
+    "id": "01a2129f-f931-73b9-8669-4839d52fa403",
+    "inputs": {
+     "messages": [
+      [
+       {
+        "id": [
+         "langchain",
+         "schema",
+         "messages",
+         "HumanMessage"
+        ],
+        "kwargs": {
+         "content": "Weather in Paris?",
+         "type": "human"
+        },
+        "lc": 1,
+        "type": "constructor"
+       }
+      ]
+     ]
+    },
+    "name": "ChatOpenAI",
+    "outputs": {
+     "generations": [
+      [
+       {
+        "generation_info": {
+         "finish_reason": "tool_calls",
+         "logprobs": null
+        },
+        "message": {
+         "id": [
+          "langchain",
+          "schema",
+          "messages",
+          "AIMessage"
+         ],
+         "kwargs": {
+          "additional_kwargs": {
+           "refusal": null
+          },
+          "content": "",
+          "id": "lc_run--01a2129f-f931-73b9-8669-4839d52fa403-0",
+          "invalid_tool_calls": [],
+          "response_metadata": {
+           "finish_reason": "tool_calls",
+           "id": "chatcmpl-1",
+           "logprobs": null,
+           "model_name": "gpt-4o-mini-2024-07-18",
+           "model_provider": "openai",
+           "system_fingerprint": null,
+           "token_usage": {
+            "completion_tokens": 5,
+            "completion_tokens_details": {
+             "accepted_prediction_tokens": null,
+             "audio_tokens": null,
+             "reasoning_tokens": 2,
+             "rejected_prediction_tokens": null,
+             "text_tokens": null
+            },
+            "prompt_tokens": 20,
+            "prompt_tokens_details": {
+             "audio_tokens": null,
+             "cache_write_tokens": null,
+             "cached_tokens": 4,
+             "image_tokens": null,
+             "text_tokens": null
+            },
+            "total_tokens": 25
+           }
+          },
+          "tool_calls": [
+           {
+            "args": {
+             "city": "Paris"
+            },
+            "id": "call_1",
+            "name": "get_weather",
+            "type": "tool_call"
+           }
+          ],
+          "type": "ai",
+          "usage_metadata": {
+           "input_token_details": {
+            "cache_read": 4
+           },
+           "input_tokens": 20,
+           "output_token_details": {
+            "reasoning": 2
+           },
+           "output_tokens": 5,
+           "total_tokens": 25
+          }
+         },
+         "lc": 1,
+         "type": "constructor"
+        },
+        "text": "",
+        "type": "ChatGeneration"
+       }
+      ]
+     ],
+     "llm_output": {
+      "id": "chatcmpl-1",
+      "model_name": "gpt-4o-mini-2024-07-18",
+      "model_provider": "openai",
+      "system_fingerprint": null,
+      "token_usage": {
+       "completion_tokens": 5,
+       "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": null,
+        "reasoning_tokens": 2,
+        "rejected_prediction_tokens": null,
+        "text_tokens": null
+       },
+       "prompt_tokens": 20,
+       "prompt_tokens_details": {
+        "audio_tokens": null,
+        "cache_write_tokens": null,
+        "cached_tokens": 4,
+        "image_tokens": null,
+        "text_tokens": null
+       },
+       "total_tokens": 25
+      }
+     },
+     "run": null,
+     "type": "LLMResult"
+    },
+    "parent_run_id": "01a2129f-f930-72fb-b506-675ba8d0e1e1",
+    "run_type": "llm",
+    "session_id": null,
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:13:23.633293+00:00",
+    "tags": [
+     "lc-tag"
+    ],
+    "trace_id": "01a2129f-f930-72fb-b506-675a4cf2e102"
+   }
+  },
+  {
+   "op": "create",
+   "run": {
+    "attachments": {},
+    "dotted_order": "20261125T121323632207Z01a2129f-f930-72fb-b506-675a4cf2e102.20261125T121323632623Z01a2129f-f930-72fb-b506-675ba8d0e1e1.20261125T121323635871Z01a2129f-f933-776e-9402-f1f2000b8109",
+    "events": [
+     {
+      "name": "start",
+      "time": "2026-11-25T12:13:23.635871+00:00"
+     }
+    ],
+    "extra": {
+     "color": "green",
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "revision_id": "0.9.2-dirty",
+      "thread_id": "th-1"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langchain-core",
+      "library_version": "1.6.9",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     },
+     "tool_call_id": null
+    },
+    "id": "01a2129f-f933-776e-9402-f1f2000b8109",
+    "inputs": {
+     "city": "Paris"
+    },
+    "name": "get_weather",
+    "outputs": {},
+    "parent_run_id": "01a2129f-f930-72fb-b506-675ba8d0e1e1",
+    "run_type": "tool",
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:13:23.635871+00:00",
+    "tags": [
+     "lc-tag"
+    ],
+    "trace_id": "01a2129f-f930-72fb-b506-675a4cf2e102"
+   }
+  },
+  {
+   "op": "update",
+   "run": {
+    "dotted_order": "20261125T121323632207Z01a2129f-f930-72fb-b506-675a4cf2e102.20261125T121323632623Z01a2129f-f930-72fb-b506-675ba8d0e1e1.20261125T121323635871Z01a2129f-f933-776e-9402-f1f2000b8109",
+    "end_time": "2026-11-25T12:13:23.636250+00:00",
+    "events": [
+     {
+      "name": "start",
+      "time": "2026-11-25T12:13:23.635871+00:00"
+     },
+     {
+      "name": "end",
+      "time": "2026-11-25T12:13:23.636250+00:00"
+     }
+    ],
+    "extra": {
+     "color": "green",
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "revision_id": "0.9.2-dirty",
+      "thread_id": "th-1"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langchain-core",
+      "library_version": "1.6.9",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     },
+     "tool_call_id": null
+    },
+    "id": "01a2129f-f933-776e-9402-f1f2000b8109",
+    "inputs": {
+     "city": "Paris"
+    },
+    "name": "get_weather",
+    "outputs": {
+     "output": "sunny"
+    },
+    "parent_run_id": "01a2129f-f930-72fb-b506-675ba8d0e1e1",
+    "run_type": "tool",
+    "session_id": null,
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:13:23.635871+00:00",
+    "tags": [
+     "lc-tag"
+    ],
+    "trace_id": "01a2129f-f930-72fb-b506-675a4cf2e102"
+   }
+  },
+  {
+   "op": "create",
+   "run": {
+    "attachments": {},
+    "dotted_order": "20261125T121323632207Z01a2129f-f930-72fb-b506-675a4cf2e102.20261125T121323632623Z01a2129f-f930-72fb-b506-675ba8d0e1e1.20261125T121323636504Z01a2129f-f934-7304-b946-b37d7b87102e",
+    "events": [
+     {
+      "name": "start",
+      "time": "2026-11-25T12:13:23.636504+00:00"
+     }
+    ],
+    "extra": {
+     "batch_size": 1,
+     "invocation_params": {
+      "_type": "openai-chat",
+      "model": "gpt-4o-mini",
+      "model_name": "gpt-4o-mini",
+      "stop": null,
+      "stream": false,
+      "temperature": 0.1,
+      "tools": [
+       {
+        "function": {
+         "description": "Weather in a city",
+         "name": "get_weather",
+         "parameters": {
+          "properties": {
+           "city": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "city"
+          ],
+          "type": "object"
+         }
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "_type": "openai-chat",
+      "lc_versions": {
+       "langchain": "1.4.4",
+       "langchain-core": "1.6.9",
+       "langchain-openai": "1.7.0"
+      },
+      "ls_integration": "langchain_chat_model",
+      "ls_model_name": "gpt-4o-mini",
+      "ls_model_type": "chat",
+      "ls_provider": "openai",
+      "ls_temperature": 0.1,
+      "model": "gpt-4o-mini",
+      "model_name": "gpt-4o-mini",
+      "revision_id": "0.9.2-dirty",
+      "stop": null,
+      "stream": false,
+      "temperature": 0.1,
+      "thread_id": "th-1"
+     },
+     "options": {
+      "stop": null
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langchain-core",
+      "library_version": "1.6.9",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-f934-7304-b946-b37d7b87102e",
+    "inputs": {
+     "messages": [
+      [
+       {
+        "id": [
+         "langchain",
+         "schema",
+         "messages",
+         "HumanMessage"
+        ],
+        "kwargs": {
+         "content": "Weather in Paris?",
+         "type": "human"
+        },
+        "lc": 1,
+        "type": "constructor"
+       },
+       {
+        "id": [
+         "langchain",
+         "schema",
+         "messages",
+         "AIMessage"
+        ],
+        "kwargs": {
+         "additional_kwargs": {
+          "refusal": null
+         },
+         "content": "",
+         "id": "lc_run--01a2129f-f931-73b9-8669-4839d52fa403-0",
+         "invalid_tool_calls": [],
+         "response_metadata": {
+          "finish_reason": "tool_calls",
+          "id": "chatcmpl-1",
+          "logprobs": null,
+          "model_name": "gpt-4o-mini-2024-07-18",
+          "model_provider": "openai",
+          "system_fingerprint": null,
+          "token_usage": {
+           "completion_tokens": 5,
+           "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 2,
+            "rejected_prediction_tokens": null,
+            "text_tokens": null
+           },
+           "prompt_tokens": 20,
+           "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cache_write_tokens": null,
+            "cached_tokens": 4,
+            "image_tokens": null,
+            "text_tokens": null
+           },
+           "total_tokens": 25
+          }
+         },
+         "tool_calls": [
+          {
+           "args": {
+            "city": "Paris"
+           },
+           "id": "call_1",
+           "name": "get_weather",
+           "type": "tool_call"
+          }
+         ],
+         "type": "ai",
+         "usage_metadata": {
+          "input_token_details": {
+           "cache_read": 4
+          },
+          "input_tokens": 20,
+          "output_token_details": {
+           "reasoning": 2
+          },
+          "output_tokens": 5,
+          "total_tokens": 25
+         }
+        },
+        "lc": 1,
+        "type": "constructor"
+       },
+       {
+        "id": [
+         "langchain",
+         "schema",
+         "messages",
+         "ToolMessage"
+        ],
+        "kwargs": {
+         "content": "sunny",
+         "status": "success",
+         "tool_call_id": "call_1",
+         "type": "tool"
+        },
+        "lc": 1,
+        "type": "constructor"
+       }
+      ]
+     ]
+    },
+    "name": "ChatOpenAI",
+    "outputs": {},
+    "parent_run_id": "01a2129f-f930-72fb-b506-675ba8d0e1e1",
+    "run_type": "llm",
+    "serialized": {
+     "id": [
+      "langchain",
+      "chat_models",
+      "openai",
+      "ChatOpenAI"
+     ],
+     "kwargs": {
+      "model_name": "gpt-4o-mini",
+      "openai_api_key": {
+       "id": [
+        "OPENAI_API_KEY"
+       ],
+       "lc": 1,
+       "type": "secret"
+      },
+      "temperature": 0.1
+     },
+     "lc": 1,
+     "name": "ChatOpenAI",
+     "type": "constructor"
+    },
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:13:23.636504+00:00",
+    "tags": [
+     "lc-tag"
+    ],
+    "trace_id": "01a2129f-f930-72fb-b506-675a4cf2e102"
+   }
+  },
+  {
+   "op": "update",
+   "run": {
+    "dotted_order": "20261125T121323632207Z01a2129f-f930-72fb-b506-675a4cf2e102.20261125T121323632623Z01a2129f-f930-72fb-b506-675ba8d0e1e1.20261125T121323636504Z01a2129f-f934-7304-b946-b37d7b87102e",
+    "end_time": "2026-11-25T12:13:23.638303+00:00",
+    "events": [
+     {
+      "name": "start",
+      "time": "2026-11-25T12:13:23.636504+00:00"
+     },
+     {
+      "name": "end",
+      "time": "2026-11-25T12:13:23.638303+00:00"
+     }
+    ],
+    "extra": {
+     "batch_size": 1,
+     "invocation_params": {
+      "_type": "openai-chat",
+      "model": "gpt-4o-mini",
+      "model_name": "gpt-4o-mini",
+      "stop": null,
+      "stream": false,
+      "temperature": 0.1,
+      "tools": [
+       {
+        "function": {
+         "description": "Weather in a city",
+         "name": "get_weather",
+         "parameters": {
+          "properties": {
+           "city": {
+            "type": "string"
+           }
+          },
+          "required": [
+           "city"
+          ],
+          "type": "object"
+         }
+        },
+        "type": "function"
+       }
+      ]
+     },
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "_type": "openai-chat",
+      "lc_versions": {
+       "langchain": "1.4.4",
+       "langchain-core": "1.6.9",
+       "langchain-openai": "1.7.0"
+      },
+      "ls_integration": "langchain_chat_model",
+      "ls_model_name": "gpt-4o-mini",
+      "ls_model_type": "chat",
+      "ls_provider": "openai",
+      "ls_temperature": 0.1,
+      "model": "gpt-4o-mini",
+      "model_name": "gpt-4o-mini",
+      "revision_id": "0.9.2-dirty",
+      "stop": null,
+      "stream": false,
+      "temperature": 0.1,
+      "thread_id": "th-1",
+      "usage_metadata": {
+       "input_token_details": {
+        "cache_read": 4
+       },
+       "input_tokens": 20,
+       "output_token_details": {
+        "reasoning": 2
+       },
+       "output_tokens": 5,
+       "total_tokens": 25
+      }
+     },
+     "options": {
+      "stop": null
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langchain-core",
+      "library_version": "1.6.9",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-f934-7304-b946-b37d7b87102e",
+    "inputs": {
+     "messages": [
+      [
+       {
+        "id": [
+         "langchain",
+         "schema",
+         "messages",
+         "HumanMessage"
+        ],
+        "kwargs": {
+         "content": "Weather in Paris?",
+         "type": "human"
+        },
+        "lc": 1,
+        "type": "constructor"
+       },
+       {
+        "id": [
+         "langchain",
+         "schema",
+         "messages",
+         "AIMessage"
+        ],
+        "kwargs": {
+         "additional_kwargs": {
+          "refusal": null
+         },
+         "content": "",
+         "id": "lc_run--01a2129f-f931-73b9-8669-4839d52fa403-0",
+         "invalid_tool_calls": [],
+         "response_metadata": {
+          "finish_reason": "tool_calls",
+          "id": "chatcmpl-1",
+          "logprobs": null,
+          "model_name": "gpt-4o-mini-2024-07-18",
+          "model_provider": "openai",
+          "system_fingerprint": null,
+          "token_usage": {
+           "completion_tokens": 5,
+           "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 2,
+            "rejected_prediction_tokens": null,
+            "text_tokens": null
+           },
+           "prompt_tokens": 20,
+           "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cache_write_tokens": null,
+            "cached_tokens": 4,
+            "image_tokens": null,
+            "text_tokens": null
+           },
+           "total_tokens": 25
+          }
+         },
+         "tool_calls": [
+          {
+           "args": {
+            "city": "Paris"
+           },
+           "id": "call_1",
+           "name": "get_weather",
+           "type": "tool_call"
+          }
+         ],
+         "type": "ai",
+         "usage_metadata": {
+          "input_token_details": {
+           "cache_read": 4
+          },
+          "input_tokens": 20,
+          "output_token_details": {
+           "reasoning": 2
+          },
+          "output_tokens": 5,
+          "total_tokens": 25
+         }
+        },
+        "lc": 1,
+        "type": "constructor"
+       },
+       {
+        "id": [
+         "langchain",
+         "schema",
+         "messages",
+         "ToolMessage"
+        ],
+        "kwargs": {
+         "content": "sunny",
+         "status": "success",
+         "tool_call_id": "call_1",
+         "type": "tool"
+        },
+        "lc": 1,
+        "type": "constructor"
+       }
+      ]
+     ]
+    },
+    "name": "ChatOpenAI",
+    "outputs": {
+     "generations": [
+      [
+       {
+        "generation_info": {
+         "finish_reason": "stop",
+         "logprobs": null
+        },
+        "message": {
+         "id": [
+          "langchain",
+          "schema",
+          "messages",
+          "AIMessage"
+         ],
+         "kwargs": {
+          "additional_kwargs": {
+           "refusal": null
+          },
+          "content": "It is sunny in Paris.",
+          "id": "lc_run--01a2129f-f934-7304-b946-b37d7b87102e-0",
+          "invalid_tool_calls": [],
+          "response_metadata": {
+           "finish_reason": "stop",
+           "id": "chatcmpl-1",
+           "logprobs": null,
+           "model_name": "gpt-4o-mini-2024-07-18",
+           "model_provider": "openai",
+           "system_fingerprint": null,
+           "token_usage": {
+            "completion_tokens": 5,
+            "completion_tokens_details": {
+             "accepted_prediction_tokens": null,
+             "audio_tokens": null,
+             "reasoning_tokens": 2,
+             "rejected_prediction_tokens": null,
+             "text_tokens": null
+            },
+            "prompt_tokens": 20,
+            "prompt_tokens_details": {
+             "audio_tokens": null,
+             "cache_write_tokens": null,
+             "cached_tokens": 4,
+             "image_tokens": null,
+             "text_tokens": null
+            },
+            "total_tokens": 25
+           }
+          },
+          "tool_calls": [],
+          "type": "ai",
+          "usage_metadata": {
+           "input_token_details": {
+            "cache_read": 4
+           },
+           "input_tokens": 20,
+           "output_token_details": {
+            "reasoning": 2
+           },
+           "output_tokens": 5,
+           "total_tokens": 25
+          }
+         },
+         "lc": 1,
+         "type": "constructor"
+        },
+        "text": "It is sunny in Paris.",
+        "type": "ChatGeneration"
+       }
+      ]
+     ],
+     "llm_output": {
+      "id": "chatcmpl-1",
+      "model_name": "gpt-4o-mini-2024-07-18",
+      "model_provider": "openai",
+      "system_fingerprint": null,
+      "token_usage": {
+       "completion_tokens": 5,
+       "completion_tokens_details": {
+        "accepted_prediction_tokens": null,
+        "audio_tokens": null,
+        "reasoning_tokens": 2,
+        "rejected_prediction_tokens": null,
+        "text_tokens": null
+       },
+       "prompt_tokens": 20,
+       "prompt_tokens_details": {
+        "audio_tokens": null,
+        "cache_write_tokens": null,
+        "cached_tokens": 4,
+        "image_tokens": null,
+        "text_tokens": null
+       },
+       "total_tokens": 25
+      }
+     },
+     "run": null,
+     "type": "LLMResult"
+    },
+    "parent_run_id": "01a2129f-f930-72fb-b506-675ba8d0e1e1",
+    "run_type": "llm",
+    "session_id": null,
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:13:23.636504+00:00",
+    "tags": [
+     "lc-tag"
+    ],
+    "trace_id": "01a2129f-f930-72fb-b506-675a4cf2e102"
+   }
+  },
+  {
+   "op": "update",
+   "run": {
+    "dotted_order": "20261125T121323632207Z01a2129f-f930-72fb-b506-675a4cf2e102.20261125T121323632623Z01a2129f-f930-72fb-b506-675ba8d0e1e1",
+    "end_time": "2026-11-25T12:13:23.638509+00:00",
+    "events": [
+     {
+      "name": "start",
+      "time": "2026-11-25T12:13:23.632623+00:00"
+     },
+     {
+      "name": "end",
+      "time": "2026-11-25T12:13:23.638509+00:00"
+     }
+    ],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "revision_id": "0.9.2-dirty",
+      "thread_id": "th-1"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langchain-core",
+      "library_version": "1.6.9",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-f930-72fb-b506-675ba8d0e1e1",
+    "inputs": {
+     "input": "Weather in Paris?"
+    },
+    "name": "weather_agent",
+    "outputs": {
+     "output": "It is sunny in Paris."
+    },
+    "parent_run_id": "01a2129f-f930-72fb-b506-675a4cf2e102",
+    "run_type": "chain",
+    "session_id": null,
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:13:23.632623+00:00",
+    "tags": [
+     "lc-tag",
+     "seq:step:1"
+    ],
+    "trace_id": "01a2129f-f930-72fb-b506-675a4cf2e102"
+   }
+  },
+  {
+   "op": "create",
+   "run": {
+    "attachments": {},
+    "dotted_order": "20261125T121323632207Z01a2129f-f930-72fb-b506-675a4cf2e102.20261125T121323638679Z01a2129f-f936-7034-8ba8-7508ca55943a",
+    "events": [
+     {
+      "name": "start",
+      "time": "2026-11-25T12:13:23.638679+00:00"
+     }
+    ],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "revision_id": "0.9.2-dirty",
+      "thread_id": "th-1"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langchain-core",
+      "library_version": "1.6.9",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-f936-7034-8ba8-7508ca55943a",
+    "inputs": {
+     "input": "It is sunny in Paris."
+    },
+    "name": "RunnableLambda",
+    "outputs": {},
+    "parent_run_id": "01a2129f-f930-72fb-b506-675a4cf2e102",
+    "run_type": "chain",
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:13:23.638679+00:00",
+    "tags": [
+     "seq:step:2",
+     "lc-tag"
+    ],
+    "trace_id": "01a2129f-f930-72fb-b506-675a4cf2e102"
+   }
+  },
+  {
+   "op": "update",
+   "run": {
+    "dotted_order": "20261125T121323632207Z01a2129f-f930-72fb-b506-675a4cf2e102.20261125T121323638679Z01a2129f-f936-7034-8ba8-7508ca55943a",
+    "end_time": "2026-11-25T12:13:23.638951+00:00",
+    "events": [
+     {
+      "name": "start",
+      "time": "2026-11-25T12:13:23.638679+00:00"
+     },
+     {
+      "name": "end",
+      "time": "2026-11-25T12:13:23.638951+00:00"
+     }
+    ],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "revision_id": "0.9.2-dirty",
+      "thread_id": "th-1"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langchain-core",
+      "library_version": "1.6.9",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-f936-7034-8ba8-7508ca55943a",
+    "inputs": {
+     "input": "It is sunny in Paris."
+    },
+    "name": "RunnableLambda",
+    "outputs": {
+     "output": "IT IS SUNNY IN PARIS."
+    },
+    "parent_run_id": "01a2129f-f930-72fb-b506-675a4cf2e102",
+    "run_type": "chain",
+    "session_id": null,
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:13:23.638679+00:00",
+    "tags": [
+     "seq:step:2",
+     "lc-tag"
+    ],
+    "trace_id": "01a2129f-f930-72fb-b506-675a4cf2e102"
+   }
+  },
+  {
+   "op": "update",
+   "run": {
+    "dotted_order": "20261125T121323632207Z01a2129f-f930-72fb-b506-675a4cf2e102",
+    "end_time": "2026-11-25T12:13:23.639030+00:00",
+    "events": [
+     {
+      "name": "start",
+      "time": "2026-11-25T12:13:23.632207+00:00"
+     },
+     {
+      "name": "end",
+      "time": "2026-11-25T12:13:23.639030+00:00"
+     }
+    ],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "revision_id": "0.9.2-dirty",
+      "thread_id": "th-1"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langchain-core",
+      "library_version": "1.6.9",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-f930-72fb-b506-675a4cf2e102",
+    "inputs": {
+     "input": "Weather in Paris?"
+    },
+    "name": "RunnableSequence",
+    "outputs": {
+     "output": "IT IS SUNNY IN PARIS."
+    },
+    "parent_run_id": null,
+    "run_type": "chain",
+    "session_id": null,
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:13:23.632207+00:00",
+    "tags": [
+     "lc-tag"
+    ],
+    "trace_id": "01a2129f-f930-72fb-b506-675a4cf2e102"
+   }
+  }
+ ],
+ "langgraph": [
+  {
+   "op": "create",
+   "run": {
+    "attachments": {},
+    "dotted_order": "20261125T121332779852Z01a212a0-1ceb-737f-9b52-fe17c8d518cf",
+    "events": [
+     {
+      "name": "start",
+      "time": "2026-11-25T12:13:32.779852+00:00"
+     }
+    ],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "ls_integration": "langgraph",
+      "revision_id": "0.9.2-dirty",
+      "thread_id": "thread-42"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langchain-core",
+      "library_version": "1.6.9",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a212a0-1ceb-737f-9b52-fe17c8d518cf",
+    "inputs": {
+     "messages": [
+      "hi"
+     ],
+     "steps_taken": 0
+    },
+    "name": "LangGraph",
+    "outputs": {},
+    "run_type": "chain",
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:13:32.779852+00:00",
+    "tags": [],
+    "trace_id": "01a212a0-1ceb-737f-9b52-fe17c8d518cf"
+   }
+  },
+  {
+   "op": "create",
+   "run": {
+    "attachments": {},
+    "dotted_order": "20261125T121332779852Z01a212a0-1ceb-737f-9b52-fe17c8d518cf.20261125T121332781128Z01a212a0-1ced-7013-978e-dfd53d9a8642",
+    "events": [
+     {
+      "name": "start",
+      "time": "2026-11-25T12:13:32.781128+00:00"
+     }
+    ],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "langgraph_checkpoint_ns": "plan:fb35646e-ba88-4e9d-8233-d62237a5aa87",
+      "langgraph_node": "plan",
+      "langgraph_path": [
+       "__pregel_pull",
+       "plan"
+      ],
+      "langgraph_step": 1,
+      "langgraph_triggers": [
+       "branch:to:plan"
+      ],
+      "ls_integration": "langgraph",
+      "revision_id": "0.9.2-dirty",
+      "thread_id": "thread-42"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langchain-core",
+      "library_version": "1.6.9",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a212a0-1ced-7013-978e-dfd53d9a8642",
+    "inputs": {
+     "messages": [
+      "hi"
+     ],
+     "steps_taken": 0
+    },
+    "name": "plan",
+    "outputs": {},
+    "parent_run_id": "01a212a0-1ceb-737f-9b52-fe17c8d518cf",
+    "run_type": "chain",
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:13:32.781128+00:00",
+    "tags": [
+     "graph:step:1"
+    ],
+    "trace_id": "01a212a0-1ceb-737f-9b52-fe17c8d518cf"
+   }
+  },
+  {
+   "op": "update",
+   "run": {
+    "dotted_order": "20261125T121332779852Z01a212a0-1ceb-737f-9b52-fe17c8d518cf.20261125T121332781128Z01a212a0-1ced-7013-978e-dfd53d9a8642",
+    "end_time": "2026-11-25T12:13:32.781351+00:00",
+    "events": [
+     {
+      "name": "start",
+      "time": "2026-11-25T12:13:32.781128+00:00"
+     },
+     {
+      "name": "end",
+      "time": "2026-11-25T12:13:32.781351+00:00"
+     }
+    ],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "langgraph_checkpoint_ns": "plan:fb35646e-ba88-4e9d-8233-d62237a5aa87",
+      "langgraph_node": "plan",
+      "langgraph_path": [
+       "__pregel_pull",
+       "plan"
+      ],
+      "langgraph_step": 1,
+      "langgraph_triggers": [
+       "branch:to:plan"
+      ],
+      "ls_integration": "langgraph",
+      "revision_id": "0.9.2-dirty",
+      "thread_id": "thread-42"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langchain-core",
+      "library_version": "1.6.9",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a212a0-1ced-7013-978e-dfd53d9a8642",
+    "inputs": {
+     "messages": [
+      "hi"
+     ],
+     "steps_taken": 0
+    },
+    "name": "plan",
+    "outputs": {
+     "messages": [
+      "hi",
+      "planned"
+     ],
+     "steps_taken": 1
+    },
+    "parent_run_id": "01a212a0-1ceb-737f-9b52-fe17c8d518cf",
+    "run_type": "chain",
+    "session_id": null,
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:13:32.781128+00:00",
+    "tags": [
+     "graph:step:1"
+    ],
+    "trace_id": "01a212a0-1ceb-737f-9b52-fe17c8d518cf"
+   }
+  },
+  {
+   "op": "create",
+   "run": {
+    "attachments": {},
+    "dotted_order": "20261125T121332779852Z01a212a0-1ceb-737f-9b52-fe17c8d518cf.20261125T121332781813Z01a212a0-1ced-7013-978e-dfd698799d9f",
+    "events": [
+     {
+      "name": "start",
+      "time": "2026-11-25T12:13:32.781813+00:00"
+     }
+    ],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "langgraph_checkpoint_ns": "act:9b8c11d9-6352-a0d9-5eff-84ca76c15f54",
+      "langgraph_node": "act",
+      "langgraph_path": [
+       "__pregel_pull",
+       "act"
+      ],
+      "langgraph_step": 2,
+      "langgraph_triggers": [
+       "branch:to:act"
+      ],
+      "ls_integration": "langgraph",
+      "revision_id": "0.9.2-dirty",
+      "thread_id": "thread-42"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langchain-core",
+      "library_version": "1.6.9",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a212a0-1ced-7013-978e-dfd698799d9f",
+    "inputs": {
+     "messages": [
+      "hi",
+      "planned"
+     ],
+     "steps_taken": 1
+    },
+    "name": "act",
+    "outputs": {},
+    "parent_run_id": "01a212a0-1ceb-737f-9b52-fe17c8d518cf",
+    "run_type": "chain",
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:13:32.781813+00:00",
+    "tags": [
+     "graph:step:2"
+    ],
+    "trace_id": "01a212a0-1ceb-737f-9b52-fe17c8d518cf"
+   }
+  },
+  {
+   "op": "update",
+   "run": {
+    "dotted_order": "20261125T121332779852Z01a212a0-1ceb-737f-9b52-fe17c8d518cf.20261125T121332781813Z01a212a0-1ced-7013-978e-dfd698799d9f",
+    "end_time": "2026-11-25T12:13:32.782014+00:00",
+    "events": [
+     {
+      "name": "start",
+      "time": "2026-11-25T12:13:32.781813+00:00"
+     },
+     {
+      "name": "end",
+      "time": "2026-11-25T12:13:32.782014+00:00"
+     }
+    ],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "langgraph_checkpoint_ns": "act:9b8c11d9-6352-a0d9-5eff-84ca76c15f54",
+      "langgraph_node": "act",
+      "langgraph_path": [
+       "__pregel_pull",
+       "act"
+      ],
+      "langgraph_step": 2,
+      "langgraph_triggers": [
+       "branch:to:act"
+      ],
+      "ls_integration": "langgraph",
+      "revision_id": "0.9.2-dirty",
+      "thread_id": "thread-42"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langchain-core",
+      "library_version": "1.6.9",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a212a0-1ced-7013-978e-dfd698799d9f",
+    "inputs": {
+     "messages": [
+      "hi",
+      "planned"
+     ],
+     "steps_taken": 1
+    },
+    "name": "act",
+    "outputs": {
+     "messages": [
+      "hi",
+      "planned",
+      "acted"
+     ],
+     "steps_taken": 2
+    },
+    "parent_run_id": "01a212a0-1ceb-737f-9b52-fe17c8d518cf",
+    "run_type": "chain",
+    "session_id": null,
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:13:32.781813+00:00",
+    "tags": [
+     "graph:step:2"
+    ],
+    "trace_id": "01a212a0-1ceb-737f-9b52-fe17c8d518cf"
+   }
+  },
+  {
+   "op": "update",
+   "run": {
+    "dotted_order": "20261125T121332779852Z01a212a0-1ceb-737f-9b52-fe17c8d518cf",
+    "end_time": "2026-11-25T12:13:32.782209+00:00",
+    "events": [
+     {
+      "name": "start",
+      "time": "2026-11-25T12:13:32.779852+00:00"
+     },
+     {
+      "name": "end",
+      "time": "2026-11-25T12:13:32.782209+00:00"
+     }
+    ],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "ls_integration": "langgraph",
+      "revision_id": "0.9.2-dirty",
+      "thread_id": "thread-42"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langchain-core",
+      "library_version": "1.6.9",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a212a0-1ceb-737f-9b52-fe17c8d518cf",
+    "inputs": {
+     "messages": [
+      "hi"
+     ],
+     "steps_taken": 0
+    },
+    "name": "LangGraph",
+    "outputs": {
+     "messages": [
+      "hi",
+      "planned",
+      "acted"
+     ],
+     "steps_taken": 2
+    },
+    "parent_run_id": null,
+    "run_type": "chain",
+    "session_id": null,
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:13:32.779852+00:00",
+    "tags": [],
+    "trace_id": "01a212a0-1ceb-737f-9b52-fe17c8d518cf"
+   }
+  }
+ ],
+ "traceable": [
+  {
+   "op": "create",
+   "run": {
+    "attachments": {},
+    "dotted_order": "20261125T121226586362Z01a2129f-1a5a-7056-a34b-d9f18243e1d4",
+    "events": [],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "env": "test",
+      "ls_method": "traceable",
+      "revision_id": "0.9.2-dirty",
+      "session_id": "s-1",
+      "user_id": "u-1"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langsmith",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-1a5a-7056-a34b-d9f18243e1d4",
+    "inputs": {
+     "q": "hello"
+    },
+    "name": "agent",
+    "outputs": {},
+    "run_type": "chain",
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:12:26.586362+00:00",
+    "tags": [
+     "t1"
+    ],
+    "trace_id": "01a2129f-1a5a-7056-a34b-d9f18243e1d4"
+   }
+  },
+  {
+   "op": "create",
+   "run": {
+    "attachments": {},
+    "dotted_order": "20261125T121226586362Z01a2129f-1a5a-7056-a34b-d9f18243e1d4.20261125T121226596210Z01a2129f-1a64-7224-81a4-e497150cdbba",
+    "events": [],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "env": "test",
+      "ls_method": "traceable",
+      "revision_id": "0.9.2-dirty",
+      "session_id": "s-1",
+      "user_id": "u-1"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langsmith",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-1a64-7224-81a4-e497150cdbba",
+    "inputs": {
+     "query": "hello"
+    },
+    "name": "search",
+    "outputs": {},
+    "parent_run_id": "01a2129f-1a5a-7056-a34b-d9f18243e1d4",
+    "run_type": "tool",
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:12:26.596210+00:00",
+    "tags": [
+     "t1"
+    ],
+    "trace_id": "01a2129f-1a5a-7056-a34b-d9f18243e1d4"
+   }
+  },
+  {
+   "op": "update",
+   "run": {
+    "dotted_order": "20261125T121226586362Z01a2129f-1a5a-7056-a34b-d9f18243e1d4.20261125T121226596210Z01a2129f-1a64-7224-81a4-e497150cdbba",
+    "end_time": "2026-11-25T12:12:26.596501+00:00",
+    "events": [],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "env": "test",
+      "ls_method": "traceable",
+      "revision_id": "0.9.2-dirty",
+      "session_id": "s-1",
+      "user_id": "u-1"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langsmith",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-1a64-7224-81a4-e497150cdbba",
+    "name": "search",
+    "outputs": {
+     "output": [
+      "a",
+      "b"
+     ]
+    },
+    "parent_run_id": "01a2129f-1a5a-7056-a34b-d9f18243e1d4",
+    "run_type": "tool",
+    "session_id": null,
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:12:26.596210+00:00",
+    "tags": [
+     "t1"
+    ],
+    "trace_id": "01a2129f-1a5a-7056-a34b-d9f18243e1d4"
+   }
+  },
+  {
+   "op": "create",
+   "run": {
+    "attachments": {},
+    "dotted_order": "20261125T121226586362Z01a2129f-1a5a-7056-a34b-d9f18243e1d4.20261125T121226596653Z01a2129f-1a64-7944-ad36-859835a6cc8d",
+    "events": [],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "env": "test",
+      "ls_method": "traceable",
+      "ls_model_name": "gpt-4o",
+      "ls_provider": "openai",
+      "revision_id": "0.9.2-dirty",
+      "session_id": "s-1",
+      "user_id": "u-1"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langsmith",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-1a64-7944-ad36-859835a6cc8d",
+    "inputs": {
+     "messages": [
+      {
+       "content": "be brief",
+       "role": "system"
+      },
+      {
+       "content": "hello",
+       "role": "user"
+      }
+     ]
+    },
+    "name": "llm",
+    "outputs": {},
+    "parent_run_id": "01a2129f-1a5a-7056-a34b-d9f18243e1d4",
+    "run_type": "llm",
+    "serialized": {
+     "name": "llm"
+    },
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:12:26.596653+00:00",
+    "tags": [
+     "t1"
+    ],
+    "trace_id": "01a2129f-1a5a-7056-a34b-d9f18243e1d4"
+   }
+  },
+  {
+   "op": "update",
+   "run": {
+    "dotted_order": "20261125T121226586362Z01a2129f-1a5a-7056-a34b-d9f18243e1d4.20261125T121226596653Z01a2129f-1a64-7944-ad36-859835a6cc8d",
+    "end_time": "2026-11-25T12:12:26.596822+00:00",
+    "events": [],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "env": "test",
+      "ls_method": "traceable",
+      "ls_model_name": "gpt-4o",
+      "ls_provider": "openai",
+      "revision_id": "0.9.2-dirty",
+      "session_id": "s-1",
+      "usage_metadata": {
+       "input_tokens": 3,
+       "output_tokens": 2,
+       "total_tokens": 5
+      },
+      "user_id": "u-1"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langsmith",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-1a64-7944-ad36-859835a6cc8d",
+    "name": "llm",
+    "outputs": {
+     "choices": [
+      {
+       "message": {
+        "content": "hi",
+        "role": "assistant"
+       }
+      }
+     ],
+     "usage_metadata": {
+      "input_tokens": 3,
+      "output_tokens": 2,
+      "total_tokens": 5
+     }
+    },
+    "parent_run_id": "01a2129f-1a5a-7056-a34b-d9f18243e1d4",
+    "run_type": "llm",
+    "session_id": null,
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:12:26.596653+00:00",
+    "tags": [
+     "t1"
+    ],
+    "trace_id": "01a2129f-1a5a-7056-a34b-d9f18243e1d4"
+   }
+  },
+  {
+   "op": "update",
+   "run": {
+    "dotted_order": "20261125T121226586362Z01a2129f-1a5a-7056-a34b-d9f18243e1d4",
+    "end_time": "2026-11-25T12:12:26.596890+00:00",
+    "events": [],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "env": "test",
+      "ls_method": "traceable",
+      "revision_id": "0.9.2-dirty",
+      "session_id": "s-1",
+      "usage_metadata": {
+       "input_tokens": 3,
+       "output_tokens": 2,
+       "total_tokens": 5
+      },
+      "user_id": "u-1"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langsmith",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-1a5a-7056-a34b-d9f18243e1d4",
+    "name": "agent",
+    "outputs": {
+     "choices": [
+      {
+       "message": {
+        "content": "hi",
+        "role": "assistant"
+       }
+      }
+     ],
+     "usage_metadata": {
+      "input_tokens": 3,
+      "output_tokens": 2,
+      "total_tokens": 5
+     }
+    },
+    "parent_run_id": null,
+    "run_type": "chain",
+    "session_id": null,
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:12:26.586362+00:00",
+    "tags": [
+     "t1"
+    ],
+    "trace_id": "01a2129f-1a5a-7056-a34b-d9f18243e1d4"
+   }
+  }
+ ],
+ "traceable_error": [
+  {
+   "op": "create",
+   "run": {
+    "attachments": {},
+    "dotted_order": "20261125T121235655655Z01a2129f-3dc7-7c2a-af77-56c6f288f54c",
+    "events": [],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "ls_method": "traceable",
+      "revision_id": "0.9.2-dirty"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langsmith",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-3dc7-7c2a-af77-56c6f288f54c",
+    "inputs": {
+     "x": 1
+    },
+    "name": "boom",
+    "outputs": {},
+    "run_type": "chain",
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:12:35.655655+00:00",
+    "tags": [],
+    "trace_id": "01a2129f-3dc7-7c2a-af77-56c6f288f54c"
+   }
+  },
+  {
+   "op": "update",
+   "run": {
+    "dotted_order": "20261125T121235655655Z01a2129f-3dc7-7c2a-af77-56c6f288f54c",
+    "end_time": "2026-11-25T12:12:35.656259+00:00",
+    "error": "ValueError('bad input')\n\nTraceback (most recent call last):\n  File \"record.py\", line 227, in boom\n    raise ValueError(\"bad input\")\nValueError: bad input\n",
+    "events": [],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "ls_method": "traceable",
+      "revision_id": "0.9.2-dirty"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langsmith",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-3dc7-7c2a-af77-56c6f288f54c",
+    "name": "boom",
+    "outputs": {
+     "output": null
+    },
+    "parent_run_id": null,
+    "run_type": "chain",
+    "session_id": null,
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:12:35.655655+00:00",
+    "tags": [],
+    "trace_id": "01a2129f-3dc7-7c2a-af77-56c6f288f54c"
+   }
+  }
+ ],
+ "wrap_anthropic_tools": [
+  {
+   "op": "create",
+   "run": {
+    "attachments": {},
+    "dotted_order": "20261125T121314417933Z01a2129f-d531-73ac-a8e9-e96d9008c507",
+    "events": [],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "ls_invocation_params": {},
+      "ls_max_tokens": 100,
+      "ls_method": "traceable",
+      "ls_model_name": "claude-sonnet-4-5",
+      "ls_model_type": "chat",
+      "ls_provider": "anthropic",
+      "revision_id": "0.9.2-dirty"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langsmith",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-d531-73ac-a8e9-e96d9008c507",
+    "inputs": {
+     "max_tokens": 100,
+     "messages": [
+      {
+       "content": "Be brief",
+       "role": "system"
+      },
+      {
+       "content": "Weather in Paris?",
+       "role": "user"
+      }
+     ],
+     "model": "claude-sonnet-4-5",
+     "tools": [
+      {
+       "description": "Weather",
+       "input_schema": {
+        "properties": {
+         "city": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       },
+       "name": "get_weather"
+      }
+     ]
+    },
+    "name": "ChatAnthropic",
+    "outputs": {},
+    "run_type": "llm",
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:13:14.417933+00:00",
+    "tags": [],
+    "trace_id": "01a2129f-d531-73ac-a8e9-e96d9008c507"
+   }
+  },
+  {
+   "op": "update",
+   "run": {
+    "dotted_order": "20261125T121314417933Z01a2129f-d531-73ac-a8e9-e96d9008c507",
+    "end_time": "2026-11-25T12:13:14.428342+00:00",
+    "events": [],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "ls_invocation_params": {},
+      "ls_max_tokens": 100,
+      "ls_method": "traceable",
+      "ls_model_name": "claude-sonnet-4-5",
+      "ls_model_type": "chat",
+      "ls_provider": "anthropic",
+      "revision_id": "0.9.2-dirty",
+      "usage_metadata": {
+       "input_token_details": {
+        "cache_creation": 2,
+        "cache_read": 5
+       },
+       "input_tokens": 37,
+       "output_tokens": 10,
+       "total_tokens": 47
+      }
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langsmith",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-d531-73ac-a8e9-e96d9008c507",
+    "name": "ChatAnthropic",
+    "outputs": {
+     "container": null,
+     "content": "Let me check.",
+     "diagnostics": null,
+     "id": "msg_1",
+     "model": "claude-sonnet-4-5",
+     "role": "assistant",
+     "stop_details": null,
+     "stop_reason": "tool_use",
+     "stop_sequence": null,
+     "tool_calls": [
+      {
+       "function": {
+        "arguments": "{\"city\":\"Paris\"}",
+        "name": "get_weather"
+       },
+       "id": "toolu_1",
+       "index": 0,
+       "type": "function"
+      }
+     ],
+     "usage_metadata": {
+      "input_token_details": {
+       "cache_creation": 2,
+       "cache_read": 5
+      },
+      "input_tokens": 37,
+      "output_tokens": 10,
+      "total_tokens": 47
+     }
+    },
+    "parent_run_id": null,
+    "run_type": "llm",
+    "session_id": null,
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:13:14.417933+00:00",
+    "tags": [],
+    "trace_id": "01a2129f-d531-73ac-a8e9-e96d9008c507"
+   }
+  },
+  {
+   "op": "create",
+   "run": {
+    "attachments": {},
+    "dotted_order": "20261125T121314430066Z01a2129f-d53e-7e3c-88b3-39059c3ef08a",
+    "events": [],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "ls_invocation_params": {},
+      "ls_max_tokens": 100,
+      "ls_method": "traceable",
+      "ls_model_name": "claude-sonnet-4-5",
+      "ls_model_type": "chat",
+      "ls_provider": "anthropic",
+      "revision_id": "0.9.2-dirty"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langsmith",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-d53e-7e3c-88b3-39059c3ef08a",
+    "inputs": {
+     "max_tokens": 100,
+     "messages": [
+      {
+       "content": "Weather in Paris?",
+       "role": "user"
+      },
+      {
+       "content": [
+        {
+         "citations": null,
+         "text": "Let me check.",
+         "type": "text"
+        },
+        {
+         "caller": null,
+         "id": "toolu_1",
+         "input": {
+          "city": "Paris"
+         },
+         "name": "get_weather",
+         "toolset_name": null,
+         "type": "tool_use"
+        }
+       ],
+       "role": "assistant"
+      },
+      {
+       "content": [
+        {
+         "content": "sunny",
+         "tool_use_id": "toolu_1",
+         "type": "tool_result"
+        }
+       ],
+       "role": "user"
+      }
+     ],
+     "model": "claude-sonnet-4-5",
+     "tools": [
+      {
+       "description": "Weather",
+       "input_schema": {
+        "properties": {
+         "city": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       },
+       "name": "get_weather"
+      }
+     ]
+    },
+    "name": "ChatAnthropic",
+    "outputs": {},
+    "run_type": "llm",
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:13:14.430066+00:00",
+    "tags": [],
+    "trace_id": "01a2129f-d53e-7e3c-88b3-39059c3ef08a"
+   }
+  },
+  {
+   "op": "update",
+   "run": {
+    "dotted_order": "20261125T121314430066Z01a2129f-d53e-7e3c-88b3-39059c3ef08a",
+    "end_time": "2026-11-25T12:13:14.431743+00:00",
+    "events": [],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "ls_invocation_params": {},
+      "ls_max_tokens": 100,
+      "ls_method": "traceable",
+      "ls_model_name": "claude-sonnet-4-5",
+      "ls_model_type": "chat",
+      "ls_provider": "anthropic",
+      "revision_id": "0.9.2-dirty",
+      "usage_metadata": {
+       "input_token_details": {
+        "cache_creation": 2,
+        "cache_read": 5
+       },
+       "input_tokens": 37,
+       "output_tokens": 10,
+       "total_tokens": 47
+      }
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langsmith",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-d53e-7e3c-88b3-39059c3ef08a",
+    "name": "ChatAnthropic",
+    "outputs": {
+     "container": null,
+     "content": [
+      {
+       "citations": null,
+       "text": "Sunny.",
+       "type": "text"
+      }
+     ],
+     "diagnostics": null,
+     "id": "msg_1",
+     "model": "claude-sonnet-4-5",
+     "role": "assistant",
+     "stop_details": null,
+     "stop_reason": "end_turn",
+     "stop_sequence": null,
+     "usage_metadata": {
+      "input_token_details": {
+       "cache_creation": 2,
+       "cache_read": 5
+      },
+      "input_tokens": 37,
+      "output_tokens": 10,
+      "total_tokens": 47
+     }
+    },
+    "parent_run_id": null,
+    "run_type": "llm",
+    "session_id": null,
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:13:14.430066+00:00",
+    "tags": [],
+    "trace_id": "01a2129f-d53e-7e3c-88b3-39059c3ef08a"
+   }
+  }
+ ],
+ "wrap_openai_responses": [
+  {
+   "op": "create",
+   "run": {
+    "attachments": {},
+    "dotted_order": "20261125T121304537704Z01a2129f-ae99-7ddd-bcd4-c416d44a591e",
+    "events": [],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "ls_agent_type": "root",
+      "ls_invocation_params": {
+       "use_responses_api": true
+      },
+      "ls_method": "traceable",
+      "ls_model_name": "gpt-4.1-mini",
+      "ls_model_type": "chat",
+      "ls_provider": "openai",
+      "revision_id": "0.9.2-dirty"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langsmith",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-ae99-7ddd-bcd4-c416d44a591e",
+    "inputs": {
+     "input": "Hi",
+     "instructions": "Be nice",
+     "model": "gpt-4.1-mini"
+    },
+    "name": "ChatOpenAI",
+    "outputs": {},
+    "run_type": "llm",
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:13:04.537704+00:00",
+    "tags": [],
+    "trace_id": "01a2129f-ae99-7ddd-bcd4-c416d44a591e"
+   }
+  },
+  {
+   "op": "update",
+   "run": {
+    "dotted_order": "20261125T121304537704Z01a2129f-ae99-7ddd-bcd4-c416d44a591e",
+    "end_time": "2026-11-25T12:13:04.577891+00:00",
+    "events": [],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "ls_agent_type": "root",
+      "ls_invocation_params": {
+       "use_responses_api": true
+      },
+      "ls_method": "traceable",
+      "ls_model_name": "gpt-4.1-mini",
+      "ls_model_type": "chat",
+      "ls_provider": "openai",
+      "revision_id": "0.9.2-dirty",
+      "usage_metadata": {
+       "input_token_details": {
+        "cache_read": 0
+       },
+       "input_tokens": 10,
+       "output_token_details": {
+        "reasoning": 0
+       },
+       "output_tokens": 3,
+       "total_tokens": 13
+      }
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langsmith",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-ae99-7ddd-bcd4-c416d44a591e",
+    "name": "ChatOpenAI",
+    "outputs": {
+     "created_at": 1.0,
+     "id": "resp_1",
+     "model": "gpt-4.1-mini",
+     "object": "response",
+     "output": [
+      {
+       "content": [
+        {
+         "annotations": [],
+         "text": "Hi!",
+         "type": "output_text"
+        }
+       ],
+       "id": "msg_1",
+       "role": "assistant",
+       "status": "completed",
+       "type": "message"
+      }
+     ],
+     "parallel_tool_calls": true,
+     "status": "completed",
+     "tool_choice": "auto",
+     "tools": [],
+     "usage_metadata": {
+      "input_token_details": {
+       "cache_read": 0
+      },
+      "input_tokens": 10,
+      "output_token_details": {
+       "reasoning": 0
+      },
+      "output_tokens": 3,
+      "total_tokens": 13
+     }
+    },
+    "parent_run_id": null,
+    "run_type": "llm",
+    "session_id": null,
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:13:04.537704+00:00",
+    "tags": [],
+    "trace_id": "01a2129f-ae99-7ddd-bcd4-c416d44a591e"
+   }
+  }
+ ],
+ "wrap_openai_stream": [
+  {
+   "op": "create",
+   "run": {
+    "attachments": {},
+    "dotted_order": "20261125T121255322199Z01a2129f-8a9a-7633-9fa4-f3e491abb32a",
+    "events": [],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "ls_agent_type": "root",
+      "ls_invocation_params": {
+       "stream_options": {
+        "include_usage": true
+       }
+      },
+      "ls_method": "traceable",
+      "ls_model_name": "gpt-4o-mini",
+      "ls_model_type": "chat",
+      "ls_provider": "openai",
+      "revision_id": "0.9.2-dirty"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langsmith",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-8a9a-7633-9fa4-f3e491abb32a",
+    "inputs": {
+     "messages": [
+      {
+       "content": "Say hello",
+       "role": "user"
+      }
+     ],
+     "model": "gpt-4o-mini",
+     "stream": true,
+     "stream_options": {
+      "include_usage": true
+     }
+    },
+    "name": "ChatOpenAI",
+    "outputs": {},
+    "run_type": "llm",
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:12:55.322199+00:00",
+    "tags": [],
+    "trace_id": "01a2129f-8a9a-7633-9fa4-f3e491abb32a"
+   }
+  },
+  {
+   "op": "update",
+   "run": {
+    "dotted_order": "20261125T121255322199Z01a2129f-8a9a-7633-9fa4-f3e491abb32a",
+    "end_time": "2026-11-25T12:12:55.326484+00:00",
+    "events": [
+     {
+      "name": "new_token",
+      "time": "2026-11-25T12:12:55.326073+00:00"
+     }
+    ],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "ls_agent_type": "root",
+      "ls_invocation_params": {
+       "stream_options": {
+        "include_usage": true
+       }
+      },
+      "ls_method": "traceable",
+      "ls_model_name": "gpt-4o-mini",
+      "ls_model_type": "chat",
+      "ls_provider": "openai",
+      "revision_id": "0.9.2-dirty",
+      "usage_metadata": {
+       "input_token_details": {},
+       "input_tokens": 7,
+       "output_token_details": {},
+       "output_tokens": 2,
+       "total_tokens": 9
+      }
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langsmith",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-8a9a-7633-9fa4-f3e491abb32a",
+    "name": "ChatOpenAI",
+    "outputs": {
+     "choices": [
+      {
+       "finish_reason": "stop",
+       "index": 0,
+       "message": {
+        "content": "Hello",
+        "role": "assistant"
+       }
+      }
+     ],
+     "created": 1,
+     "id": "chatcmpl-2",
+     "model": "gpt-4o-mini",
+     "moderation": null,
+     "obfuscation": null,
+     "object": "chat.completion.chunk",
+     "service_tier": null,
+     "system_fingerprint": null,
+     "usage_metadata": {
+      "input_token_details": {},
+      "input_tokens": 7,
+      "output_token_details": {},
+      "output_tokens": 2,
+      "total_tokens": 9
+     }
+    },
+    "parent_run_id": null,
+    "run_type": "llm",
+    "session_id": null,
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:12:55.322199+00:00",
+    "tags": [],
+    "trace_id": "01a2129f-8a9a-7633-9fa4-f3e491abb32a"
+   }
+  }
+ ],
+ "wrap_openai_tools": [
+  {
+   "op": "create",
+   "run": {
+    "attachments": {},
+    "dotted_order": "20261125T121246196160Z01a2129f-66f4-7958-9873-7b89d223c17e",
+    "events": [],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "ls_method": "traceable",
+      "revision_id": "0.9.2-dirty"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langsmith",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-66f4-7958-9873-7b89d223c17e",
+    "inputs": {},
+    "name": "tool_loop",
+    "outputs": {},
+    "run_type": "chain",
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:12:46.196160+00:00",
+    "tags": [],
+    "trace_id": "01a2129f-66f4-7958-9873-7b89d223c17e"
+   }
+  },
+  {
+   "op": "create",
+   "run": {
+    "attachments": {},
+    "dotted_order": "20261125T121246196160Z01a2129f-66f4-7958-9873-7b89d223c17e.20261125T121246226450Z01a2129f-6712-71b2-a3e6-6469cda26382",
+    "events": [],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "ls_invocation_params": {},
+      "ls_method": "traceable",
+      "ls_model_name": "gpt-4o-mini",
+      "ls_model_type": "chat",
+      "ls_provider": "openai",
+      "ls_temperature": 0.2,
+      "revision_id": "0.9.2-dirty"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langsmith",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-6712-71b2-a3e6-6469cda26382",
+    "inputs": {
+     "messages": [
+      {
+       "content": "Weather in Paris?",
+       "role": "user"
+      }
+     ],
+     "model": "gpt-4o-mini",
+     "temperature": 0.2,
+     "tools": [
+      {
+       "function": {
+        "description": "Weather in a city",
+        "name": "get_weather",
+        "parameters": {
+         "properties": {
+          "city": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "city"
+         ],
+         "type": "object"
+        }
+       },
+       "type": "function"
+      }
+     ]
+    },
+    "name": "ChatOpenAI",
+    "outputs": {},
+    "parent_run_id": "01a2129f-66f4-7958-9873-7b89d223c17e",
+    "run_type": "llm",
+    "serialized": {
+     "name": "ChatOpenAI"
+    },
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:12:46.226450+00:00",
+    "tags": [],
+    "trace_id": "01a2129f-66f4-7958-9873-7b89d223c17e"
+   }
+  },
+  {
+   "op": "update",
+   "run": {
+    "dotted_order": "20261125T121246196160Z01a2129f-66f4-7958-9873-7b89d223c17e.20261125T121246226450Z01a2129f-6712-71b2-a3e6-6469cda26382",
+    "end_time": "2026-11-25T12:12:46.233139+00:00",
+    "events": [],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "ls_invocation_params": {},
+      "ls_method": "traceable",
+      "ls_model_name": "gpt-4o-mini",
+      "ls_model_type": "chat",
+      "ls_provider": "openai",
+      "ls_temperature": 0.2,
+      "revision_id": "0.9.2-dirty",
+      "usage_metadata": {
+       "input_token_details": {
+        "cache_read": 4
+       },
+       "input_tokens": 20,
+       "output_token_details": {
+        "reasoning": 2
+       },
+       "output_tokens": 5,
+       "total_tokens": 25
+      }
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langsmith",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-6712-71b2-a3e6-6469cda26382",
+    "name": "ChatOpenAI",
+    "outputs": {
+     "choices": [
+      {
+       "finish_reason": "tool_calls",
+       "index": 0,
+       "logprobs": null,
+       "message": {
+        "annotations": null,
+        "audio": null,
+        "content": null,
+        "function_call": null,
+        "refusal": null,
+        "role": "assistant",
+        "tool_calls": [
+         {
+          "function": {
+           "arguments": "{\"city\": \"Paris\"}",
+           "name": "get_weather"
+          },
+          "id": "call_1",
+          "type": "function"
+         }
+        ]
+       }
+      }
+     ],
+     "created": 1,
+     "id": "chatcmpl-1",
+     "metadata": null,
+     "model": "gpt-4o-mini-2024-07-18",
+     "moderation": null,
+     "object": "chat.completion",
+     "service_tier": null,
+     "system_fingerprint": null,
+     "usage_metadata": {
+      "input_token_details": {
+       "cache_read": 4
+      },
+      "input_tokens": 20,
+      "output_token_details": {
+       "reasoning": 2
+      },
+      "output_tokens": 5,
+      "total_tokens": 25
+     }
+    },
+    "parent_run_id": "01a2129f-66f4-7958-9873-7b89d223c17e",
+    "run_type": "llm",
+    "session_id": null,
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:12:46.226450+00:00",
+    "tags": [],
+    "trace_id": "01a2129f-66f4-7958-9873-7b89d223c17e"
+   }
+  },
+  {
+   "op": "create",
+   "run": {
+    "attachments": {},
+    "dotted_order": "20261125T121246196160Z01a2129f-66f4-7958-9873-7b89d223c17e.20261125T121246233791Z01a2129f-6719-7b9a-9717-972cb72770df",
+    "events": [],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "ls_invocation_params": {},
+      "ls_method": "traceable",
+      "ls_model_name": "gpt-4o-mini",
+      "ls_model_type": "chat",
+      "ls_provider": "openai",
+      "revision_id": "0.9.2-dirty"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langsmith",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-6719-7b9a-9717-972cb72770df",
+    "inputs": {
+     "messages": [
+      {
+       "content": "Weather in Paris?",
+       "role": "user"
+      },
+      {
+       "role": "assistant",
+       "tool_calls": [
+        {
+         "function": {
+          "arguments": "{\"city\": \"Paris\"}",
+          "name": "get_weather"
+         },
+         "id": "call_1",
+         "type": "function"
+        }
+       ]
+      },
+      {
+       "content": "sunny",
+       "role": "tool",
+       "tool_call_id": "call_1"
+      }
+     ],
+     "model": "gpt-4o-mini",
+     "tools": [
+      {
+       "function": {
+        "description": "Weather in a city",
+        "name": "get_weather",
+        "parameters": {
+         "properties": {
+          "city": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "city"
+         ],
+         "type": "object"
+        }
+       },
+       "type": "function"
+      }
+     ]
+    },
+    "name": "ChatOpenAI",
+    "outputs": {},
+    "parent_run_id": "01a2129f-66f4-7958-9873-7b89d223c17e",
+    "run_type": "llm",
+    "serialized": {
+     "name": "ChatOpenAI"
+    },
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:12:46.233791+00:00",
+    "tags": [],
+    "trace_id": "01a2129f-66f4-7958-9873-7b89d223c17e"
+   }
+  },
+  {
+   "op": "update",
+   "run": {
+    "dotted_order": "20261125T121246196160Z01a2129f-66f4-7958-9873-7b89d223c17e.20261125T121246233791Z01a2129f-6719-7b9a-9717-972cb72770df",
+    "end_time": "2026-11-25T12:12:46.235644+00:00",
+    "events": [],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "ls_invocation_params": {},
+      "ls_method": "traceable",
+      "ls_model_name": "gpt-4o-mini",
+      "ls_model_type": "chat",
+      "ls_provider": "openai",
+      "revision_id": "0.9.2-dirty",
+      "usage_metadata": {
+       "input_token_details": {
+        "cache_read": 4
+       },
+       "input_tokens": 20,
+       "output_token_details": {
+        "reasoning": 2
+       },
+       "output_tokens": 5,
+       "total_tokens": 25
+      }
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langsmith",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-6719-7b9a-9717-972cb72770df",
+    "name": "ChatOpenAI",
+    "outputs": {
+     "choices": [
+      {
+       "finish_reason": "stop",
+       "index": 0,
+       "logprobs": null,
+       "message": {
+        "annotations": null,
+        "audio": null,
+        "content": "It is sunny in Paris.",
+        "function_call": null,
+        "refusal": null,
+        "role": "assistant",
+        "tool_calls": null
+       }
+      }
+     ],
+     "created": 1,
+     "id": "chatcmpl-1",
+     "metadata": null,
+     "model": "gpt-4o-mini-2024-07-18",
+     "moderation": null,
+     "object": "chat.completion",
+     "service_tier": null,
+     "system_fingerprint": null,
+     "usage_metadata": {
+      "input_token_details": {
+       "cache_read": 4
+      },
+      "input_tokens": 20,
+      "output_token_details": {
+       "reasoning": 2
+      },
+      "output_tokens": 5,
+      "total_tokens": 25
+     }
+    },
+    "parent_run_id": "01a2129f-66f4-7958-9873-7b89d223c17e",
+    "run_type": "llm",
+    "session_id": null,
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:12:46.233791+00:00",
+    "tags": [],
+    "trace_id": "01a2129f-66f4-7958-9873-7b89d223c17e"
+   }
+  },
+  {
+   "op": "update",
+   "run": {
+    "dotted_order": "20261125T121246196160Z01a2129f-66f4-7958-9873-7b89d223c17e",
+    "end_time": "2026-11-25T12:12:46.235759+00:00",
+    "events": [],
+    "extra": {
+     "metadata": {
+      "LANGSMITH_ENDPOINT": "http://127.0.0.1:9",
+      "LANGSMITH_PROJECT": "bridge-fixtures",
+      "LANGSMITH_TRACING": "true",
+      "ls_method": "traceable",
+      "revision_id": "0.9.2-dirty"
+     },
+     "runtime": {
+      "langchain_core_version": "1.6.9",
+      "langchain_version": "1.4.4",
+      "library": "langsmith",
+      "platform": "Linux-7.3.4-x86_64-with-glibc2.36",
+      "py_implementation": "CPython",
+      "runtime": "python",
+      "runtime_version": "3.12.10",
+      "sdk": "langsmith-py",
+      "sdk_version": "0.16.2"
+     }
+    },
+    "id": "01a2129f-66f4-7958-9873-7b89d223c17e",
+    "name": "tool_loop",
+    "outputs": {
+     "output": null
+    },
+    "parent_run_id": null,
+    "run_type": "chain",
+    "session_id": null,
+    "session_name": "bridge-fixtures",
+    "start_time": "2026-11-25T12:12:46.196160+00:00",
+    "tags": [],
+    "trace_id": "01a2129f-66f4-7958-9873-7b89d223c17e"
+   }
+  }
+ ]
+}

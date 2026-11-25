@@ -9,6 +9,7 @@ from collections.abc import Iterable
 
 from lmnr.opentelemetry_lib.bridges.base import Bridge, BridgeContext, LaminarBridge
 from lmnr.opentelemetry_lib.bridges.langfuse import LangfuseBridge
+from lmnr.opentelemetry_lib.bridges.langsmith import LangSmithBridge
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 from lmnr.sdk.log import get_default_logger
 
@@ -16,6 +17,7 @@ logger = get_default_logger(__name__)
 
 _BRIDGES: dict[Bridge, LaminarBridge] = {
     Bridge.LANGFUSE: LangfuseBridge(),
+    Bridge.LANGSMITH: LangSmithBridge(),
 }
 
 
