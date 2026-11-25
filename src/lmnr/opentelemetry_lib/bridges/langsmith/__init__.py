@@ -12,6 +12,8 @@ and records each one as a Laminar span. What LangSmith sends is unchanged.
 
 from __future__ import annotations
 
+import atexit
+
 from packaging.version import InvalidVersion, Version
 from typing_extensions import override
 
@@ -77,6 +79,7 @@ class LangSmithBridge(LaminarBridge):
 
     def __init__(self) -> None:
         self._tap: LangSmithTap | None = None
+        self._recorder: LangSmithRunRecorder | None = None
 
     @override
     def is_available(self) -> bool:
@@ -111,10 +114,29 @@ class LangSmithBridge(LaminarBridge):
             tap.uninstall()
             return False
         self._tap = tap
+        self._recorder = recorder
+        # Registered after Laminar's own exit handler, so it runs first (atexit
+        # is last in, first out) and the spans it emits are flushed.
+        _ = atexit.register(self._end_open_runs)
         return True
+
+    def _end_open_runs(self) -> None:
+        """Record the runs that haven't ended as incomplete: at shutdown and
+        process exit their updates can't arrive (an abandoned generator, a
+        run interrupted by `os._exit` never reaches here)."""
+        try:
+            if self._recorder is not None:
+                ended = self._recorder.end_open_runs()
+                if ended:
+                    logger.debug("LangSmith bridge: %d runs had not ended", ended)
+        except Exception:
+            logger.debug("LangSmith bridge failed to end open runs", exc_info=True)
 
     @override
     def uninstall(self) -> None:
+        # `Laminar.shutdown()` uninstalls bridges before its final flush.
+        self._end_open_runs()
+        atexit.unregister(self._end_open_runs)
         try:
             if self._tap is not None:
                 self._tap.uninstall()
@@ -122,6 +144,7 @@ class LangSmithBridge(LaminarBridge):
             logger.debug("Failed to uninstall the LangSmith bridge", exc_info=True)
         finally:
             self._tap = None
+            self._recorder = None
 
 
 __all__ = ["LangSmithBridge"]

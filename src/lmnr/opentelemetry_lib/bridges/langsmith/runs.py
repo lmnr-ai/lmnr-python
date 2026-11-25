@@ -67,11 +67,14 @@ logger = get_default_logger(__name__)
 # The LangSmith run a span came from, to find it in LangSmith.
 LANGSMITH_RUN_ID = "langsmith.run.id"
 LANGSMITH_RUN_TYPE = "langsmith.run.type"
+# Set on a run that had not ended when Laminar shut down or the process
+# exited; its span ends then (`end_open_runs`).
+LANGSMITH_RUN_INCOMPLETE = "langsmith.run.incomplete"
 
 # Open runs, and recently finished ones (for children that start after their
 # parent ended, and updates that follow a complete create). Both bounded: a
-# run whose update never comes (process exit, an abandoned generator) is
-# dropped rather than emitted with a made-up end.
+# run whose update never comes is dropped when evicted. At shutdown and
+# process exit, the runs still open are emitted as incomplete.
 MAX_OPEN_RUNS = 10_000
 MAX_FINISHED_RUNS = 10_000
 
@@ -308,6 +311,32 @@ class LangSmithRunRecorder:
             self._emit(run_id, open_run, run)
         except Exception:
             logger.debug("LangSmith bridge failed to record a run", exc_info=True)
+
+    def end_open_runs(self) -> int:
+        """Emit every run that hasn't ended, ending now and marked
+        `langsmith.run.incomplete`. For shutdown and process exit, after
+        which its update can't arrive: LangSmith keeps such a run as in
+        progress, and without this Laminar would have no span for it. Latest
+        first, so children end before their parents. Returns how many spans
+        were emitted."""
+        with self._lock:
+            runs = list(reversed(self._open.items()))
+            self._open.clear()
+            for run_id, open_run in runs:
+                self._finished[run_id] = open_run.node
+                if len(self._finished) > MAX_FINISHED_RUNS:
+                    _ = self._finished.popitem(last=False)
+        emitted = 0
+        for run_id, open_run in runs:
+            if open_run.skipped:
+                continue
+            open_run.extra_attributes[LANGSMITH_RUN_INCOMPLETE] = True
+            try:
+                self._emit(run_id, open_run, open_run.run)
+                emitted += 1
+            except Exception:
+                logger.debug("LangSmith bridge failed to record an open run", exc_info=True)
+        return emitted
 
     def _emit(self, run_id: str, open_run: _OpenRun, run: dict[str, Any]) -> None:
         run_type = run.get("run_type")

@@ -9,8 +9,11 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
+import sys
 import uuid
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -331,3 +334,100 @@ def test_uninstall_restores_langsmith(laminar: Laminar) -> None:
     assert Client._create_run is not originals[0]
     bridge.uninstall()
     assert (Client._create_run, Client._update_run, RunTree.post, RunTree.patch) == originals
+
+
+def test_open_runs_are_recorded_as_incomplete_at_shutdown(
+    laminar: Laminar, bridge: LangSmithBridge, langsmith: LangSmith
+) -> None:
+    @traceable(run_type="tool")
+    def lookup() -> str:
+        return "found"
+
+    @traceable(name="agent")
+    def agent(question: str) -> Generator[int, None, None]:
+        _ = lookup()
+        yield 1
+        yield 2
+
+    with tracing_context(enabled=True, client=langsmith.client):
+        steps = agent("plan a trip")
+        _ = next(steps)
+    assert [s.name for s in laminar.spans()] == ["lookup"]
+
+    # `Laminar.shutdown()` uninstalls bridges before its final flush.
+    bridge.uninstall()
+    span = laminar.span("agent")
+    attributes = dict(span.attributes or {})
+    assert attributes["langsmith.run.incomplete"] is True
+    assert json.loads(str(attributes["lmnr.span.input"])) == {"question": "plan a trip"}
+    assert "langsmith.run.incomplete" not in dict(laminar.span("lookup").attributes or {})
+    assert parent_id(laminar.span("lookup")) == ids(span).span_id
+
+    # The run ends after the bridge was uninstalled: nothing more is recorded.
+    steps.close()
+    assert len(laminar.spans()) == 2
+
+
+_EXIT_CHILD = """
+from langsmith import traceable, tracing_context
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
+
+from lmnr.opentelemetry_lib.bridges import BridgeContext
+from lmnr.opentelemetry_lib.bridges.langsmith import LangSmithBridge
+from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
+from tests.test_langsmith.conftest import LangSmith
+
+
+class PrintExporter(SpanExporter):
+    def export(self, spans):
+        for span in spans:
+            incomplete = (span.attributes or {}).get("langsmith.run.incomplete", False)
+            print("exported", span.name, incomplete, flush=True)
+        return SpanExportResult.SUCCESS
+
+
+processor = LaminarSpanProcessor(api_key="test", exporter=PrintExporter(), disable_batch=True)
+provider = TracerProvider()
+provider.add_span_processor(processor)
+assert LangSmithBridge().install(BridgeContext(span_processor=processor, tracer_provider=provider))
+langsmith = LangSmith()
+
+
+@traceable(run_type="tool")
+def lookup():
+    return "found"
+
+
+@traceable(name="agent")
+def agent():
+    lookup()
+    yield 1
+    yield 2
+
+
+with tracing_context(enabled=True, client=langsmith.client):
+    steps = agent()
+    next(steps)
+print("exiting", flush=True)
+"""
+
+
+def test_open_runs_are_recorded_as_incomplete_at_exit() -> None:
+    # The consumer stops early and the process exits normally: the `atexit`
+    # hook records the generator's run, which never ended.
+    root = Path(__file__).parents[2]
+    result = subprocess.run(
+        [sys.executable, "-c", _EXIT_CHILD],
+        check=False,
+        cwd=root,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == [
+        "exported lookup False",
+        "exiting",
+        "exported agent True",
+    ]
