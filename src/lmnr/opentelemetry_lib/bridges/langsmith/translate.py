@@ -590,6 +590,29 @@ def is_glue_run(name: str | None, tags: Any, is_langchain: bool) -> bool:
     return is_langchain and name in GLUE_RUN_NAMES
 
 
+# --- tools --------------------------------------------------------------------
+
+
+def tool_attributes(
+    run_type: str | None, name: str, extra: Mapping[str, Any]
+) -> dict[str, AttributeValue]:
+    """A tool run's identity, as Laminar's LangChain instrumentation records
+    it: the tool name, and the id of the model's tool call it answers
+    (LangChain puts it in `extra.tool_call_id`), so consumers that key TOOL
+    spans by these (lmnr-atif) match them to the LLM's `tool_call` parts."""
+    if run_type not in TOOL_RUN_TYPES:
+        return {}
+    out: dict[str, AttributeValue] = {
+        "gen_ai.operation.name": "execute_tool",
+        "gen_ai.tool.name": name,
+        "gen_ai.tool.type": "function",
+    }
+    tool_call_id = extra.get("tool_call_id")
+    if isinstance(tool_call_id, str) and tool_call_id:
+        out["gen_ai.tool.call.id"] = tool_call_id
+    return out
+
+
 # --- errors -------------------------------------------------------------------
 
 _EXCEPTION_REPR = re.compile(r"^([A-Za-z_][\w.]*)\((.*)\)$", re.DOTALL)

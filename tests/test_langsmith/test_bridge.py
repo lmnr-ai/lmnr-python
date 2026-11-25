@@ -232,6 +232,29 @@ def test_langchain_runs(laminar: Laminar, bridge: LangSmithBridge, langsmith: La
     assert a[f"{ASSOCIATION_PROPERTIES}.session_id"] == "t-9"
 
 
+def test_langchain_tool_runs_carry_the_tool_call_identity(
+    laminar: Laminar, bridge: LangSmithBridge, langsmith: LangSmith
+) -> None:
+    from langchain_core.tools import tool
+    from langchain_core.tracers.context import tracing_v2_enabled
+
+    @tool
+    def get_weather(city: str) -> str:
+        """Get the weather for a city."""
+        return f"sunny in {city}"
+
+    with tracing_v2_enabled(client=langsmith.client):
+        _ = get_weather.invoke(
+            {"name": "get_weather", "args": {"city": "Paris"}, "id": "call_1", "type": "tool_call"}
+        )
+
+    a = dict(laminar.span("get_weather").attributes or {})
+    assert a["lmnr.span.type"] == "TOOL"
+    assert a["gen_ai.operation.name"] == "execute_tool"
+    assert a["gen_ai.tool.name"] == "get_weather"
+    assert a["gen_ai.tool.call.id"] == "call_1"
+
+
 def test_langgraph_topology_lands_on_the_graph_run(
     laminar: Laminar,
     bridge: LangSmithBridge,

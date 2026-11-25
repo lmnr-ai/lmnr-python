@@ -46,6 +46,7 @@ from lmnr.opentelemetry_lib.bridges.langsmith.translate import (
     request_attributes,
     response_attributes,
     span_type,
+    tool_attributes,
     usage_attributes,
 )
 from lmnr.opentelemetry_lib.tracing import span_limits
@@ -345,6 +346,9 @@ class LangSmithRunRecorder:
         if run_type in LLM_RUN_TYPES:
             attributes.update(response_attributes(outputs))
             attributes.update(usage_attributes(outputs, metadata))
+        attributes.update(
+            tool_attributes(cast(str | None, run_type), str(run.get("name") or "run"), extra)
+        )
         attributes.update(
             association_attributes(
                 metadata,
