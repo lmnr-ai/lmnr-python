@@ -341,8 +341,9 @@ class Laminar:
                 whose environment is meant for an agent it runs, so its own\
                 spans are still exported. Defaults to True.
             bridges (list[Bridge | str] | None, optional): Third-party\
-                tracing SDKs whose spans to also send to Laminar, e.g.\
-                `bridges=[Bridge.LANGFUSE]` or `bridges=["langfuse"]`. What\
+                tracing SDKs whose traces to also send to Laminar:\
+                `"langfuse"` and `"langsmith"`, e.g. `bridges=["langsmith"]`\
+                or `bridges=[Bridge.LANGFUSE]`. What\
                 the SDK's own backend receives is not changed. Laminar's own instrumentations that would record the\
                 same calls again are left out of the default `instruments` set;\
                 an explicit `instruments` set is honored as is. Defaults to None.
@@ -465,9 +466,12 @@ class Laminar:
                 )
         private_provider = any(b.requires_private_tracer_provider for b in enabled_bridges)
         if private_provider and set_global_tracer_provider:
+            names = ", ".join(
+                b.bridge.value for b in enabled_bridges if b.requires_private_tracer_provider
+            )
             cls.__logger.warning(
-                "Ignoring set_global_tracer_provider=True: the Langfuse bridge needs "
-                + "Laminar's tracer provider to stay separate from Langfuse's."
+                f"Ignoring set_global_tracer_provider=True: the {names} bridge needs "
+                + "Laminar's tracer provider to stay off the global OpenTelemetry slot."
             )
         set_global_tracer_provider_resolved = (
             not private_provider

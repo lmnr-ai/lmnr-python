@@ -34,11 +34,11 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langchain.span_utils i
     set_completion_request,
     set_request_attributes,
     set_response_attributes,
-    small_state,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langchain.vendor_detection import (
     detect_vendor_from_class,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.chain_state import small_state
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.context_keys import (
     LANGGRAPH_TOPOLOGY,
 )

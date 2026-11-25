@@ -29,6 +29,7 @@ class Bridge(str, Enum):
     """Source SDKs that Laminar can bridge from."""
 
     LANGFUSE = "langfuse"
+    LANGSMITH = "langsmith"
 
 
 @dataclass(frozen=True)
