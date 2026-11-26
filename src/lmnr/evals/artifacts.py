@@ -112,12 +112,21 @@ class Artifacts:
             raise ValueError(f"Artifact path must not contain '..': {path!r}")
         if not pure.is_absolute():
             return self.dir.joinpath(*pure.parts)
-        # A declared entry with a destination: collected under that name.
+        # The most specific declared entry holding the path: Harbor collects
+        # nested sources separately (`/srv` and `/srv/db` to two destinations),
+        # and the parent's copy may exclude what the nested one has.
+        match: Artifact | None = None
         for entry in self._declared:
             source = PurePosixPath(entry.source)
-            if entry.destination and (pure == source or source in pure.parents):
-                destination = PurePosixPath(entry.destination)
-                return self.dir.joinpath(*destination.parts, *pure.relative_to(source).parts)
+            if (pure == source or source in pure.parents) and (
+                match is None or len(source.parts) > len(PurePosixPath(match.source).parts)
+            ):
+                match = entry
+        if match is not None and match.destination:
+            source = PurePosixPath(match.source)
+            destination = PurePosixPath(match.destination)
+            return self.dir.joinpath(*destination.parts, *pure.relative_to(source).parts)
+        # No destination: collected at the container path, without its root.
         return self.dir.joinpath(*pure.parts[1:])
 
     def exists(self, path: str) -> bool:

@@ -670,6 +670,26 @@ def test_artifacts_read_the_trial_artifacts_dir(tmp_path: Path):
     assert Artifacts(tmp_path / "missing").list() == []
 
 
+def test_artifacts_resolve_through_the_most_specific_entry(tmp_path: Path):
+    # Harbor collects nested sources separately; the parent's copy excludes db/.
+    host = tmp_path / "artifacts"
+    nested = Artifacts(
+        host,
+        [
+            Artifact("/srv", destination="all", exclude=["db/*"]),
+            Artifact("/srv/db", destination="db"),
+            "/srv/db/raw",
+        ],
+    )
+    assert nested.path("/srv/app.log") == host / "all" / "app.log"
+    assert nested.path("/srv/db/state.json") == host / "db" / "state.json"
+    # A nested entry without a destination is collected at its container path.
+    assert nested.path("/srv/db/raw/0.bin") == host / "srv" / "db" / "raw" / "0.bin"
+    # Declaration order doesn't matter.
+    reordered = Artifacts(host, [Artifact("/srv/db", destination="db"), Artifact("/srv", "all")])
+    assert reordered.path("/srv/db/state.json") == host / "db" / "state.json"
+
+
 def test_verify_ctx_artifacts_default_to_the_trial_dir(tmp_path: Path):
     agent_dir = tmp_path / "trial" / "agent"
     ctx = VerifyContext(
