@@ -334,6 +334,28 @@ async def test_remote_run_links_evaluation_and_trials_to_uploaded_folder(
 
 
 @pytest.mark.asyncio
+async def test_remote_run_records_the_runner_shared_modules(
+    client: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    root = tmp_path / "evals"
+    suite_dir = root / "refunds"
+    suite_dir.mkdir(parents=True)
+    monkeypatch.setenv("LMNR_EVALS_ROOT", str(root))
+    monkeypatch.setenv("LMNR_EVAL_UPLOAD_ID", "upload-1")
+    monkeypatch.chdir(suite_dir)
+    # As lmnr-cli passes it: --pk runner_modules=<JSON list>.
+    modules = '["_shared/support.py", "refunds/agent/eval.py", "../escape.py", "/abs.py"]'
+    plugin = LaminarPlugin(project_api_key="test_key", runner_modules=modules)
+    await plugin.on_job_start(FakeJob(tmp_path / "job"))
+    # The dataset's agent/ is shown anyway; paths leaving the root are dropped.
+    assert client.evals.init.call_args.kwargs["hosted_metadata"] == {
+        "uploadId": "upload-1",
+        "suitePath": "refunds",
+        "runnerModules": ["_shared/support.py"],
+    }
+
+
+@pytest.mark.asyncio
 async def test_local_run_has_no_hosted_metadata(client: MagicMock, tmp_path: Path):
     plugin = LaminarPlugin(project_api_key="test_key")
     await plugin.on_job_start(FakeJob(tmp_path / "job"))

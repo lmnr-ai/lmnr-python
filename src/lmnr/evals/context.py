@@ -25,6 +25,7 @@ from typing_extensions import override
 
 from lmnr.evals.errors import OUTPUT_TAIL_CHARS, CommandError, EvalConfigError, ExecResult
 from lmnr.evals.judge import judge
+from lmnr.evals.paths import caller_dir
 from lmnr.evals.readiness import Readiness
 from lmnr.evals.readiness import cmd as cmd_ready
 from lmnr.sdk.log import get_default_logger
@@ -234,7 +235,8 @@ class Context:
     ) -> ExecResult:
         """Upload a file and run it in the container, then delete it.
 
-        `path` is relative to the directory of `eval.py`. The file goes to a fresh
+        A relative `path` resolves against the directory of the file whose code
+        calls `run_file` (`eval.py`, or a shared module). The file goes to a fresh
         directory under `/tmp`, so harness scripts never stay where the agent
         under test could read them. A file with a shebang runs directly, a `.py`
         file with `python3`, anything else with `bash`.
@@ -330,9 +332,9 @@ class Context:
     # Files in the container
 
     async def copy(self, host: str | Path, container: str) -> None:
-        """Copy a file or directory from the host (the machine running Harbor;
-        relative paths are from `eval.py`'s directory) to `container`, a path in
-        the container."""
+        """Copy a file or directory from the host (the machine running Harbor) to
+        `container`, a path in the container. A relative `host` path resolves
+        against the directory of the file whose code calls `copy`."""
         source = self._host_path(host)
         if source.is_dir():
             _ = await self._root(f"mkdir -p {shlex.quote(container)}")
@@ -365,8 +367,14 @@ class Context:
     # Internals
 
     def _host_path(self, path: str | Path) -> Path:
+        """`path` on the host. Relative to the calling code's file, so call it
+        first thing in a helper, before any `await`: a coroutine only knows its
+        caller until it first suspends. Falls back to `eval.py`'s directory
+        when the caller is unknown (a coroutine run as its own task)."""
         path = Path(path)
-        return path if path.is_absolute() else self.runner_dir / path
+        if path.is_absolute():
+            return path
+        return (caller_dir() or self.runner_dir) / path
 
     async def _root(self, command: str, check: bool = True) -> ExecResult:
         return await self._exec(command, user="root", check=check, timeout=60, base_env=False)

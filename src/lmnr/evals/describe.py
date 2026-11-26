@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from lmnr.evals.errors import EvalConfigError
+from lmnr.evals.paths import loaded_modules
 from lmnr.evals.runner import Secret, default_image_name, find_runner, load_module
 
 # Bumped when the shape changes incompatibly; later fields are added as optional.
@@ -47,6 +48,8 @@ def describe(path: Path | str) -> dict[str, Any]:
         "task_template": runner.task_template,
         "verify": runner.verify_mode(),
         "warnings": warnings,
+        # The runner's code: module files under the evals root, relative to it.
+        "modules": loaded_modules(path),
     }
 
 

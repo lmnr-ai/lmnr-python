@@ -16,6 +16,7 @@ from typing import Any, ClassVar, Literal
 from lmnr.evals.context import AgentContext, VerifyContext
 from lmnr.evals.errors import EvalConfigError
 from lmnr.evals.image import Image
+from lmnr.evals.paths import add_evals_root_to_path
 
 VerifyMode = Literal["runner", "task"]
 Rewards = dict[str, float | int | bool] | float | int | bool
@@ -214,6 +215,8 @@ def load_module(path: Path | str) -> ModuleType:
         return _modules[path]
     if not path.is_file():
         raise EvalConfigError(f"{path} does not exist.")
+    # `from _shared.support import SupportRunner` (shared runners).
+    add_evals_root_to_path(path)
     module_name = f"lmnr_eval_{hashlib.sha1(str(path).encode()).hexdigest()[:12]}"
     spec = importlib.util.spec_from_file_location(module_name, path)
     if spec is None or spec.loader is None:

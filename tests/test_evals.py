@@ -11,7 +11,7 @@ from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, patch
 
 import pytest
 
@@ -203,6 +203,7 @@ def test_describe_outputs_json_for_lmnr_cli(tmp_path: Path):
         "task_template": {"agent": {"timeout_sec": 300}},
         "verify": "runner",
         "warnings": [],
+        "modules": ["support/agent/eval.py"],
     }
 
 
@@ -261,6 +262,121 @@ def test_describe_cli_prints_json_and_reports_errors(tmp_path: Path):
     assert failed.returncode == 2
     assert "has no image" in failed.stderr
     assert failed.stdout == ""
+
+
+# Shared runners: evals/_shared/ (main doc 2.1.2)
+
+SHARED_RUNNER = """
+    from lmnr.evals import EvalRunner, Image
+
+    class SupportRunner(EvalRunner):
+        image = Image.from_dockerfile("Dockerfile", context="..")
+        env = {"TONE": "formal"}
+
+        async def setup(self, ctx):
+            await ctx.run_file("start.sh")
+            await ctx.copy("fixtures", "/srv/fixtures")
+
+        async def run(self, ctx):
+            pass
+
+        async def verify(self, ctx):
+            return 1
+"""
+
+
+@pytest.fixture
+def shared_evals(tmp_path: Path):
+    """`evals/_shared/support.py` and a dataset whose eval.py subclasses it."""
+    root = tmp_path / "evals"
+    shared = root / "_shared"
+    (shared / "fixtures").mkdir(parents=True)
+    _ = (shared / "support.py").write_text(textwrap.dedent(SHARED_RUNNER))
+    _ = (shared / "start.sh").write_text("echo start")
+    _ = (shared / "fixtures" / "crm.json").write_text("{}")
+    path = write_eval(
+        root,
+        """
+        from _shared.support import SupportRunner
+
+        class RefundsEval(SupportRunner):
+            env = {**SupportRunner.env, "QUEUE": "refunds"}
+        """,
+        dataset="refunds",
+    )
+    saved_path, saved_modules = list(sys.path), set(sys.modules)
+    yield path
+    # Another test's evals root has its own `_shared`.
+    sys.path[:] = saved_path
+    for name in set(sys.modules) - saved_modules:
+        del sys.modules[name]
+
+
+def test_shared_runner_paths_resolve_from_its_own_file(shared_evals: Path):
+    root = shared_evals.parent.parent.parent
+    result = describe(shared_evals)
+    assert result["runner"] == "RefundsEval"
+    # The shared module's Dockerfile, not refunds/agent/Dockerfile.
+    assert result["images"] == {
+        "refunds-evals": {
+            "kind": "dockerfile",
+            "dockerfile": str((root / "_shared" / "Dockerfile").resolve()),
+            "context": str(root.resolve()),
+        }
+    }
+    assert result["env"] == {"TONE": "formal", "QUEUE": "refunds"}
+    assert result["modules"] == ["_shared/support.py", "refunds/agent/eval.py"]
+
+
+@pytest.mark.asyncio
+async def test_shared_runner_files_resolve_from_its_own_file(shared_evals: Path, tmp_path: Path):
+    runner_cls, eval_path = load_runner(str(shared_evals))
+    env = FakeEnvironment()
+    ctx = AgentContext(
+        environment=env,
+        case=make_case(tmp_path),
+        runner_dir=eval_path.parent,
+        host_logs_dir=tmp_path / "trial" / "agent",
+    )
+    await runner_cls().setup(ctx)
+    shared = eval_path.parent.parent.parent / "_shared"
+    assert [c for c in env.calls if c[0] != "exec"] == [
+        ("upload_file", ("start.sh", ANY)),
+        ("upload_dir", (str(shared / "fixtures"), "/srv/fixtures")),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_run_file_from_eval_py_resolves_from_its_dir(tmp_path: Path):
+    path = write_eval(
+        tmp_path,
+        """
+        from lmnr.evals import EvalRunner, Image
+
+        class E(EvalRunner):
+            image = Image.from_registry("python:3.13")
+
+            async def setup(self, ctx):
+                await ctx.run_file("seed.py")
+
+            async def run(self, ctx):
+                pass
+
+            async def verify(self, ctx):
+                return 1
+        """,
+    )
+    _ = (path.parent / "seed.py").write_text("print('seed')")
+    runner_cls, eval_path = load_runner(str(path))
+    env = FakeEnvironment()
+    ctx = AgentContext(
+        environment=env,
+        case=make_case(tmp_path),
+        runner_dir=eval_path.parent,
+        host_logs_dir=tmp_path / "trial" / "agent",
+    )
+    await runner_cls().setup(ctx)
+    assert [args[0] for kind, args in env.calls if kind == "upload_file"] == ["seed.py"]
 
 
 def test_find_runner_needs_exactly_one_subclass(tmp_path: Path):
@@ -355,7 +471,7 @@ async def test_run_file_uploads_runs_and_deletes(tmp_path: Path):
     env = FakeEnvironment()
     ctx = agent_ctx(tmp_path, env)
     _ = (ctx.runner_dir / "seed.py").write_text("print('seed')")
-    _ = await ctx.run_file("seed.py", "--case", "a b")
+    _ = await ctx.run_file(ctx.runner_dir / "seed.py", "--case", "a b")
 
     uploads = [args for kind, args in env.calls if kind == "upload_file"]
     ((name, remote),) = uploads
@@ -374,8 +490,8 @@ async def test_copy_puts_host_files_and_dirs_in_the_container(tmp_path: Path):
     ctx = agent_ctx(tmp_path, env)
     _ = (ctx.runner_dir / "fixtures").mkdir()
     _ = (ctx.runner_dir / "fixtures" / "rows.json").write_text("[]")
-    await ctx.copy("fixtures/rows.json", "/srv/data/rows.json")
-    await ctx.copy("fixtures", "/srv/fixtures")
+    await ctx.copy(ctx.runner_dir / "fixtures" / "rows.json", "/srv/data/rows.json")
+    await ctx.copy(ctx.runner_dir / "fixtures", "/srv/fixtures")
     assert env.commands() == ["mkdir -p /srv/data", "mkdir -p /srv/fixtures"]
     assert [c for c in env.calls if c[0] != "exec"] == [
         ("upload_file", ("rows.json", "/srv/data/rows.json")),
@@ -388,8 +504,8 @@ async def test_run_file_deletes_even_when_the_script_fails(tmp_path: Path):
     env = FakeEnvironment(lambda command: (1, "") if command.startswith("bash /tmp") else (0, ""))
     ctx = agent_ctx(tmp_path, env)
     _ = (ctx.runner_dir / "start").write_text("echo no shebang")
-    with pytest.raises(CommandError, match=r"run_file\('start'\) failed"):
-        _ = await ctx.run_file("start")
+    with pytest.raises(CommandError, match=r"run_file\('.*/start'\) failed"):
+        _ = await ctx.run_file(ctx.runner_dir / "start")
     assert env.commands()[-1].startswith("rm -rf /tmp/lmnr-")
 
 
@@ -398,7 +514,7 @@ async def test_run_file_runs_shebang_scripts_directly(tmp_path: Path):
     env = FakeEnvironment()
     ctx = agent_ctx(tmp_path, env)
     _ = (ctx.runner_dir / "start").write_text("#!/usr/bin/env node\n")
-    _ = await ctx.run_file("start")
+    _ = await ctx.run_file(ctx.runner_dir / "start")
     remote = next(args[1] for kind, args in env.calls if kind == "upload_file")
     assert f"chmod a+x {remote}" in env.commands()
     assert remote in env.commands()

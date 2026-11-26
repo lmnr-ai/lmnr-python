@@ -6,11 +6,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from lmnr.evals.paths import caller_dir
+
 
 @dataclass(frozen=True)
 class FromDockerfile:
     dockerfile: str
     context: str | None = None
+    # The directory of the file that declared it: relative paths resolve there.
+    base_dir: str | None = None
 
 
 @dataclass(frozen=True)
@@ -29,7 +33,9 @@ class Image:
         image = Image.from_dockerfile("Dockerfile", context="../../..")
         image = Image.from_registry("python:3.13-slim")
 
-    Paths are relative to the directory of the `eval.py` that defines the image.
+    Paths are relative to the file that calls `from_dockerfile` (the dataset's
+    `eval.py`, or a shared module in `evals/_shared/`), so a shared runner's
+    image builds the same from every dataset.
     """
 
     def __init__(self, steps: list[ImageStep]):
@@ -39,7 +45,16 @@ class Image:
     @classmethod
     def from_dockerfile(cls, path: str, context: str | None = None) -> Image:
         """Build from a Dockerfile. `context` defaults to the Dockerfile's directory."""
-        return cls([FromDockerfile(dockerfile=path, context=context)])
+        base_dir = caller_dir()
+        return cls(
+            [
+                FromDockerfile(
+                    dockerfile=path,
+                    context=context,
+                    base_dir=str(base_dir) if base_dir is not None else None,
+                )
+            ]
+        )
 
     @classmethod
     def from_registry(cls, ref: str) -> Image:
@@ -47,10 +62,13 @@ class Image:
         return cls([FromRegistry(ref=ref)])
 
     def describe(self, base_dir: Path) -> dict[str, Any]:
-        """The image for lmnr-cli, with paths resolved against `base_dir`."""
+        """The image for lmnr-cli, with paths resolved against the declaring
+        file's directory (`base_dir` if it isn't known)."""
         base = self.steps[0]
         if isinstance(base, FromRegistry):
             return {"kind": "registry", "ref": base.ref}
+        if base.base_dir is not None:
+            base_dir = Path(base.base_dir)
         dockerfile = (base_dir / base.dockerfile).resolve()
         context = (base_dir / base.context).resolve() if base.context else dockerfile.parent
         return {"kind": "dockerfile", "dockerfile": str(dockerfile), "context": str(context)}

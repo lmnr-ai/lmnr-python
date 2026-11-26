@@ -125,6 +125,12 @@ class LaminarPlugin:
       `[task] name` and content hash (`{"refund": {"name": "acme/refund",
       "hash": ...}}`); a trial of a listed task records both as its task
       version. Both are passed by `lmnr-cli eval run`.
+    - `runner_modules`: JSON list of the `EvalRunner`'s module files,
+      relative to the evals root (`["_shared/support.py",
+      "refunds/agent/eval.py"]`, from `lmnr.evals.describe`). A remote run's
+      evaluation records the ones outside the dataset's `agent/`, so Laminar's
+      Files view can show the shared code a trial ran. Passed by
+      `lmnr-cli eval run` for `agent/eval.py` datasets.
     - `trajectory_spans`: convert agent ATIF trajectories into LLM and tool
       spans. Defaults to true.
     - `fail_fast`: raise on Laminar errors instead of logging a warning and
@@ -143,6 +149,7 @@ class LaminarPlugin:
         group_name: str | None = None,
         dataset: str | None = None,
         task_hashes_file: str | None = None,
+        runner_modules: str | list[str] | None = None,
         trajectory_spans: bool | str | None = None,
         fail_fast: bool | str | None = None,
     ):
@@ -159,6 +166,7 @@ class LaminarPlugin:
         self.dataset: str | None = str(dataset) if dataset else None
         self.task_hashes_file: str | None = str(task_hashes_file) if task_hashes_file else None
         self._task_hashes: dict[str, TaskVersion] = {}
+        self.runner_modules: list[str] = _parse_modules(runner_modules)
         self.trajectory_spans: bool = (
             True if trajectory_spans is None else _parse_bool(trajectory_spans)
         )
@@ -314,7 +322,7 @@ class LaminarPlugin:
         self._project_id = str(evaluation.get("projectId"))
         logger.info(f"Laminar evaluation: {self.evaluation_url}")
 
-    def _hosted_metadata(self) -> dict[str, str] | None:
+    def _hosted_metadata(self) -> dict[str, Any] | None:
         """Links the evaluation to the evals folder of a remote run
         (`lmnr-cli eval run --remote`), whose orchestrator sets both variables
         and runs Harbor from the suite dir."""
@@ -328,7 +336,13 @@ class LaminarPlugin:
             return None
         # Trials get task paths only when the evaluation is linked to the upload.
         self._evals_root = evals_root
-        return {"uploadId": upload_id, "suitePath": suite_path}
+        metadata: dict[str, Any] = {"uploadId": upload_id, "suitePath": suite_path}
+        # The Files view shows the dataset's agent/ already.
+        agent_dir = f"{suite_path}/agent/" if suite_path not in ("", ".") else "agent/"
+        shared = [m for m in self.runner_modules if not m.startswith(agent_dir)]
+        if shared:
+            metadata["runnerModules"] = shared
+        return metadata
 
     def _task_path(self, event: "TrialHookEvent") -> str | None:
         """The task dir relative to a remote run's evals root. Tasks Harbor
@@ -754,6 +768,26 @@ def _default_group_name(job: "Job") -> str | None:
         except Exception:
             return None
     return None
+
+
+def _parse_modules(value: str | list[str] | None) -> list[str]:
+    """`runner_modules` (a JSON list from `--pk`) as relative POSIX paths; a
+    malformed value only warns."""
+    if not value:
+        return []
+    try:
+        raw = json.loads(value) if isinstance(value, str) else value
+    except ValueError as e:
+        logger.warning(f"Can't parse runner_modules {value!r}: {e}")
+        return []
+    if not isinstance(raw, list):
+        logger.warning(f"runner_modules is not a JSON list: {value!r}")
+        return []
+    return [
+        m
+        for m in cast(list[Any], raw)
+        if isinstance(m, str) and m and not m.startswith("/") and ".." not in m.split("/")
+    ]
 
 
 class TaskVersion(NamedTuple):
