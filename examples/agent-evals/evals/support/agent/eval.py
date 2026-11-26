@@ -54,17 +54,17 @@ class SupportEval(EvalRunner):
     # Names only: lmnr-cli reads the values from your shell, .env.local or .env.
     secrets = ["ANTHROPIC_API_KEY"]
     env = {"ANTHROPIC_API_KEY": secret("ANTHROPIC_API_KEY")}
-    # Written into the task.toml of new cases (lmnr-cli writes it when missing).
-    task_template = {"environment": {"workdir": "/case"}, "agent": {"timeout_sec": 300}}
+    # The task.toml lmnr-cli writes for new cases (tasks without one).
+    new_task_toml = {"environment": {"workdir": "/case"}, "agent": {"timeout_sec": 300}}
 
     async def setup(self, ctx):
         # This case's database, from its environment/seed.json.
-        await ctx.run_file("seed.py")
+        await ctx.container.run_file("seed.py")
 
     async def run(self, ctx):
         # "anthropic/claude-sonnet-5" -> "claude-sonnet-5"
         model = (ctx.model or "").split("/", 1)[-1]
-        r = await ctx.sh(
+        r = await ctx.container.sh(
             "python -m app.support_agent /case/case.json",
             env={"AGENT_MODEL": model},
             cwd="/srv/app",
@@ -72,11 +72,13 @@ class SupportEval(EvalRunner):
             check=False,
         )
         if r.return_code == 0:
-            ctx.result(outcome="completed", reply=r.stdout.strip())
+            ctx.set_result(outcome="completed", reply=r.stdout.strip())
         else:
-            ctx.result(outcome="failed", error=r.stderr[-2000:])
+            ctx.set_result(outcome="failed", error=r.stderr[-2000:])
 
     async def verify(self, ctx):
+        # verify() runs on the host. ctx.container is the grading container
+        # (here the agent's, after it finished); the rest of ctx is read here.
         expected = ctx.case.expected()  # tests/expected.json, never in the container
         result = ctx.result()
         if result.get("outcome") != "completed":
@@ -84,7 +86,7 @@ class SupportEval(EvalRunner):
             return {"refund": 0, "reply": 0}
 
         # 1. Hard check: what actually happened in the database.
-        r = await ctx.sh(f"python -c {shlex.quote(REFUNDS_QUERY)}")
+        r = await ctx.container.sh(f"python -c {shlex.quote(REFUNDS_QUERY)}")
         count, total = json.loads(r.stdout)
         ctx.logger.info(f"refunds: {count} totalling {total}")
         refund_ok = count == expected["refund_count"] and total == expected["refund_amount"]

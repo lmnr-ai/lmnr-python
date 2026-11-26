@@ -126,8 +126,8 @@ class LaminarAgent(BaseInstalledAgent):  # pyright: ignore[reportUntypedBaseClas
 class LaminarVerifier(BaseVerifier):  # pyright: ignore[reportUntypedBaseClass]
     """Grades a trial with the `EvalRunner`'s `verify(ctx)`, in the Harbor process.
 
-    Commands from `verify` run in the environment Harbor passes: the agent
-    container in `shared` mode, the fresh verifier container in `separate` mode.
+    `ctx.container` is the environment Harbor passes: the agent container in
+    `shared` mode, the fresh verifier container in `separate` mode.
     With the Laminar plugin, `verify()` is traced under the trial's verifier span.
     """
 
@@ -137,9 +137,10 @@ class LaminarVerifier(BaseVerifier):  # pyright: ignore[reportUntypedBaseClass]
 
     async def verify(self) -> Any:
         runner_cls, eval_path = load_runner(self.runner)
-        if runner_cls.verify_mode() == "task":
+        if runner_cls.grade_with_test_sh:
             raise EvalConfigError(
-                f'{runner_cls.__name__} sets verify = "task"; use Harbor\'s default verifier.'
+                f"{runner_cls.__name__} sets grade_with_test_sh = True; use Harbor's default "
+                + "verifier."
             )
         runner = runner_cls()
         trial_paths = self.trial_paths
@@ -207,7 +208,7 @@ class LaminarVerifier(BaseVerifier):  # pyright: ignore[reportUntypedBaseClass]
         if not self.environment.is_path_mounted(
             env_paths.verifier_dir, self.trial_paths.verifier_dir
         ):
-            await ctx.write_file(str(env_paths.reward_json_path), json.dumps(rewards))
+            await ctx.container.write_file(str(env_paths.reward_json_path), json.dumps(rewards))
 
 
 async def _collect_after_failure(

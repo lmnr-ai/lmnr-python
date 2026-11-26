@@ -46,8 +46,8 @@ def describe(path: Path | str) -> dict[str, Any]:
             for key, value in runner.env.items()
         },
         "secrets": list(runner.secrets),
-        "task_template": runner.task_template,
-        "verify": runner.verify_mode(),
+        "new_task_toml": runner.new_task_toml,
+        "grade_with_test_sh": runner.grade_with_test_sh,
         "warnings": warnings,
         # The runner's code: module files under the evals root, relative to it.
         "modules": loaded_modules(path),

@@ -33,8 +33,8 @@ evals/
 `eval.py` holds one `EvalRunner` (from `lmnr.evals`):
 
 - `setup` uploads `seed.py` into the container and runs it, so this case's database exists before the agent starts.
-- `run` calls the agent on the case's ticket and records its reply with `ctx.result(...)`.
-- `verify` runs in the process that runs Harbor, not in the container. It checks the refunds in the database (a command in the container) and asks an LLM judge (a plain function in `eval.py` calling the Anthropic SDK, listed in `evals/pyproject.toml`) whether the reply meets `expected.json`'s `reply_should`. The reference answer never enters the container.
+- `run` calls the agent on the case's ticket and records its reply with `ctx.set_result(...)`.
+- `verify` runs in the process that runs Harbor, not in the container. It checks the refunds in the database (a command in the container, `ctx.container.sh`) and asks an LLM judge (a plain function in `eval.py` calling the Anthropic SDK, listed in `evals/pyproject.toml`) whether the reply meets `expected.json`'s `reply_should`. The reference answer never enters the container.
 
 `lmnr-cli` builds the image, writes the job config Harbor needs, and runs every case through Harbor. There is no `agent.py`, verifier script or `harbor.yaml`.
 

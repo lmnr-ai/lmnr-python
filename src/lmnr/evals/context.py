@@ -65,7 +65,7 @@ class Environment(Protocol):
 
 @dataclass(frozen=True)
 class BackgroundProcess:
-    """A process started with `ctx.service(...)`."""
+    """A process started with `ctx.container.service(...)`."""
 
     name: str
     pid: int
@@ -177,33 +177,28 @@ class EvalLogger(logging.LoggerAdapter[logging.Logger]):
         return f"[{self.case_name}] {msg}", kwargs
 
 
-class Context:
-    """Commands and files in the container, plus the case and the run settings.
+class Container:
+    """`ctx.container`: commands and files in the trial's container. Every
+    other `ctx` attribute is read on the host, where your `eval.py` runs.
 
-    - `model`: the model to run (`--model`, harbor.yaml, or the runner's `model`).
-    - `env`: the runner's `env`, resolved.
-    - `case`: the task (`Case`).
-    - `logger`: a logger whose lines also go to the verifier's log.
+    Which container: in `setup` / `run` / `collect`, the agent's. In `verify`,
+    the grading container: the agent's, after the agent finished (the
+    default), or a fresh one from the same image holding only the collected
+    artifacts (`[verifier] environment_mode = "separate"` in `task.toml`).
     """
-
-    logs_dir: str = AGENT_LOGS_DIR
 
     def __init__(
         self,
-        *,
         environment: Environment,
-        case: Case,
+        *,
         runner_dir: Path,
-        model: str | None = None,
-        env: dict[str, str] | None = None,
+        logs_dir: str,
         exec_env: dict[str, str] | None = None,
     ):
         self.environment: Environment = environment
-        self.case: Case = case
-        self.model: str | None = model
-        self.env: dict[str, str] = dict(env or {})
-        self.logger: EvalLogger = EvalLogger(case.name)
-        self.runner_dir: Path = runner_dir
+        # Where `service` logs go: /logs/agent, or /logs/verifier in verify.
+        self.logs_dir: str = logs_dir
+        self._runner_dir: Path = runner_dir
         # Added to every command. Variables Harbor already sets on the agent's
         # commands (`agents[].env`) aren't repeated here.
         self._exec_env: dict[str, str] = dict(exec_env or {})
@@ -334,17 +329,17 @@ class Context:
 
     # Files in the container
 
-    async def copy(self, host: str | Path, container: str) -> None:
+    async def copy(self, host: str | Path, path: str) -> None:
         """Copy a file or directory from the host (the machine running Harbor) to
-        `container`, a path in the container. A relative `host` path resolves
-        against the directory of the file whose code calls `copy`."""
+        `path` in the container. A relative `host` path resolves against the
+        directory of the file whose code calls `copy`."""
         source = self._host_path(host)
         if source.is_dir():
-            _ = await self._root(f"mkdir -p {shlex.quote(container)}")
-            await self.environment.upload_dir(source, container)
+            _ = await self._root(f"mkdir -p {shlex.quote(path)}")
+            await self.environment.upload_dir(source, path)
         else:
-            _ = await self._root(f"mkdir -p {shlex.quote(_parent(container))}")
-            await self.environment.upload_file(source, container)
+            _ = await self._root(f"mkdir -p {shlex.quote(_parent(path))}")
+            await self.environment.upload_file(source, path)
 
     async def write_file(self, path: str, content: str | bytes) -> None:
         """Write `content` to `path` in the container."""
@@ -377,7 +372,7 @@ class Context:
         path = Path(path)
         if path.is_absolute():
             return path
-        return (caller_dir() or self.runner_dir) / path
+        return (caller_dir() or self._runner_dir) / path
 
     async def _root(self, command: str, check: bool = True) -> ExecResult:
         return await self._exec(command, user="root", check=check, timeout=60, base_env=False)
@@ -437,51 +432,101 @@ class Context:
         return result.return_code if result.return_code in (0, 2) else 1
 
 
+class Context:
+    """`ctx`: what a phase gets. Commands and files in the container are under
+    `ctx.container`; everything else here is read on the host.
+
+    - `case`: the task (`Case`), from its directory on the host.
+    - `model`: the model to run (`--model`, harbor.yaml, or the runner's `model`).
+    - `env`: the runner's `env`, resolved.
+    - `logger`: its lines also go to the verifier's log.
+    """
+
+    def __init__(
+        self,
+        *,
+        environment: Environment,
+        case: Case,
+        runner_dir: Path,
+        model: str | None = None,
+        env: dict[str, str] | None = None,
+        exec_env: dict[str, str] | None = None,
+        logs_dir: str = AGENT_LOGS_DIR,
+    ):
+        self.container: Container = Container(
+            environment, runner_dir=runner_dir, logs_dir=logs_dir, exec_env=exec_env
+        )
+        self.case: Case = case
+        self.model: str | None = model
+        self.env: dict[str, str] = dict(env or {})
+        self.logger: EvalLogger = EvalLogger(case.name)
+        self.runner_dir: Path = runner_dir
+
+
+class ArtifactSaver:
+    """`ctx.artifacts` in `setup` / `run` / `collect`: save files for `verify`."""
+
+    def __init__(self, container: Container):
+        self._container: Container = container
+
+    async def save(self, path: str, name: str | None = None) -> str:
+        """Copy a container file or folder to `/logs/artifacts/<name>` (default:
+        its own name), replacing what is there. Harbor collects that folder
+        after the agent phase, and `verify` reads it with `ctx.artifacts`
+        (also in a separate grading container). Call it in `collect`, so the
+        runner's copy replaces anything the agent under test put there.
+        Returns the container path it wrote."""
+        name = name if name is not None else PurePosixPath(path.rstrip("/")).name
+        check_destination("ctx.artifacts.save's name", name)
+        target = f"{ARTIFACTS_DIR}/{name.strip('/')}"
+        quoted = shlex.quote(target)
+        _ = await self._container.sh(
+            f"rm -rf {quoted} && mkdir -p {shlex.quote(_parent(target))} && "
+            + f"cp -a {shlex.quote(path)} {quoted} && chmod -R a+rX {quoted}",
+            user="root",
+            timeout=60,
+        )
+        return target
+
+
 class AgentContext(Context):
-    """`ctx` in `setup`, `run` and `collect`, in the agent container."""
+    """`ctx` in `setup`, `run` and `collect`. `ctx.container` is the agent's
+    container."""
 
     def __init__(self, *, host_logs_dir: Path, **kwargs: Any):
         super().__init__(**kwargs)
         # The trial's `agent/` dir on the host, which Harbor syncs with
         # /logs/agent in the container.
         self.host_logs_dir: Path = host_logs_dir
+        self.artifacts: ArtifactSaver = ArtifactSaver(self.container)
 
-    def result(self, **fields: Any) -> dict[str, Any]:
-        """`ctx.result(reply=...)` records fields in `/logs/agent/result.json`
-        (merged with earlier ones); `ctx.result()` reads them back.
+    def set_result(self, **fields: Any) -> dict[str, Any]:
+        """Record fields of the run's outcome (`outcome="completed",
+        reply=...`), merged with earlier ones; returns them all. `verify`
+        reads them with `ctx.result()`, and Laminar shows them as the trial's
+        output when there is no trajectory.
 
-        The file is written in the trial's agent logs dir, which Harbor syncs with
-        the container's /logs/agent, so `verify` reads it in both verifier modes.
+        They go to the trial's agent logs dir on the host, which Harbor syncs
+        with the container's /logs/agent, so `verify` reads them in both
+        verifier modes.
         """
         path = self.host_logs_dir / RESULT_FILE
         current = _read_json_object(path)
-        if fields:
-            current.update(fields)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            _ = path.write_text(json.dumps(current, indent=2, default=str))
+        current.update(fields)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _ = path.write_text(json.dumps(current, indent=2, default=str))
         return current
 
-    async def save_artifact(self, path: str, dest: str | None = None) -> str:
-        """Copy a container file or folder into `/logs/artifacts/<dest>` (default:
-        its name), replacing what is there, so `verify` reads it with
-        `ctx.artifacts`. Call it in `collect`: the runner overwrites anything the
-        agent under test put there. Returns the container path it wrote."""
-        name = dest if dest is not None else PurePosixPath(path.rstrip("/")).name
-        check_destination("save_artifact's dest", name)
-        target = f"{ARTIFACTS_DIR}/{name.strip('/')}"
-        quoted = shlex.quote(target)
-        _ = await self._root(
-            f"rm -rf {quoted} && mkdir -p {shlex.quote(_parent(target))} && "
-            + f"cp -a {shlex.quote(path)} {quoted} && chmod -R a+rX {quoted}"
-        )
-        return target
+    def result(self) -> dict[str, Any]:
+        """What `ctx.set_result(...)` recorded so far (`{}` if nothing)."""
+        return _read_json_object(self.host_logs_dir / RESULT_FILE)
 
 
 class VerifyContext(Context):
-    """`ctx` in `verify`: logic in the Harbor process, commands in the verifier
-    container (the agent container in `shared` mode, a fresh one in `separate`)."""
-
-    logs_dir: str = VERIFIER_LOGS_DIR
+    """`ctx` in `verify`, which runs on the host. `ctx.container` is the
+    grading container (see `Container`); `result()`, `case`, `secrets` and
+    `artifacts` are read on the host, so reference answers and keys never
+    have to enter a container."""
 
     def __init__(
         self,
@@ -492,7 +537,7 @@ class VerifyContext(Context):
         artifacts: list[str | Artifact] | None = None,
         **kwargs: Any,
     ):
-        super().__init__(**kwargs)
+        super().__init__(logs_dir=VERIFIER_LOGS_DIR, **kwargs)
         self.host_agent_dir: Path = host_agent_dir
         self.secrets: Secrets = secrets
         # The trial's artifacts/ dir (next to agent/), filled by Harbor after
@@ -501,12 +546,9 @@ class VerifyContext(Context):
             host_artifacts_dir or host_agent_dir.parent / "artifacts", artifacts or []
         )
 
-    def result(self, **fields: Any) -> dict[str, Any]:
-        """What the agent phases recorded with `ctx.result(...)` (`{}` if nothing)."""
-        if fields:
-            raise EvalConfigError(
-                "ctx.result(...) can only record fields in setup, run or collect."
-            )
+    def result(self) -> dict[str, Any]:
+        """What the agent phase recorded with `ctx.set_result(...)` (`{}` if
+        nothing)."""
         return _read_json_object(self.host_agent_dir / RESULT_FILE)
 
 

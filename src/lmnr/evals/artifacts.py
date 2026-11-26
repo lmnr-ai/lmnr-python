@@ -3,7 +3,7 @@
 Harbor copies them into the trial's `artifacts/` dir on the host after the
 agent phase, in both verifier modes, and in `separate` mode back into the
 grading container at their original paths. It always collects
-`/logs/artifacts/`, where `ctx.save_artifact` puts files. On the host an entry
+`/logs/artifacts/`, where `ctx.artifacts.save` puts files. On the host an entry
 lands at its `destination`, else at its container path without the leading
 `/` (`/srv/app/out/` -> `artifacts/srv/app/out/`).
 """

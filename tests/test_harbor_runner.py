@@ -52,21 +52,21 @@ class SupportEval(EvalRunner):
     artifacts = [Artifact("/srv/app/state", destination="state")]
 
     async def setup(self, ctx):
-        await ctx.run_file("seed.py")
+        await ctx.container.run_file("seed.py")
 
     async def run(self, ctx):
-        r = await ctx.sh("python -m app", env={"AGENT_MODEL": ctx.model})
+        r = await ctx.container.sh("python -m app", env={"AGENT_MODEL": ctx.model})
         if ctx.case.metadata.get("fail"):
             raise RuntimeError("agent crashed")
-        ctx.result(reply=r.stdout, model=ctx.model, tone=ctx.env["TONE"])
+        ctx.set_result(reply=r.stdout, model=ctx.model, tone=ctx.env["TONE"])
 
     async def collect(self, ctx):
-        await ctx.sh("collect-state")
+        await ctx.container.sh("collect-state")
 
     async def verify(self, ctx):
         if ctx.case.metadata.get("fail"):
             raise KeyError("reply")
-        await ctx.sh("check-db")
+        await ctx.container.sh("check-db")
         ctx.logger.info(f"judge key: {ctx.secrets['JUDGE_KEY']}")
         if ctx.artifacts.exists("/srv/app/state/db.txt"):
             ctx.logger.info(f"state: {ctx.artifacts.read_text('/srv/app/state/db.txt')}")

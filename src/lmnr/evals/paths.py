@@ -1,9 +1,9 @@
 """Where paths in eval code resolve.
 
 A relative path resolves against the file of the code that declares it (an
-`Image.from_dockerfile(...)` in a class body, a `ctx.run_file(...)` call), not
-against the dataset's `eval.py`, so a runner shared from `evals/_shared/` works
-from every dataset that subclasses it.
+`Image.from_dockerfile(...)` in a class body, a `ctx.container.run_file(...)`
+call), not against the dataset's `eval.py`, so a runner shared from
+`evals/_shared/` works from every dataset that subclasses it.
 """
 
 from __future__ import annotations
@@ -24,7 +24,8 @@ def caller_dir() -> Path | None:
     """The directory of the first file up the stack outside `lmnr.evals`.
 
     None when there is none, e.g. a coroutine started as its own task
-    (`asyncio.gather(ctx.run_file(...))`), whose caller is the event loop.
+    (`asyncio.gather(ctx.container.run_file(...))`), whose caller is the event
+    loop.
     """
     frame = inspect.currentframe()
     while frame is not None:

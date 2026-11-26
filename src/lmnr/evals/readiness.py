@@ -1,4 +1,4 @@
-"""Readiness checks for `ctx.service(...)` and `ctx.wait_for(...)`.
+"""Readiness checks for `ctx.container.service(...)` and `ctx.container.wait_for(...)`.
 
 Each check is a shell command that exits 0 once the thing is ready. It runs
 inside the container, so it only relies on bash and whatever the image has.

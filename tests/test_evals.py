@@ -119,11 +119,11 @@ SUPPORT_EVAL = """
         model = "anthropic/claude-sonnet-5-5"
         secrets = ["ANTHROPIC_API_KEY", "JUDGE_API_KEY"]
         env = {"ANTHROPIC_API_KEY": secret("ANTHROPIC_API_KEY"), "SUPPORT_TONE": "formal"}
-        task_template = {"agent": {"timeout_sec": 300}}
+        new_task_toml = {"agent": {"timeout_sec": 300}}
         artifacts = ["/srv/app/out/", Artifact("/var/lib/app/state.db", destination="app.db")]
 
         async def run(self, ctx):
-            ctx.result(reply="hi")
+            ctx.set_result(reply="hi")
 
         async def verify(self, ctx):
             return 1.0
@@ -158,7 +158,8 @@ def test_valid_runner_has_no_warnings():
         ({"image": "python:3.13"}, "must be an Image"),
         ({"run": EvalRunner.run}, "must define `async def run"),
         ({"verify": EvalRunner.verify}, "must define `async def verify"),
-        ({"verify": "tests"}, 'must be a method or "task"'),
+        ({"grade_with_test_sh": True}, "keep one"),
+        ({"grade_with_test_sh": "yes"}, "must be True or False"),
         ({"env": {"KEY": secret("KEY")}}, "not in MyEval.secrets"),
         ({"secrets": ["KEY=value"]}, "env var names"),
         ({"env": {"KEY": 1}}, "must be a string or secret"),
@@ -181,12 +182,16 @@ def test_invalid_runner_raises_actionable_error(attrs: dict[str, Any], message: 
         _ = runner_class(**attrs).validate()
 
 
-def test_entrypoint_replaces_run_and_task_verify_replaces_verify():
-    runner = runner_class(run=EvalRunner.run, entrypoint="python app.py", verify="task")
+def test_run_command_replaces_run_and_test_sh_replaces_verify():
+    runner = runner_class(
+        run=EvalRunner.run,
+        run_command="python app.py",
+        verify=EvalRunner.verify,
+        grade_with_test_sh=True,
+    )
     assert runner.validate() == []
-    assert runner.verify_mode() == "task"
-    assert runner_class(entrypoint="python app.py").validate() == [
-        "MyEval defines run(), so `entrypoint` is ignored."
+    assert runner_class(run_command="python app.py").validate() == [
+        "MyEval defines run(), so `run_command` is ignored."
     ]
 
 
@@ -213,8 +218,8 @@ def test_describe_outputs_json_for_lmnr_cli(tmp_path: Path):
         "model": "anthropic/claude-sonnet-5-5",
         "env": {"ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}", "SUPPORT_TONE": "formal"},
         "secrets": ["ANTHROPIC_API_KEY", "JUDGE_API_KEY"],
-        "task_template": {"agent": {"timeout_sec": 300}},
-        "verify": "runner",
+        "new_task_toml": {"agent": {"timeout_sec": 300}},
+        "grade_with_test_sh": False,
         "warnings": [],
         "modules": ["support/agent/eval.py"],
         "artifacts": [
@@ -232,8 +237,8 @@ def test_describe_named_images(tmp_path: Path):
 
         class E(EvalRunner):
             image = {"new": Image.from_registry("python:3.14"), "old": Image.from_dockerfile("old/Dockerfile")}
-            entrypoint = "true"
-            verify = "task"
+            run_command = "true"
+            grade_with_test_sh = True
         """,
     )
     result = describe(path)
@@ -246,7 +251,7 @@ def test_describe_named_images(tmp_path: Path):
         },
     }
     assert result["default_image"] == "new"
-    assert result["verify"] == "task"
+    assert result["grade_with_test_sh"] is True
 
 
 def test_describe_cli_prints_json_and_reports_errors(tmp_path: Path):
@@ -291,8 +296,8 @@ SHARED_RUNNER = """
         env = {"TONE": "formal"}
 
         async def setup(self, ctx):
-            await ctx.run_file("start.sh")
-            await ctx.copy("fixtures", "/srv/fixtures")
+            await ctx.container.run_file("start.sh")
+            await ctx.container.copy("fixtures", "/srv/fixtures")
 
         async def run(self, ctx):
             pass
@@ -374,7 +379,7 @@ async def test_run_file_from_eval_py_resolves_from_its_dir(tmp_path: Path):
             image = Image.from_registry("python:3.13")
 
             async def setup(self, ctx):
-                await ctx.run_file("seed.py")
+                await ctx.container.run_file("seed.py")
 
             async def run(self, ctx):
                 pass
@@ -463,8 +468,8 @@ def test_secrets_repr_shows_names_never_values():
 async def test_sh_adds_runner_env_and_maps_users(tmp_path: Path):
     env = FakeEnvironment()
     ctx = agent_ctx(tmp_path, env, exec_env={"TONE": "formal"})
-    result = await ctx.sh("echo hi", env={"EXTRA": "1"}, timeout=2.5)
-    _ = await ctx.sh("whoami", user="root")
+    result = await ctx.container.sh("echo hi", env={"EXTRA": "1"}, timeout=2.5)
+    _ = await ctx.container.sh("whoami", user="root")
     first, second = env.execs()
     assert first == {
         "command": "echo hi",
@@ -482,10 +487,10 @@ async def test_sh_adds_runner_env_and_maps_users(tmp_path: Path):
 async def test_sh_check_raises_with_output_tail(tmp_path: Path):
     ctx = agent_ctx(tmp_path, FakeEnvironment(lambda _: (3, "partial output")))
     with pytest.raises(CommandError, match="exit code 3: false") as info:
-        _ = await ctx.sh("false")
+        _ = await ctx.container.sh("false")
     assert "partial output" in str(info.value)
     assert "boom" in str(info.value)
-    result = await ctx.sh("false", check=False)
+    result = await ctx.container.sh("false", check=False)
     assert result.return_code == 3
 
 
@@ -494,7 +499,7 @@ async def test_run_file_uploads_runs_and_deletes(tmp_path: Path):
     env = FakeEnvironment()
     ctx = agent_ctx(tmp_path, env)
     _ = (ctx.runner_dir / "seed.py").write_text("print('seed')")
-    _ = await ctx.run_file(ctx.runner_dir / "seed.py", "--case", "a b")
+    _ = await ctx.container.run_file(ctx.runner_dir / "seed.py", "--case", "a b")
 
     uploads = [args for kind, args in env.calls if kind == "upload_file"]
     ((name, remote),) = uploads
@@ -513,8 +518,8 @@ async def test_copy_puts_host_files_and_dirs_in_the_container(tmp_path: Path):
     ctx = agent_ctx(tmp_path, env)
     _ = (ctx.runner_dir / "fixtures").mkdir()
     _ = (ctx.runner_dir / "fixtures" / "rows.json").write_text("[]")
-    await ctx.copy(ctx.runner_dir / "fixtures" / "rows.json", "/srv/data/rows.json")
-    await ctx.copy(ctx.runner_dir / "fixtures", "/srv/fixtures")
+    await ctx.container.copy(ctx.runner_dir / "fixtures" / "rows.json", "/srv/data/rows.json")
+    await ctx.container.copy(ctx.runner_dir / "fixtures", "/srv/fixtures")
     assert env.commands() == ["mkdir -p /srv/data", "mkdir -p /srv/fixtures"]
     assert [c for c in env.calls if c[0] != "exec"] == [
         ("upload_file", ("rows.json", "/srv/data/rows.json")),
@@ -528,7 +533,7 @@ async def test_run_file_deletes_even_when_the_script_fails(tmp_path: Path):
     ctx = agent_ctx(tmp_path, env)
     _ = (ctx.runner_dir / "start").write_text("echo no shebang")
     with pytest.raises(CommandError, match=r"run_file\('.*/start'\) failed"):
-        _ = await ctx.run_file(ctx.runner_dir / "start")
+        _ = await ctx.container.run_file(ctx.runner_dir / "start")
     assert env.commands()[-1].startswith("rm -rf /tmp/lmnr-")
 
 
@@ -537,7 +542,7 @@ async def test_run_file_runs_shebang_scripts_directly(tmp_path: Path):
     env = FakeEnvironment()
     ctx = agent_ctx(tmp_path, env)
     _ = (ctx.runner_dir / "start").write_text("#!/usr/bin/env node\n")
-    _ = await ctx.run_file(ctx.runner_dir / "start")
+    _ = await ctx.container.run_file(ctx.runner_dir / "start")
     remote = next(args[1] for kind, args in env.calls if kind == "upload_file")
     assert f"chmod a+x {remote}" in env.commands()
     assert remote in env.commands()
@@ -547,7 +552,7 @@ async def test_run_file_runs_shebang_scripts_directly(tmp_path: Path):
 async def test_service_starts_in_background_and_waits(tmp_path: Path):
     env = FakeEnvironment(lambda command: (0, "4242\n") if "nohup" in command else (0, ""))
     ctx = agent_ctx(tmp_path, env)
-    process = await ctx.service("api", "python -m http.server 8000", ready=port(8000))
+    process = await ctx.container.service("api", "python -m http.server 8000", ready=port(8000))
     assert (process.name, process.pid, process.log_path) == ("api", 4242, "/logs/agent/api.log")
     start, wait = env.commands()
     assert "nohup sh -c 'python -m http.server 8000' > /logs/agent/api.log 2>&1" in start
@@ -569,7 +574,7 @@ async def test_service_that_exits_reports_its_log(tmp_path: Path):
 
     ctx = agent_ctx(tmp_path, FakeEnvironment(respond))
     with pytest.raises(RuntimeError, match="'api' exited") as info:
-        _ = await ctx.service("api", "serve", ready=http("http://127.0.0.1:8000/health"))
+        _ = await ctx.container.service("api", "serve", ready=http("http://127.0.0.1:8000/health"))
     assert "Error: port in use" in str(info.value)
 
 
@@ -577,15 +582,15 @@ async def test_service_that_exits_reports_its_log(tmp_path: Path):
 async def test_wait_for_times_out(tmp_path: Path):
     ctx = agent_ctx(tmp_path, FakeEnvironment(lambda _: (1, "")))
     with pytest.raises(TimeoutError, match="`pg_isready` was not ready after 5s"):
-        await ctx.wait_for("pg_isready", timeout=5)
+        await ctx.container.wait_for("pg_isready", timeout=5)
 
 
 @pytest.mark.asyncio
 async def test_files_round_trip(tmp_path: Path):
     env = FakeEnvironment()
     ctx = agent_ctx(tmp_path, env)
-    await ctx.write_file("/case/data.json", '{"x": 1}')
-    assert await ctx.read_json("/case/data.json") == {"x": 1}
+    await ctx.container.write_file("/case/data.json", '{"x": 1}')
+    assert await ctx.container.read_json("/case/data.json") == {"x": 1}
     assert "mkdir -p /case" in env.commands()
 
 
@@ -595,8 +600,9 @@ async def test_files_round_trip(tmp_path: Path):
 def test_result_is_written_to_the_trial_agent_dir(tmp_path: Path):
     ctx = agent_ctx(tmp_path, FakeEnvironment())
     assert ctx.result() == {}
-    _ = ctx.result(outcome="completed")
-    assert ctx.result(reply="hi") == {"outcome": "completed", "reply": "hi"}
+    _ = ctx.set_result(outcome="completed")
+    assert ctx.set_result(reply="hi") == {"outcome": "completed", "reply": "hi"}
+    assert ctx.result() == {"outcome": "completed", "reply": "hi"}
     path = tmp_path / "trial" / "agent" / "result.json"
     assert json.loads(path.read_text()) == {"outcome": "completed", "reply": "hi"}
 
@@ -608,19 +614,19 @@ def test_result_is_written_to_the_trial_agent_dir(tmp_path: Path):
         secrets=Secrets([], {}),
     )
     assert verify_ctx.result()["reply"] == "hi"
-    with pytest.raises(EvalConfigError):
-        _ = verify_ctx.result(reply="no")
+    # Recording is for the agent phase only.
+    assert not hasattr(verify_ctx, "set_result")
 
 
 # Artifacts
 
 
 @pytest.mark.asyncio
-async def test_save_artifact_replaces_its_copy_under_logs_artifacts(tmp_path: Path):
+async def test_artifacts_save_replaces_its_copy_under_logs_artifacts(tmp_path: Path):
     env = FakeEnvironment()
     ctx = agent_ctx(tmp_path, env)
-    assert await ctx.save_artifact("/srv/app/out/") == "/logs/artifacts/out"
-    assert await ctx.save_artifact("/var/lib/app.db", dest="state/app.db") == (
+    assert await ctx.artifacts.save("/srv/app/out/") == "/logs/artifacts/out"
+    assert await ctx.artifacts.save("/var/lib/app.db", name="state/app.db") == (
         "/logs/artifacts/state/app.db"
     )
     first, second = env.execs()
@@ -632,14 +638,14 @@ async def test_save_artifact_replaces_its_copy_under_logs_artifacts(tmp_path: Pa
     assert "mkdir -p /logs/artifacts/state && cp -a /var/lib/app.db" in second["command"]
     for dest in ("../x", "/abs", ""):
         with pytest.raises(EvalConfigError):
-            _ = await ctx.save_artifact("/srv/x", dest=dest)
+            _ = await ctx.artifacts.save("/srv/x", name=dest)
 
 
 @pytest.mark.asyncio
-async def test_save_artifact_fails_when_the_source_is_missing(tmp_path: Path):
+async def test_artifacts_save_fails_when_the_source_is_missing(tmp_path: Path):
     ctx = agent_ctx(tmp_path, FakeEnvironment(lambda _: (1, "")))
     with pytest.raises(CommandError):
-        _ = await ctx.save_artifact("/srv/missing")
+        _ = await ctx.artifacts.save("/srv/missing")
 
 
 def test_artifacts_read_the_trial_artifacts_dir(tmp_path: Path):

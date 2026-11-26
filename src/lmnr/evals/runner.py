@@ -11,7 +11,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
-from typing import Any, ClassVar, Literal
+from typing import Any, ClassVar
 
 from lmnr.evals.artifacts import Artifact, validate_artifacts
 from lmnr.evals.context import AgentContext, VerifyContext
@@ -19,7 +19,6 @@ from lmnr.evals.errors import EvalConfigError
 from lmnr.evals.image import Image
 from lmnr.evals.paths import add_evals_root_to_path
 
-VerifyMode = Literal["runner", "task"]
 Rewards = dict[str, float | int | bool] | float | int | bool
 
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -44,6 +43,9 @@ def secret(name: str) -> Secret:
 class EvalRunner:
     """A dataset's agent and verifier. Subclass it once in `agent/eval.py`.
 
+    Your code runs on the host (your machine, or Laminar's orchestrator for
+    `--remote`); it reaches the trial's container through `ctx.container`.
+
     Class attributes:
 
     - `image`: `Image.from_dockerfile(...)` / `Image.from_registry(...)`, or a dict
@@ -54,29 +56,33 @@ class EvalRunner:
       `ctx.secrets[name]`; the container only gets the ones `env` passes on.
     - `env`: env for every command in the container; `secret("NAME")` passes
       a secret.
-    - `task_template`: `task.toml` keys lmnr-cli writes into new tasks.
-    - `entrypoint`: a shell command to use instead of defining `run`.
+    - `new_task_toml`: `task.toml` tables lmnr-cli writes into tasks that have
+      no `task.toml` yet (`{"agent": {"timeout_sec": 300}}`).
+    - `run_command`: a shell command `run` runs in the container, instead of
+      defining `run`.
     - `artifacts`: container paths (or `Artifact(source, destination=...)`)
       Harbor collects after the agent phase; `verify` reads them with
       `ctx.artifacts`, also when it grades in a separate container.
-    - `verify = "task"`: grade with each task's own `tests/test.sh` instead of
-      `verify()`.
+    - `grade_with_test_sh = True`: grade each case with its own
+      `tests/test.sh`, run in the container by Harbor's default verifier,
+      instead of `verify()` (for imported Harbor datasets that ship one).
 
     Phases, each with the trial's `ctx`:
 
     - `setup(ctx)`: before `run`. Default: the case's `environment/seed.*`, if any.
-    - `run(ctx)`: the code under test. Required, unless `entrypoint` is set.
+    - `run(ctx)`: the code under test. Required, unless `run_command` is set.
     - `collect(ctx)`: after `run`, also when it failed. Default: nothing.
-    - `verify(ctx)`: grading, in the Harbor process. Returns a number, a bool or
-      a dict of them.
+    - `verify(ctx)`: grading, on the host. Returns a number, a bool or a dict
+      of them. Required, unless `grade_with_test_sh = True`.
     """
 
     image: ClassVar[Image | dict[str, Image] | None] = None
     model: ClassVar[str | None] = None
     secrets: ClassVar[list[str]] = []
     env: ClassVar[dict[str, str | Secret]] = {}
-    task_template: ClassVar[dict[str, Any]] = {}
-    entrypoint: ClassVar[str | None] = None
+    new_task_toml: ClassVar[dict[str, Any]] = {}
+    run_command: ClassVar[str | None] = None
+    grade_with_test_sh: ClassVar[bool] = False
     artifacts: ClassVar[list[str | Artifact]] = []
     # Not supported yet; they will start databases and mock servers before `setup`.
     services: ClassVar[list[Any]] = []
@@ -85,27 +91,23 @@ class EvalRunner:
     async def setup(self, ctx: AgentContext) -> None:
         seed = ctx.case.seed_file()
         if seed is not None:
-            _ = await ctx.run_file(seed)
+            _ = await ctx.container.run_file(seed)
 
     async def run(self, ctx: AgentContext) -> None:
-        if not self.entrypoint:
-            raise EvalConfigError(f"{type(self).__name__} must define run() or set `entrypoint`.")
-        _ = await ctx.sh(self.entrypoint)
+        if not self.run_command:
+            raise EvalConfigError(f"{type(self).__name__} must define run() or set `run_command`.")
+        _ = await ctx.container.sh(self.run_command)
 
     async def collect(self, ctx: AgentContext) -> None:
         pass
 
     async def verify(self, ctx: VerifyContext) -> Rewards:
         raise EvalConfigError(
-            f'{type(self).__name__} must define verify(), or set verify = "task" to grade '
-            + "with each task's tests/test.sh."
+            f"{type(self).__name__} must define verify(), or set grade_with_test_sh = True "
+            + "to grade with each task's tests/test.sh."
         )
 
     # Configuration, as read by lmnr-cli and the Harbor adapters
-
-    @classmethod
-    def verify_mode(cls) -> VerifyMode:
-        return "task" if getattr(cls, "verify", None) == "task" else "runner"
 
     @classmethod
     def images(cls) -> dict[str | None, Image]:
@@ -153,20 +155,28 @@ class EvalRunner:
             )
 
         defines_run = cls.run is not EvalRunner.run
-        if not defines_run and not cls.entrypoint:
+        if not defines_run and not cls.run_command:
             raise EvalConfigError(
-                f'{name} must define `async def run(self, ctx)` or set `entrypoint = "..."`.'
+                f'{name} must define `async def run(self, ctx)` or set `run_command = "..."`.'
             )
-        if defines_run and cls.entrypoint:
-            warnings.append(f"{name} defines run(), so `entrypoint` is ignored.")
+        if defines_run and cls.run_command:
+            warnings.append(f"{name} defines run(), so `run_command` is ignored.")
 
-        verify = getattr(cls, "verify", None)
-        if isinstance(verify, str) and verify != "task":
-            raise EvalConfigError(f'{name}.verify must be a method or "task", got {verify!r}.')
-        if verify is EvalRunner.verify:
+        if not isinstance(cls.grade_with_test_sh, bool):
             raise EvalConfigError(
-                f'{name} must define `async def verify(self, ctx)`, or set verify = "task" '
-                + "to grade with each task's tests/test.sh."
+                f"{name}.grade_with_test_sh must be True or False, got {cls.grade_with_test_sh!r}."
+            )
+        defines_verify = cls.verify is not EvalRunner.verify
+        if cls.grade_with_test_sh and defines_verify:
+            raise EvalConfigError(
+                f"{name} defines verify() and sets grade_with_test_sh = True; keep one: "
+                + "verify() grades on the host, grade_with_test_sh runs each task's "
+                + "tests/test.sh in the container."
+            )
+        if not cls.grade_with_test_sh and not defines_verify:
+            raise EvalConfigError(
+                f"{name} must define `async def verify(self, ctx)`, or set "
+                + "grade_with_test_sh = True to grade with each task's tests/test.sh."
             )
 
         secrets = cls.secrets
@@ -194,12 +204,12 @@ class EvalRunner:
 
         if cls.model is not None and not isinstance(cls.model, str):
             raise EvalConfigError(f"{name}.model must be a string, got {cls.model!r}.")
-        if not isinstance(cls.task_template, dict):
-            raise EvalConfigError(f"{name}.task_template must be a dict of task.toml tables.")
+        if not isinstance(cls.new_task_toml, dict):
+            raise EvalConfigError(f"{name}.new_task_toml must be a dict of task.toml tables.")
         try:
-            _ = json.dumps(cls.task_template)
+            _ = json.dumps(cls.new_task_toml)
         except (TypeError, ValueError) as e:
-            raise EvalConfigError(f"{name}.task_template must be plain data: {e}") from e
+            raise EvalConfigError(f"{name}.new_task_toml must be plain data: {e}") from e
 
         validate_artifacts(name, cls.artifacts)
 

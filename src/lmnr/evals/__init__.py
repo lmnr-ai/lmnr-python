@@ -8,20 +8,24 @@
         env = {"ANTHROPIC_API_KEY": secret("ANTHROPIC_API_KEY")}
 
         async def run(self, ctx):
-            r = await ctx.sh("python -m app.cli /case/ticket.json")
-            ctx.result(reply=r.stdout)
+            r = await ctx.container.sh("python -m app.cli /case/ticket.json")
+            ctx.set_result(reply=r.stdout)
 
         async def verify(self, ctx):
             return {"replied": bool(ctx.result().get("reply"))}
 
-`lmnr-cli eval run` runs it through Harbor. This package never imports Harbor.
+`eval.py` runs on the host; `ctx.container` runs commands in the trial's
+container. `lmnr-cli eval run` runs it through Harbor. This package never
+imports Harbor.
 """
 
 from lmnr.evals.artifacts import Artifact, Artifacts
 from lmnr.evals.context import (
     AgentContext,
+    ArtifactSaver,
     BackgroundProcess,
     Case,
+    Container,
     Context,
     VerifyContext,
 )
@@ -33,10 +37,12 @@ from lmnr.evals.runner import EvalRunner, Secret, secret
 __all__ = [
     "AgentContext",
     "Artifact",
+    "ArtifactSaver",
     "Artifacts",
     "BackgroundProcess",
     "Case",
     "CommandError",
+    "Container",
     "Context",
     "EvalConfigError",
     "EvalRunner",
