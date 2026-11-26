@@ -24,8 +24,9 @@ class Verdict(BaseModel):
 
 # An LLM judge is a plain function: verify() runs in the Harbor process, so it
 # can call any SDK (lmnr-cli installs the dependencies above). The call is
-# traced under the trial's verifier span.
-@observe(name="judge")
+# traced under the trial's verifier span; @observe records the arguments as the
+# span's input, so the key is left out.
+@observe(name="judge", ignore_inputs=["api_key"])
 async def judge(reply: str, criteria: str, api_key: str) -> Verdict:
     client = AsyncAnthropic(api_key=api_key)
     response = await client.messages.parse(
