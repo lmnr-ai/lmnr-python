@@ -1,6 +1,6 @@
 # Agent evaluation example
 
-A support agent that handles billing tickets, with an [agent evaluation](https://laminar.sh/docs/agent-evaluations/introduction) dataset you run with `lmnr-cli eval run`. The agent looks up a customer's charges in a SQLite database and can refund one. Each case starts with its own copy of the database, and a verifier checks both the database and the reply.
+A support agent that handles billing tickets, with [agent evaluation](https://laminar.sh/docs/agent-evaluations/introduction) datasets you run with `lmnr-cli eval run`. The agent looks up a customer's charges in a SQLite database and can refund one. Each case starts with its own copy of the database, and a verifier checks both the database and the reply.
 
 The [quickstart](https://laminar.sh/docs/agent-evaluations/quickstart#get-started-manually) walks through the files.
 
@@ -9,6 +9,7 @@ The [quickstart](https://laminar.sh/docs/agent-evaluations/quickstart#get-starte
 ```
 app/
   support_agent.py            # the agent: Anthropic tool loop, instrumented with Laminar
+  ticket_server.py            # the same agent behind an HTTP API (used by support-api)
 pyproject.toml, uv.lock       # the app's dependencies, installed into the image
 evals/
   pyproject.toml              # what eval.py imports (the judge's Anthropic SDK), installed next to Harbor
@@ -28,6 +29,9 @@ evals/
         tests/
           test.sh             # a stub: eval.py's verify() grades the case
           expected.json       # the reference answer
+  _shared/                    # shared runner code, not a dataset (see "More datasets")
+  support-api/                # the agent behind a service, graded in a separate container
+  support-test-sh/            # cases graded by their own tests/test.sh
 ```
 
 `eval.py` holds one `EvalRunner` (from `lmnr.evals`):
@@ -50,15 +54,49 @@ You need [Docker](https://docs.docker.com/get-docker/), [uv](https://docs.astral
    ```
 
 3. Add `ANTHROPIC_API_KEY` to `.env` (see `.env.example`).
-4. Run the dataset:
+4. Run the `support` dataset:
 
    ```bash
-   npx lmnr-cli@latest eval run
+   npx lmnr-cli@latest eval run support
    ```
+
+   Without a name, `eval run` runs every dataset in `evals/`, including the two in "More datasets".
 
 Each trial shows up in Laminar as a datapoint with a `refund` score and a `reply` score, next to the trace of the agent's model and tool calls.
 
 To add a case, create a folder in `evals/support/tasks/` with its `environment/case.json`, `environment/seed.json` and `tests/expected.json`. The next `eval run` writes the rest (`task.toml` with the case's name, `instruction.md`, and the stub `tests/test.sh`), or create them first with `npx lmnr-cli@latest eval task new evals/support/tasks/<name>`.
+
+## More datasets
+
+`support` keeps everything in one `eval.py`. The other two datasets share a runner and show the rest of `lmnr.evals`:
+
+```
+evals/
+  _shared/                    # not a dataset: no agent/eval.py. On the import path of every eval.py
+    billing.py                # BillingRunner: image, model, secrets, setup (seed), submit_ticket()
+    Dockerfile                # the image both datasets build (each as <folder>-evals)
+    seed.py                   # creates the case's database (run by BillingRunner.setup)
+    submit_ticket.py          # queues the case's ticket with the ticket service
+    judge.py                  # the LLM judge, imported by support-api's verify()
+  support-api/
+    agent/eval.py             # class SupportApiEval(BillingRunner)
+    tasks/triple-charge/      # three identical charges: two refunds expected
+  support-test-sh/
+    agent/eval.py             # class SupportTestShEval(BillingRunner): four lines
+    tasks/different-products/ # tests/test.sh: no refund is owed
+    tasks/other-customers-charge/  # tests/test.sh: another customer's charge stays unrefunded
+```
+
+- **Shared runner.** Each `eval.py` subclasses `BillingRunner` from `evals/_shared/billing.py`. A relative path resolves against the file whose code uses it: `Image.from_dockerfile("Dockerfile")` and `ctx.container.run_file("seed.py")` in `billing.py` find the files next to it, whichever dataset runs. That's why `submit_ticket()` is a `BillingRunner` method: called from a dataset's `eval.py`, `run_file("submit_ticket.py")` would look in that dataset's `agent/` folder.
+- **`support-api`** runs the agent the way it runs in production, behind `app/ticket_server.py`:
+  - `setup` starts it with `ctx.container.service(..., ready=http(...))`, which returns once `/health` answers. Its output goes to the trial's `agent/api.log`.
+  - `run` queues the ticket, then `ctx.container.wait_for(cmd("test -f ..."))` until the service writes the ticket's record, and reads it with `ctx.container.read_json`.
+  - `collect` saves the database with `ctx.artifacts.save("/srv/app/app.db")`. `collect` runs after `run`, also when it failed.
+  - `artifacts = [Artifact("/srv/app/audit", destination="audit")]` collects the service's records too.
+  - The task sets `[verifier] environment_mode = "separate"`, so grading gets a fresh container that sees only the artifacts. `verify` doesn't use the container at all: it opens the saved database with `sqlite3` on the host (`ctx.artifacts.path(...)`), reads the record (`ctx.artifacts.read_json(...)`), and sends the ticket (`ctx.case.file("case.json")`, read on the host) and the reply to the shared judge.
+- **`support-test-sh`** grades like an imported Harbor dataset:
+  - `run_command` replaces `run()`. A plain command gets no `ctx`, so the app uses its default model.
+  - `grade_with_test_sh = True` replaces `verify()`: Harbor runs each case's own `tests/test.sh` in the container after the agent, and the script writes `/logs/verifier/reward.txt`. Each case checks something different without a shared `verify()`.
 
 ## Store the cases in Laminar
 

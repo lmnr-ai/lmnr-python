@@ -1,0 +1,9 @@
+[task]
+name = "refund-agent/different-products"
+
+[environment]
+docker_image = "support-test-sh-evals"
+workdir = "/case"
+
+[agent]
+timeout_sec = 300

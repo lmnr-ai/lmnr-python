@@ -1,0 +1,12 @@
+[task]
+name = "refund-agent/triple-charge"
+
+[environment]
+docker_image = "support-api-evals"
+workdir = "/case"
+
+[agent]
+timeout_sec = 300
+
+[verifier]
+environment_mode = "separate"

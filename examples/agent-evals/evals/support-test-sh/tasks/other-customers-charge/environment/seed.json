@@ -1,0 +1,6 @@
+{
+  "charges": [
+    {"id": "ch_e7702a", "email": "tom.baker@example.com", "description": "Team plan, December", "amount": 49.0, "created_at": "2026-12-05T14:20:00Z"},
+    {"id": "ch_e7710f", "email": "ana.silva@example.com", "description": "Business plan, December", "amount": 99.0, "created_at": "2026-12-05T14:22:31Z"}
+  ]
+}
