@@ -66,7 +66,7 @@ lmnr datasets pull <id>       # Pull dataset
 - `harbor/` - Harbor `JobPlugin`; `harbor/runner.py` - `LaminarAgent` / `LaminarVerifier`, the only module importing Harbor at runtime
 
 ### One-file eval runner (`src/lmnr/evals/`)
-- `EvalRunner`, `ctx`, `Image`, `secret`, `python -m lmnr.evals.describe`; never imports Harbor
+- `EvalRunner`, `ctx`, the `Image` builder, services (`Postgres`, `ClickHouse`, `Valkey`, `Service.custom`), mirrors (`lmnr.evals.mirrors.Rystic`), `secret`, `python -m lmnr.evals.describe`; never imports Harbor
 
 ## Coding practices
 
@@ -140,4 +140,4 @@ LMNR_{INSTRUMENT}_{OPTION}  # Per-instrumentation options, e.g. LMNR_LANGGRAPH_R
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/pydantic_ai/AGENTS.md`
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/temporal/AGENTS.md`
 - `src/lmnr/integrations/harbor/AGENTS.md` - Harbor plugin, `EvalRunner` adapters (`runner.py`), traced `verify()`
-- `src/lmnr/evals/AGENTS.md` - `EvalRunner` (`agent/eval.py` datasets): ctx, env / secrets precedence, describe JSON, no Harbor imports
+- `src/lmnr/evals/AGENTS.md` - `EvalRunner` (`agent/eval.py` datasets): ctx, env / secrets precedence, describe JSON, no Harbor imports; the `Image` builder (compile order, build context, composition, determinism, golden tests), how services get into images (bundle stages vs vendor downloads), service runtime, mirrors / Rystic, the opt-in Docker tests

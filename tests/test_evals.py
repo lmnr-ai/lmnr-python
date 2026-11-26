@@ -163,7 +163,7 @@ def test_valid_runner_has_no_warnings():
         ({"env": {"KEY": secret("KEY")}}, "not in MyEval.secrets"),
         ({"secrets": ["KEY=value"]}, "env var names"),
         ({"env": {"KEY": 1}}, "must be a string or secret"),
-        ({"services": ["postgres"]}, "services is not supported yet"),
+        ({"services": ["postgres"]}, "services must be a list of services"),
         ({"mocks": {"crm.get": print}}, "mocks is not supported yet"),
         ({"artifacts": "/srv/out"}, "must be a list"),
         ({"artifacts": [1]}, "container paths or Artifact"),
@@ -212,6 +212,7 @@ def test_describe_outputs_json_for_lmnr_cli(tmp_path: Path):
                 "kind": "dockerfile",
                 "dockerfile": str((path.parent / "Dockerfile").resolve()),
                 "context": str(tmp_path.resolve()),
+                "steps": [{"origin": ANY, "step": "from_dockerfile Dockerfile"}],
             }
         },
         "default_image": "support-evals",
@@ -226,6 +227,8 @@ def test_describe_outputs_json_for_lmnr_cli(tmp_path: Path):
             "/srv/app/out/",
             {"source": "/var/lib/app/state.db", "destination": "app.db"},
         ],
+        "services": [],
+        "classes": [{"name": "SupportEval", "file": "support/agent/eval.py"}],
     }
 
 
@@ -243,11 +246,18 @@ def test_describe_named_images(tmp_path: Path):
     )
     result = describe(path)
     assert result["images"] == {
-        "new": {"kind": "registry", "ref": "python:3.14"},
+        "new": {
+            "kind": "registry",
+            "ref": "python:3.14",
+            "steps": [{"origin": "support/agent/eval.py:5 (E)", "step": "from python:3.14"}],
+        },
         "old": {
             "kind": "dockerfile",
             "dockerfile": str((path.parent / "old" / "Dockerfile").resolve()),
             "context": str((path.parent / "old").resolve()),
+            "steps": [
+                {"origin": "support/agent/eval.py:5 (E)", "step": "from_dockerfile old/Dockerfile"}
+            ],
         },
     }
     assert result["default_image"] == "new"
@@ -344,6 +354,13 @@ def test_shared_runner_paths_resolve_from_its_own_file(shared_evals: Path):
             "kind": "dockerfile",
             "dockerfile": str((root / "_shared" / "Dockerfile").resolve()),
             "context": str(root.resolve()),
+            # Declared in the shared module, by the shared class.
+            "steps": [
+                {
+                    "origin": "_shared/support.py:5 (SupportRunner)",
+                    "step": "from_dockerfile Dockerfile",
+                }
+            ],
         }
     }
     assert result["env"] == {"TONE": "formal", "QUEUE": "refunds"}
