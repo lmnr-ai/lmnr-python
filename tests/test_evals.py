@@ -369,6 +369,21 @@ async def test_run_file_uploads_runs_and_deletes(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_copy_puts_host_files_and_dirs_in_the_container(tmp_path: Path):
+    env = FakeEnvironment()
+    ctx = agent_ctx(tmp_path, env)
+    _ = (ctx.runner_dir / "fixtures").mkdir()
+    _ = (ctx.runner_dir / "fixtures" / "rows.json").write_text("[]")
+    await ctx.copy("fixtures/rows.json", "/srv/data/rows.json")
+    await ctx.copy("fixtures", "/srv/fixtures")
+    assert env.commands() == ["mkdir -p /srv/data", "mkdir -p /srv/fixtures"]
+    assert [c for c in env.calls if c[0] != "exec"] == [
+        ("upload_file", ("rows.json", "/srv/data/rows.json")),
+        ("upload_dir", (str(ctx.runner_dir / "fixtures"), "/srv/fixtures")),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_run_file_deletes_even_when_the_script_fails(tmp_path: Path):
     env = FakeEnvironment(lambda command: (1, "") if command.startswith("bash /tmp") else (0, ""))
     ctx = agent_ctx(tmp_path, env)

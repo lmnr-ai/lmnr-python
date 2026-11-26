@@ -239,7 +239,7 @@ class Context:
         under test could read them. A file with a shebang runs directly, a `.py`
         file with `python3`, anything else with `bash`.
         """
-        local = self._local_path(path)
+        local = self._host_path(path)
         if not local.is_file():
             raise FileNotFoundError(f"run_file: {local} does not exist")
         remote_dir = f"/tmp/lmnr-{uuid.uuid4().hex[:12]}"
@@ -329,15 +329,17 @@ class Context:
 
     # Files in the container
 
-    async def upload(self, local: str | Path, remote: str) -> None:
-        """Copy a file or directory (relative to `eval.py`'s directory) into the container."""
-        source = self._local_path(local)
+    async def copy(self, host: str | Path, container: str) -> None:
+        """Copy a file or directory from the host (the machine running Harbor;
+        relative paths are from `eval.py`'s directory) to `container`, a path in
+        the container."""
+        source = self._host_path(host)
         if source.is_dir():
-            _ = await self._root(f"mkdir -p {shlex.quote(remote)}")
-            await self.environment.upload_dir(source, remote)
+            _ = await self._root(f"mkdir -p {shlex.quote(container)}")
+            await self.environment.upload_dir(source, container)
         else:
-            _ = await self._root(f"mkdir -p {shlex.quote(_parent(remote))}")
-            await self.environment.upload_file(source, remote)
+            _ = await self._root(f"mkdir -p {shlex.quote(_parent(container))}")
+            await self.environment.upload_file(source, container)
 
     async def write_file(self, path: str, content: str | bytes) -> None:
         """Write `content` to `path` in the container."""
@@ -362,7 +364,7 @@ class Context:
 
     # Internals
 
-    def _local_path(self, path: str | Path) -> Path:
+    def _host_path(self, path: str | Path) -> Path:
         path = Path(path)
         return path if path.is_absolute() else self.runner_dir / path
 
