@@ -161,8 +161,6 @@ class LaminarVerifier(BaseVerifier):  # pyright: ignore[reportUntypedBaseClass]
             exec_env={**runner_env, **verifier_env},
             host_agent_dir=trial_paths.agent_dir,
             secrets=Secrets(runner_cls.secrets, os.environ),
-            # Not the trial's model: a model sweep must not change the judge.
-            judge_model=runner_cls.model,
         )
 
         try:

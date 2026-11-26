@@ -11,7 +11,7 @@ from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import ANY, AsyncMock, patch
+from unittest.mock import ANY
 
 import pytest
 
@@ -433,6 +433,12 @@ def test_secrets_only_expose_declared_names():
         _ = Secrets(["MISSING"], {})["MISSING"]
 
 
+def test_secrets_repr_shows_names_never_values():
+    secrets = Secrets(["JUDGE", "MISSING"], {"JUDGE": "j-value", "OTHER": "o-value"})
+    assert repr(secrets) == "Secrets(set=['JUDGE'], unset=['MISSING'])"
+    assert "value" not in str(secrets)
+
+
 # Commands
 
 
@@ -566,7 +572,7 @@ async def test_files_round_trip(tmp_path: Path):
     assert "mkdir -p /case" in env.commands()
 
 
-# Results, judge
+# Results
 
 
 def test_result_is_written_to_the_trial_agent_dir(tmp_path: Path):
@@ -587,41 +593,6 @@ def test_result_is_written_to_the_trial_agent_dir(tmp_path: Path):
     assert verify_ctx.result()["reply"] == "hi"
     with pytest.raises(EvalConfigError):
         _ = verify_ctx.result(reply="no")
-
-
-@pytest.mark.asyncio
-async def test_judge_asks_for_a_structured_verdict(tmp_path: Path):
-    ctx = VerifyContext(
-        environment=FakeEnvironment(),
-        case=make_case(tmp_path),
-        runner_dir=tmp_path,
-        host_agent_dir=tmp_path,
-        secrets=Secrets([], {}),
-        judge_model="anthropic/claude-haiku-4-5",
-    )
-    message = SimpleNamespace(content='{"pass": true, "reason": "polite and correct"}')
-    completion = AsyncMock(return_value=SimpleNamespace(choices=[SimpleNamespace(message=message)]))
-    with patch("litellm.acompletion", completion):
-        assert await ctx.judge("Refunded $49.", "Confirm the refund.", api_key="k") == 1
-    kwargs = completion.call_args.kwargs
-    assert kwargs["model"] == "anthropic/claude-haiku-4-5"
-    assert kwargs["api_key"] == "k"
-    assert kwargs["response_format"]["type"] == "json_schema"
-    assert "Confirm the refund." in kwargs["messages"][0]["content"]
-    assert ctx.logger.lines == ["judge (anthropic/claude-haiku-4-5): pass: polite and correct"]
-
-
-@pytest.mark.asyncio
-async def test_judge_needs_a_model(tmp_path: Path):
-    ctx = VerifyContext(
-        environment=FakeEnvironment(),
-        case=make_case(tmp_path),
-        runner_dir=tmp_path,
-        host_agent_dir=tmp_path,
-        secrets=Secrets([], {}),
-    )
-    with pytest.raises(EvalConfigError, match="needs a model"):
-        _ = await ctx.judge("x", "y")
 
 
 @pytest.mark.asyncio

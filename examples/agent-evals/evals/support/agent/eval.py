@@ -1,7 +1,13 @@
+# /// script
+# dependencies = ["anthropic>=2.4.0"]
+# ///
 import json
 import shlex
 
+from anthropic import AsyncAnthropic
+from lmnr import observe
 from lmnr.evals import EvalRunner, Image, secret
+from pydantic import BaseModel
 
 # Runs in the container in verify(): what actually happened in the database.
 REFUNDS_QUERY = (
@@ -9,6 +15,37 @@ REFUNDS_QUERY = (
     "print(json.dumps(sqlite3.connect('/srv/app/app.db').execute("
     "'SELECT COUNT(*), COALESCE(SUM(amount), 0) FROM refunds').fetchone()))"
 )
+
+
+class Verdict(BaseModel):
+    passed: bool
+    reason: str
+
+
+# An LLM judge is a plain function: verify() runs in the Harbor process, so it
+# can call any SDK (lmnr-cli installs the dependencies above). The call is
+# traced under the trial's verifier span.
+@observe(name="judge")
+async def judge(reply: str, criteria: str, api_key: str) -> Verdict:
+    client = AsyncAnthropic(api_key=api_key)
+    response = await client.messages.parse(
+        model="claude-haiku-5-5",
+        max_tokens=1024,
+        messages=[
+            {
+                "role": "user",
+                "content": (
+                    "You grade a support agent's reply to a customer.\n\n"
+                    f"Criteria: {criteria}\n\nReply:\n{reply}\n\n"
+                    "Does the reply meet the criteria?"
+                ),
+            }
+        ],
+        output_format=Verdict,
+    )
+    if response.parsed_output is None:
+        raise ValueError(f"The judge gave no verdict (stop reason {response.stop_reason})")
+    return response.parsed_output
 
 
 class SupportEval(EvalRunner):
@@ -55,10 +92,8 @@ class SupportEval(EvalRunner):
         refund_ok = count == expected["refund_count"] and total == expected["refund_amount"]
 
         # 2. LLM judge: is the reply to the customer any good?
-        reply_ok = await ctx.judge(
-            result["reply"],
-            expected["reply_should"],
-            model="anthropic/claude-haiku-4-5",
-            api_key=ctx.secrets["ANTHROPIC_API_KEY"],
+        verdict = await judge(
+            result["reply"], expected["reply_should"], ctx.secrets["ANTHROPIC_API_KEY"]
         )
-        return {"refund": refund_ok, "reply": reply_ok}
+        ctx.logger.info(f"judge: {'pass' if verdict.passed else 'fail'}: {verdict.reason}")
+        return {"refund": refund_ok, "reply": verdict.passed}

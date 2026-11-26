@@ -267,7 +267,7 @@ class LaminarPlugin:
             # outside of any span we own, so auto-instrumentation would only
             # produce orphan traces. Their calls are recovered from the
             # trajectory instead. When every agent is an `EvalRunner`, the only
-            # LLM calls in this process are `verify()`'s (judges), which run
+            # LLM calls in this process are `verify()`'s (users' judges), which run
             # under the trial's verifier span, so they are instrumented; only
             # our Daytona instrumentor stays off (a trace per sandbox API call).
             # For the same reason we don't take over the global tracer

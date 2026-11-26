@@ -24,7 +24,6 @@ from typing import Any, Literal, Protocol
 from typing_extensions import override
 
 from lmnr.evals.errors import OUTPUT_TAIL_CHARS, CommandError, EvalConfigError, ExecResult
-from lmnr.evals.judge import judge
 from lmnr.evals.paths import caller_dir
 from lmnr.evals.readiness import Readiness
 from lmnr.evals.readiness import cmd as cmd_ready
@@ -156,7 +155,10 @@ class Secrets(Mapping[str, str]):
 
     @override
     def __repr__(self) -> str:
-        return f"Secrets({sorted(self._values)})"
+        # Names only, never values, so `ctx.logger.info(ctx.secrets)` or a
+        # traceback showing `ctx` can't leak a secret into logs and traces.
+        unset = [name for name in self._declared if name not in self._values]
+        return f"Secrets(set={sorted(self._values.keys())}, unset={sorted(unset)})"
 
 
 class EvalLogger(logging.LoggerAdapter[logging.Logger]):
@@ -470,13 +472,11 @@ class VerifyContext(Context):
         *,
         host_agent_dir: Path,
         secrets: Secrets,
-        judge_model: str | None = None,
         **kwargs: Any,
     ):
         super().__init__(**kwargs)
         self.host_agent_dir: Path = host_agent_dir
         self.secrets: Secrets = secrets
-        self._judge_model: str | None = judge_model
 
     def result(self, **fields: Any) -> dict[str, Any]:
         """What the agent phases recorded with `ctx.result(...)` (`{}` if nothing)."""
@@ -485,27 +485,6 @@ class VerifyContext(Context):
                 "ctx.result(...) can only record fields in setup, run or collect."
             )
         return _read_json_object(self.host_agent_dir / RESULT_FILE)
-
-    async def judge(
-        self,
-        output: Any,
-        criteria: str,
-        model: str | None = None,
-        api_key: str | None = None,
-    ) -> int:
-        """Ask an LLM whether `output` meets `criteria`: 1 for pass, 0 for fail.
-
-        Uses LiteLLM model names (`"anthropic/claude-haiku-4-5"`); defaults to the
-        runner's `model`. The verdict and its reason go to the verifier log.
-        """
-        resolved = model or self._judge_model
-        if not resolved:
-            raise EvalConfigError(
-                "ctx.judge() needs a model: pass model=... or set `model` on the runner."
-            )
-        passed, reason = await judge(output, criteria, model=resolved, api_key=api_key)
-        self.logger.info(f"judge ({resolved}): {'pass' if passed else 'fail'}: {reason}")
-        return int(passed)
 
 
 def normalize_rewards(value: Any) -> dict[str, float | int]:
