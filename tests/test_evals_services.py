@@ -45,9 +45,11 @@ class RecordingEnvironment:
 
     def __init__(self):
         self.commands: list[tuple[str, Any]] = []
+        self.envs: list[dict[str, str] | None] = []
 
     async def exec(self, command: str, cwd=None, env=None, timeout_sec=None, user=None) -> Any:
         self.commands.append((command, user))
+        self.envs.append(env)
         # `service` reads the pid from the last line.
         return SimpleNamespace(
             stdout="42\n" if "echo $!" in command else "", stderr="", return_code=0
@@ -152,6 +154,46 @@ def test_latest_version_warns():
         + "image has when it is built. Pin a version for reproducible runs."
     ]
     assert Valkey("latest").source_image() == "valkey/valkey:bookworm"
+
+
+def test_postgres_url_encodes_credentials():
+    pg = Postgres("16", user="app$user", password="p@ss:w/rd#1", database="shop")
+    assert pg.env() == {
+        "DATABASE_URL": "postgresql://app%24user:p%40ss%3Aw%2Frd%231@127.0.0.1:5432/shop"
+    }
+    # The separate placeholders stay raw, e.g. for PGPASSWORD.
+    raw = Postgres("16", password="p@ss", env={"PGPASSWORD": "{password}"})
+    assert raw.env() == {"PGPASSWORD": "p@ss"}
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_clickhouse_snapshot_fails_when_a_query_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fails: bool
+):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    fake = bin_dir / "clickhouse"
+    _ = fake.write_text(
+        "#!/bin/sh\necho 'Code: 60. Table default.events does not exist' >&2; exit 60\n"
+        if fails
+        else "#!/bin/sh\necho '{\"id\":1}'; echo '{\"id\":2}'\n"
+    )
+    fake.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+    ch = ClickHouse("25.8", snapshot=["events"])
+    ctx = AgentContext(
+        environment=LocalEnvironment(),
+        case=make_case(tmp_path),
+        runner_dir=tmp_path,
+        host_logs_dir=tmp_path / "a",
+    )
+    out = tmp_path / "state" / "clickhouse"
+    if fails:
+        with pytest.raises(Exception, match="Snapshot of clickhouse"):
+            asyncio.run(ch.snapshot(ctx, str(out)))
+    else:
+        asyncio.run(ch.snapshot(ctx, str(out)))
+        assert json.loads((out / "events.json").read_text()) == [{"id": 1}, {"id": 2}]
 
 
 def test_env_templates():
@@ -485,3 +527,7 @@ def test_custom_service(tmp_path: Path):
     )
     asyncio.run(start_services([mail], ctx))
     assert "nohup sh -c '/mailpit --listen 127.0.0.1:8025'" in env.commands[0][0]
+    # The ready check gets the bundled libraries too, not only the process.
+    waits = [i for i, (c, _) in enumerate(env.commands) if c.startswith("bash -c")]
+    assert waits
+    assert all((env.envs[i] or {}).get("LD_LIBRARY_PATH") == mail.lib_dir for i in waits)

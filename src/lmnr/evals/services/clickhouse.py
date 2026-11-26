@@ -202,7 +202,8 @@ echo {GLIBC_REQUIRED} > "$out{GLIBC_MARKER}{self.name}\""""
         if not self.snapshot_tables:
             return
         quoted = shlex.quote(out_dir)
-        lines = ["set -e", f"rm -rf {quoted}", f"mkdir -p {quoted}"]
+        # pipefail: a failed query must fail the snapshot, not save `[]`.
+        lines = ["set -eo pipefail", f"rm -rf {quoted}", f"mkdir -p {quoted}"]
         for table in self.snapshot_tables:
             query = f"SELECT * FROM {table} FORMAT JSONEachRow"
             target = shlex.quote(f"{out_dir}/{table}.json")

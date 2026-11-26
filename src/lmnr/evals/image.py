@@ -33,7 +33,8 @@ _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # Lines Docker reads before anything else; they must stay at the top.
 _PARSER_DIRECTIVE = re.compile(r"^#\s*(syntax|escape|check)\s*=", re.IGNORECASE)
 _FROM = re.compile(
-    r"^(?P<head>[ \t]*FROM[ \t]+(?:--\S+[ \t]+)*\S+)(?:[ \t]+AS[ \t]+(?P<alias>\S+))?[ \t]*$",
+    r"^(?P<head>[ \t]*FROM[ \t]+(?:--\S+[ \t]+)*(?P<ref>\S+))"
+    + r"(?:[ \t]+AS[ \t]+(?P<alias>\S+))?[ \t]*$",
     re.IGNORECASE | re.MULTILINE,
 )
 _USER = re.compile(r"^[ \t]*USER[ \t]+(?P<user>\S+)[ \t]*$", re.IGNORECASE | re.MULTILINE)
@@ -391,12 +392,11 @@ def _compose(
     if not froms:
         raise EvalConfigError(f"No FROM line in the Dockerfile ({header.removeprefix('# from ')}).")
     last = froms[-1]
+    user = _stage_user(body, froms, len(froms) - 1)
     alias = last.group("alias")
     if alias is None:
         alias = APP_STAGE
         body = body[: last.end("head")] + f" AS {alias}" + body[last.end("head") :]
-    users = list(_USER.finditer(body, last.end()))
-    user = users[-1].group("user") if users else None
 
     lines = [*directives, header, body.rstrip("\n"), ""]
     lines.append("# Added by lmnr.evals. Each step names the code that declared it.")
@@ -411,6 +411,23 @@ def _compose(
     if user is not None:
         lines += ["", f"USER {user}"]
     return "\n".join(lines) + "\n"
+
+
+def _stage_user(body: str, froms: list[re.Match[str]], index: int) -> str | None:
+    """The `USER` stage `index` ends with: its own last `USER` line, else the
+    user of the earlier stage it builds on (`FROM base`). None for root or an
+    external base's default user, which the Dockerfile doesn't show."""
+    stage = froms[index]
+    end = froms[index + 1].start() if index + 1 < len(froms) else len(body)
+    users = list(_USER.finditer(body, stage.end(), end))
+    if users:
+        return users[-1].group("user")
+    ref = stage.group("ref").lower()
+    for earlier in range(index - 1, -1, -1):
+        alias = froms[earlier].group("alias")
+        if alias is not None and alias.lower() == ref:
+            return _stage_user(body, froms, earlier)
+    return None
 
 
 def _stages(contributor: ImageContributor, rel: PathMap, root: Path | None) -> list[str]:

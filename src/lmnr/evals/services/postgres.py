@@ -9,6 +9,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
+from urllib.parse import quote
 
 from typing_extensions import override
 
@@ -245,7 +246,9 @@ runuser -u postgres -- "$pgbin/pg_ctl" -D "$PGDATA" -w -m fast stop"""
             "database": self.database,
             "user": self.user,
             "password": self.password,
-            "url": f"postgresql://{self.user}:{self.password}@{HOST}:{self.port}/{self.database}",
+            # `{user}` / `{password}` stay raw (PGPASSWORD); the URL needs them encoded.
+            "url": f"postgresql://{quote(self.user, safe='')}:{quote(self.password, safe='')}"
+            + f"@{HOST}:{self.port}/{quote(self.database, safe='')}",
         }
 
     @override

@@ -127,6 +127,21 @@ def test_existing_stage_name_is_reused_and_root_user_is_left_alone(tmp_path: Pat
     assert "WORKDIR" not in text
 
 
+def test_user_inherited_from_an_earlier_stage_is_handled(tmp_path: Path):
+    _ = (tmp_path / "Dockerfile").write_text(
+        "FROM python:3.13 AS base\nUSER app\nFROM --platform=linux/amd64 BASE\nRUN true\n"
+    )
+    compiled = compile_image(
+        Image.from_dockerfile(str(tmp_path / "Dockerfile")).run_commands("echo hi"),
+        fallback_dir=tmp_path,
+    )
+    text = compiled.dockerfile_text or ""
+    assert f"FROM --platform=linux/amd64 BASE AS {APP_STAGE}\n" in text
+    added = text.split(f"\nFROM {APP_STAGE}\n", 1)[1]
+    assert added.startswith("USER root\n")
+    assert text.rstrip().endswith("USER app")
+
+
 def test_dockerfile_ignore_file_is_passed_on(tmp_path: Path):
     _ = (tmp_path / "Dockerfile").write_text("FROM python:3.13\n")
     _ = (tmp_path / "Dockerfile.dockerignore").write_text("data/\n")

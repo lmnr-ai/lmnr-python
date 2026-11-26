@@ -289,7 +289,8 @@ class Container:
         """Start a background process and wait until it is ready.
 
         Output goes to `/logs/agent/<name>.log`. `ready` is `port(5432)`,
-        `http(url)` or `cmd("...")` (a plain string is a command). If the process
+        `http(url)` or `cmd("...")` (a plain string is a command); it runs with
+        the same `env` as `cmd`. If the process
         exits or isn't ready within `timeout` seconds, the error has the end of
         its log.
         """
@@ -316,7 +317,7 @@ class Container:
                 f"Service {name!r} did not report its pid: {result.stdout!r}"
             ) from None
         process = BackgroundProcess(name=name, pid=pid, log_path=log_path)
-        status = await self._wait(ready, timeout, pid=pid, user=user)
+        status = await self._wait(ready, timeout, pid=pid, env=env, user=user)
         if status != 0:
             reason = "exited" if status == 2 else f"was not ready after {timeout:g}s"
             tail = await self._exec(
@@ -418,6 +419,7 @@ class Container:
         ready: Readiness | str,
         timeout: float,
         pid: int | None = None,
+        env: dict[str, str] | None = None,
         user: User = "agent",
     ) -> int:
         """0 once ready, 1 on timeout, 2 if `pid` exited first. One `exec`: the
@@ -439,6 +441,7 @@ class Container:
         )
         result = await self._exec(
             f"bash -c {shlex.quote(script)}",
+            env=env,
             user=user,
             timeout=timeout + 30,
             check=False,
