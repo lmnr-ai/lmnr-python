@@ -1703,6 +1703,12 @@ async def test_retry_closes_the_previous_verifier_span(
 
     verifiers = spans_by_name(span_exporter)["verifier"]
     assert [v.status.status_code for v in verifiers] == [StatusCode.ERROR, StatusCode.UNSET]
+    # Laminar marks errors by the exception event, not the status.
+    assert [e.name for e in verifiers[0].events] == ["exception"]
+    assert verifiers[0].events[0].attributes["exception.message"] == (
+        "Verification did not finish: the trial was retried"
+    )
+    assert verifiers[1].events == ()
     assert "t1" not in verifier_spans
 
 

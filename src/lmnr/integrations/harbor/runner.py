@@ -99,8 +99,13 @@ class LaminarAgent(BaseInstalledAgent):  # pyright: ignore[reportUntypedBaseClas
         except asyncio.CancelledError:
             await _collect_after_failure(runner, ctx, timeout=COLLECT_AFTER_CANCEL_TIMEOUT_SEC)
             raise
-        except Exception:
-            await _collect_after_failure(runner, ctx)
+        except Exception as error:
+            try:
+                await _collect_after_failure(runner, ctx)
+            except asyncio.CancelledError:
+                # Cancelled while collecting (the agent timed out, say): the
+                # run's error is still what failed the trial, so it wins.
+                raise error from None
             raise
         await runner.collect(ctx)
 

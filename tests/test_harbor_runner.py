@@ -7,6 +7,7 @@ isn't a dev dependency: they are skipped without it. Run them with
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import textwrap
@@ -202,6 +203,24 @@ async def test_collect_runs_when_run_fails(dataset: Path):
     with pytest.raises(RuntimeError, match="agent crashed"):
         await agent.run("", env, AgentContext())
     assert env.commands()[-1] == "collect-state"
+
+
+class HangingCollectEnvironment(FakeEnvironment):
+    async def exec(self, command: str, cwd=None, env=None, timeout_sec=None, user=None) -> Any:
+        if command == "collect-state":
+            await asyncio.Event().wait()
+        return await super().exec(command, cwd, env, timeout_sec, user)
+
+
+@pytest.mark.asyncio
+async def test_run_error_wins_over_a_timeout_during_collect(dataset: Path):
+    trial_paths = make_trial(dataset, "broken")
+    agent = make_agent(trial_paths, env={})
+    # Harbor bounds the agent phase with wait_for: here it fires during collect.
+    with pytest.raises(RuntimeError, match="agent crashed"):
+        await asyncio.wait_for(
+            agent.run("", HangingCollectEnvironment(), AgentContext()), timeout=0.5
+        )
 
 
 @pytest.mark.asyncio

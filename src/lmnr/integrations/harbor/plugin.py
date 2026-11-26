@@ -200,7 +200,7 @@ class LaminarPlugin:
         try:
             # Trials interrupted before END never got their root span closed.
             for trial_name, state in self._trials.items():
-                _end_open_verifier_span(trial_name, state)
+                _end_open_verifier_span(trial_name, state, "the job ended first")
                 if state.root_span is not None:
                     state.root_span.set_status(Status(StatusCode.ERROR, "unfinished"))
                     state.root_span.end()
@@ -414,7 +414,7 @@ class LaminarPlugin:
             self._trials[event.trial_name] = state
         else:
             # A retry: close the previous attempt's trace if it never ended.
-            _end_open_verifier_span(event.trial_name, state)
+            _end_open_verifier_span(event.trial_name, state, "the trial was retried")
             if state.root_span is not None:
                 state.root_span.end()
             state.cancelled = False
@@ -481,7 +481,7 @@ class LaminarPlugin:
             verifier_output["test_output"] = test_output
         if state.verifier_span is not None and result.verifier is None:
             # Opened, but Harbor never got to run the verifier.
-            _end_open_verifier_span(event.trial_name, state)
+            _end_open_verifier_span(event.trial_name, state, "Harbor never ran the verifier")
             verifier_span = None
         elif state.verifier_span is not None:
             verifier_span = state.verifier_span
@@ -574,7 +574,7 @@ class LaminarPlugin:
             agent_span = self._emit_trial_spans(root, state, result, event)
         except Exception:
             # Don't leave the root open with a historical start time.
-            _end_open_verifier_span(event.trial_name, state)
+            _end_open_verifier_span(event.trial_name, state, "failed to report the trial")
             root.set_status(Status(StatusCode.ERROR, "failed to report trial"))
             root.end()
             raise
@@ -942,11 +942,24 @@ def _all_agents_are_eval_runners(job: "Job") -> bool:
     )
 
 
-def _end_open_verifier_span(trial_name: str, state: _TrialState) -> None:
-    """End a verifier span left open by an attempt that never reached its end."""
+def _end_open_verifier_span(trial_name: str, state: _TrialState, reason: str) -> None:
+    """End a verifier span left open by an attempt that never reached its end.
+
+    Laminar marks a span as an error by its `exception` event (the OTel status
+    isn't ingested), so the span gets one saying why it didn't finish.
+    """
     _ = verifier_spans.pop(trial_name, None)
     if state.verifier_span is not None:
-        state.verifier_span.set_status(Status(StatusCode.ERROR, "unfinished"))
+        message = f"Verification did not finish: {reason}"
+        state.verifier_span.add_event(
+            "exception",
+            attributes={
+                "exception.type": "VerificationUnfinished",
+                "exception.message": message,
+                "exception.escaped": True,
+            },
+        )
+        state.verifier_span.set_status(Status(StatusCode.ERROR, message))
         state.verifier_span.end()
         state.verifier_span = None
 
