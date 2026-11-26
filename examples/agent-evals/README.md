@@ -12,13 +12,10 @@ app/
 pyproject.toml, uv.lock       # the app's dependencies, installed into the image
 evals/
   support/                    # a dataset
-    harbor.yaml               # Harbor config, plus the image tasks use and how to build it
-    agent/                    # everything the dataset runs, one file each
+    agent/
+      eval.py                 # the dataset in one file: image, secrets, setup / run / verify
       Dockerfile              # the image every case starts from
-      agent.py                # Harbor agent: runs seed.py, then run.py, in the container
-      seed.py                 # creates this case's database from its seed.json
-      run.py                  # calls the agent on the ticket, writes result.json
-      verify.py               # the verifier every case runs
+      seed.py                 # creates this case's database from its seed.json (eval.py runs it)
     tasks/
       dataset.toml            # the dataset's name in Laminar, and its task versions
       duplicate-charge/       # a case
@@ -28,9 +25,17 @@ evals/
           case.json           # the ticket
           seed.json           # the database rows for this case
         tests/
-          test.sh             # runs verify.py
+          test.sh             # a stub: eval.py's verify() grades the case
           expected.json       # the reference answer
 ```
+
+`eval.py` holds one `EvalRunner` (from `lmnr.evals`):
+
+- `setup` uploads `seed.py` into the container and runs it, so this case's database exists before the agent starts.
+- `run` calls the agent on the case's ticket and records its reply with `ctx.result(...)`.
+- `verify` runs in the process that runs Harbor, not in the container. It checks the refunds in the database (a command in the container) and asks an LLM judge whether the reply meets `expected.json`'s `reply_should`. The reference answer never enters the container.
+
+`lmnr-cli` builds the image, writes the job config Harbor needs, and runs every case through Harbor. There is no `agent.py`, verifier script or `harbor.yaml`.
 
 ## Run it
 
@@ -52,7 +57,7 @@ You need [Docker](https://docs.docker.com/get-docker/), [uv](https://docs.astral
 
 Each trial shows up in Laminar as a datapoint with a `refund` score and a `reply` score, next to the trace of the agent's model and tool calls.
 
-To add a case, copy `evals/support/tasks/duplicate-charge`, give it a new `name` in its `task.toml`, then change `case.json`, `seed.json`, and `expected.json`.
+To add a case, create a folder in `evals/support/tasks/` with its `environment/case.json`, `environment/seed.json` and `tests/expected.json`. The next `eval run` writes the rest (`task.toml` with the case's name, `instruction.md`, and the stub `tests/test.sh`), or create them first with `npx lmnr-cli@latest eval task new evals/support/tasks/<name>`.
 
 ## Store the cases in Laminar
 

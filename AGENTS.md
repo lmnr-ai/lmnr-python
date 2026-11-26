@@ -31,7 +31,7 @@ lmnr eval <file.py>           # Run evaluations
 lmnr datasets pull <id>       # Pull dataset
 ```
 
-- CI: `lint.yml` (ruff check + format check), `typecheck.yml` (basedpyright), `run-tests.yml` (pytest).
+- CI: `lint.yml` (ruff check + format check), `typecheck.yml` (basedpyright), `run-tests.yml` (pytest, plus the Harbor adapter tests in their own env: `integrations/harbor/AGENTS.md`).
 - `run-tests.yml` has `uv run --with <pkg>==X ...` overlay steps. `mcp==1.30.0` is permanent while mcp 1.x is supported: the dev pin is mcp 2.x and the 1.x instrumentation is a separate set of wrappers (`instrumentation/mcp/AGENTS.md`). The two `langfuse` overlays (4.x, 3.x) are permanent too: the Langfuse bridge supports three majors and the dev pin can only hold one (`bridges/langfuse/AGENTS.md`). Do not add more overlays without a reason of the same kind.
 - The husky pre-commit hook (`.husky/pre-commit`) runs `ruff check --fix` + `ruff format` on staged Python files and fails the commit if ruff changed anything; re-stage and commit again.
 
@@ -40,7 +40,7 @@ lmnr datasets pull <id>       # Pull dataset
 - Python `>=3.11` (`requires-python`).
 - ruff is the linter and formatter: 100-column lines, `target-version = "py311"`, `BLE001` ignored on purpose (instrumentation catches bare `Exception` so it never crashes the host app). There is no flake8 config; don't lint with it.
 - basedpyright reads `pyrightconfig.json`: `reportAny` / `reportExplicitAny` are off everywhere, and `tests/` also turns off `reportPrivateUsage` / `reportUnusedParameter`.
-- `examples/agent-evals` is a standalone project (own `uv.lock`, Harbor agent, Docker image) excluded from the uv workspace, ruff, and basedpyright. The docs' agent evaluations quickstart links to it and quotes some files verbatim, so keep the two in step when you change it.
+- `examples/agent-evals` is a standalone project (own `uv.lock`, an `agent/eval.py` dataset, Docker image) excluded from the uv workspace, ruff, and basedpyright. The docs' agent evaluations quickstart links to it and quotes some files verbatim, so keep the two in step when you change it (the docs follow once lmnr and lmnr-cli are released). To run it against an unreleased SDK, `LMNR_EVAL_LMNR_SPEC=/repos/lmnr-python npx lmnr-cli eval run` (lmnr-cli `commands/eval/AGENTS.md`); in the agent sandbox unset the shell's `LMNR_PROJECT_API_KEY` / `LMNR_LOG_LEVEL` first, they win over the example's `.env`.
 - Build backend is `uv_build`; `AGENTS.md` / `CLAUDE.md` are excluded from the sdist and wheel in `[tool.uv.build-backend]`.
 
 ## Architecture
@@ -63,7 +63,10 @@ lmnr datasets pull <id>       # Pull dataset
 - `evals.py` - `lmnr eval` command
 
 ### Integrations (`src/lmnr/integrations/`)
-- `harbor/` - Harbor `JobPlugin`
+- `harbor/` - Harbor `JobPlugin`; `harbor/runner.py` - `LaminarAgent` / `LaminarVerifier`, the only module importing Harbor at runtime
+
+### One-file eval runner (`src/lmnr/evals/`)
+- `EvalRunner`, `ctx`, `Image`, `secret`, `python -m lmnr.evals.describe`; never imports Harbor
 
 ## Coding practices
 
@@ -136,4 +139,5 @@ LMNR_{INSTRUMENT}_{OPTION}  # Per-instrumentation options, e.g. LMNR_LANGGRAPH_R
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/openrouter/AGENTS.md`
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/pydantic_ai/AGENTS.md`
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/temporal/AGENTS.md`
-- `src/lmnr/integrations/harbor/AGENTS.md` - Harbor plugin
+- `src/lmnr/integrations/harbor/AGENTS.md` - Harbor plugin, `EvalRunner` adapters (`runner.py`), traced `verify()`
+- `src/lmnr/evals/AGENTS.md` - `EvalRunner` (`agent/eval.py` datasets): ctx, env / secrets precedence, describe JSON, no Harbor imports

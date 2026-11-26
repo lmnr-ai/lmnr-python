@@ -1,6 +1,7 @@
 import json
 import os
 import sqlite3
+import sys
 
 from anthropic import Anthropic
 from lmnr import Laminar, observe
@@ -98,3 +99,9 @@ def handle_ticket(ticket: str) -> str:
                 )
         messages.append({"role": "user", "content": results})
     return "Sorry, I could not finish handling this ticket."
+
+
+if __name__ == "__main__":
+    # python -m app.support_agent case.json: print the reply to the case's ticket.
+    with open(sys.argv[1]) as f:
+        print(handle_ticket(json.load(f)["ticket"]))
