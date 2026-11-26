@@ -17,6 +17,7 @@
 `lmnr-cli eval run` runs it through Harbor. This package never imports Harbor.
 """
 
+from lmnr.evals.artifacts import Artifact, Artifacts
 from lmnr.evals.context import (
     AgentContext,
     BackgroundProcess,
@@ -31,6 +32,8 @@ from lmnr.evals.runner import EvalRunner, Secret, secret
 
 __all__ = [
     "AgentContext",
+    "Artifact",
+    "Artifacts",
     "BackgroundProcess",
     "Case",
     "CommandError",

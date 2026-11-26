@@ -13,6 +13,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, ClassVar, Literal
 
+from lmnr.evals.artifacts import Artifact, validate_artifacts
 from lmnr.evals.context import AgentContext, VerifyContext
 from lmnr.evals.errors import EvalConfigError
 from lmnr.evals.image import Image
@@ -55,6 +56,9 @@ class EvalRunner:
       a secret.
     - `task_template`: `task.toml` keys lmnr-cli writes into new tasks.
     - `entrypoint`: a shell command to use instead of defining `run`.
+    - `artifacts`: container paths (or `Artifact(source, destination=...)`)
+      Harbor collects after the agent phase; `verify` reads them with
+      `ctx.artifacts`, also when it grades in a separate container.
     - `verify = "task"`: grade with each task's own `tests/test.sh` instead of
       `verify()`.
 
@@ -73,6 +77,7 @@ class EvalRunner:
     env: ClassVar[dict[str, str | Secret]] = {}
     task_template: ClassVar[dict[str, Any]] = {}
     entrypoint: ClassVar[str | None] = None
+    artifacts: ClassVar[list[str | Artifact]] = []
     # Not supported yet; they will start databases and mock servers before `setup`.
     services: ClassVar[list[Any]] = []
     mocks: ClassVar[dict[str, Any]] = {}
@@ -195,6 +200,8 @@ class EvalRunner:
             _ = json.dumps(cls.task_template)
         except (TypeError, ValueError) as e:
             raise EvalConfigError(f"{name}.task_template must be plain data: {e}") from e
+
+        validate_artifacts(name, cls.artifacts)
 
         if cls.services:
             raise EvalConfigError(f"{name}.services is not supported yet.")

@@ -42,13 +42,14 @@ from lmnr.integrations.harbor.spans import (
 )
 
 EVAL_PY = """
-from lmnr.evals import EvalRunner, Image, secret
+from lmnr.evals import Artifact, EvalRunner, Image, secret
 
 class SupportEval(EvalRunner):
     image = Image.from_registry("python:3.13")
     model = "anthropic/claude-haiku-4-5"
     secrets = ["APP_KEY", "JUDGE_KEY"]
     env = {"APP_KEY": secret("APP_KEY"), "TONE": "formal"}
+    artifacts = [Artifact("/srv/app/state", destination="state")]
 
     async def setup(self, ctx):
         await ctx.run_file("seed.py")
@@ -67,6 +68,8 @@ class SupportEval(EvalRunner):
             raise KeyError("reply")
         await ctx.sh("check-db")
         ctx.logger.info(f"judge key: {ctx.secrets['JUDGE_KEY']}")
+        if ctx.artifacts.exists("/srv/app/state/db.txt"):
+            ctx.logger.info(f"state: {ctx.artifacts.read_text('/srv/app/state/db.txt')}")
         return {"replied": ctx.result().get("reply") == "hi", "model_ok": ctx.model == "openai/gpt-5"}
 """
 
@@ -228,6 +231,9 @@ async def test_verifier_grades_in_the_harbor_process(dataset: Path):
     trial_paths = make_trial(dataset, "ok")
     trial_paths.agent_dir.mkdir(parents=True, exist_ok=True)
     _ = (trial_paths.agent_dir / "result.json").write_text('{"reply": "hi"}')
+    # Harbor collected the declared artifact under its destination.
+    (trial_paths.artifacts_dir / "state").mkdir(parents=True)
+    _ = (trial_paths.artifacts_dir / "state" / "db.txt").write_text("refunded")
     env = FakeEnvironment()
     verifier = make_verifier(dataset, "ok", trial_paths, env)
 
@@ -242,6 +248,7 @@ async def test_verifier_grades_in_the_harbor_process(dataset: Path):
     log = trial_paths.test_stdout_path.read_text()
     assert "graded by SupportEval.verify() in agent/eval.py:SupportEval" in log
     assert "judge key: judge-secret" in log
+    assert "state: refunded" in log
     assert 'rewards: {"replied": 1, "model_ok": 1}' in log
 
 

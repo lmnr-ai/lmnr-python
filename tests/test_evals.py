@@ -17,6 +17,8 @@ import pytest
 
 from lmnr.evals import (
     AgentContext,
+    Artifact,
+    Artifacts,
     Case,
     CommandError,
     EvalConfigError,
@@ -108,7 +110,7 @@ def write_eval(tmp_path: Path, body: str, dataset: str = "support") -> Path:
 
 
 SUPPORT_EVAL = """
-    from lmnr.evals import EvalRunner, Image, secret
+    from lmnr.evals import Artifact, EvalRunner, Image, secret
 
     print("module output must not reach the JSON")
 
@@ -118,6 +120,7 @@ SUPPORT_EVAL = """
         secrets = ["ANTHROPIC_API_KEY", "JUDGE_API_KEY"]
         env = {"ANTHROPIC_API_KEY": secret("ANTHROPIC_API_KEY"), "SUPPORT_TONE": "formal"}
         task_template = {"agent": {"timeout_sec": 300}}
+        artifacts = ["/srv/app/out/", Artifact("/var/lib/app/state.db", destination="app.db")]
 
         async def run(self, ctx):
             ctx.result(reply="hi")
@@ -161,6 +164,16 @@ def test_valid_runner_has_no_warnings():
         ({"env": {"KEY": 1}}, "must be a string or secret"),
         ({"services": ["postgres"]}, "services is not supported yet"),
         ({"mocks": {"crm.get": print}}, "mocks is not supported yet"),
+        ({"artifacts": "/srv/out"}, "must be a list"),
+        ({"artifacts": [1]}, "container paths or Artifact"),
+        ({"artifacts": ["/srv/../etc"]}, "must not contain '..'"),
+        ({"artifacts": [Artifact("/srv/db", destination="/abs")]}, "relative path"),
+        ({"artifacts": [Artifact("/srv/db", destination="../db")]}, "relative path"),
+        ({"artifacts": [Artifact("/srv/db", destination="manifest.json")]}, "reserved"),
+        (
+            {"artifacts": [Artifact("/srv/out", exclude="*.tmp")]},  # pyright: ignore[reportArgumentType]
+            "list of patterns",
+        ),
     ],
 )
 def test_invalid_runner_raises_actionable_error(attrs: dict[str, Any], message: str):
@@ -204,6 +217,10 @@ def test_describe_outputs_json_for_lmnr_cli(tmp_path: Path):
         "verify": "runner",
         "warnings": [],
         "modules": ["support/agent/eval.py"],
+        "artifacts": [
+            "/srv/app/out/",
+            {"source": "/var/lib/app/state.db", "destination": "app.db"},
+        ],
     }
 
 
@@ -593,6 +610,76 @@ def test_result_is_written_to_the_trial_agent_dir(tmp_path: Path):
     assert verify_ctx.result()["reply"] == "hi"
     with pytest.raises(EvalConfigError):
         _ = verify_ctx.result(reply="no")
+
+
+# Artifacts
+
+
+@pytest.mark.asyncio
+async def test_save_artifact_replaces_its_copy_under_logs_artifacts(tmp_path: Path):
+    env = FakeEnvironment()
+    ctx = agent_ctx(tmp_path, env)
+    assert await ctx.save_artifact("/srv/app/out/") == "/logs/artifacts/out"
+    assert await ctx.save_artifact("/var/lib/app.db", dest="state/app.db") == (
+        "/logs/artifacts/state/app.db"
+    )
+    first, second = env.execs()
+    assert first["user"] == "root"
+    assert first["command"] == (
+        "rm -rf /logs/artifacts/out && mkdir -p /logs/artifacts && "
+        + "cp -a /srv/app/out/ /logs/artifacts/out && chmod -R a+rX /logs/artifacts/out"
+    )
+    assert "mkdir -p /logs/artifacts/state && cp -a /var/lib/app.db" in second["command"]
+    for dest in ("../x", "/abs", ""):
+        with pytest.raises(EvalConfigError):
+            _ = await ctx.save_artifact("/srv/x", dest=dest)
+
+
+@pytest.mark.asyncio
+async def test_save_artifact_fails_when_the_source_is_missing(tmp_path: Path):
+    ctx = agent_ctx(tmp_path, FakeEnvironment(lambda _: (1, "")))
+    with pytest.raises(CommandError):
+        _ = await ctx.save_artifact("/srv/missing")
+
+
+def test_artifacts_read_the_trial_artifacts_dir(tmp_path: Path):
+    host = tmp_path / "trial" / "artifacts"
+    (host / "srv" / "app" / "out").mkdir(parents=True)
+    _ = (host / "srv" / "app" / "out" / "report.json").write_text('{"ok": true}')
+    (host / "logs" / "artifacts").mkdir(parents=True)
+    _ = (host / "logs" / "artifacts" / "notes.txt").write_text("saved in collect")
+    (host / "db").mkdir()
+    _ = (host / "db" / "app.db").write_text("sqlite")
+    _ = (host / "manifest.json").write_text("[]")
+    artifacts = Artifacts(host, ["/srv/app/out/", Artifact("/var/lib/app", destination="db")])
+
+    # Container paths, as declared or saved...
+    assert artifacts.read_json("/srv/app/out/report.json") == {"ok": True}
+    assert artifacts.read_text("/logs/artifacts/notes.txt") == "saved in collect"
+    # ...also when collected under a destination; or paths under artifacts/.
+    assert artifacts.read_text("/var/lib/app/app.db") == "sqlite"
+    assert artifacts.read_text("db/app.db") == "sqlite"
+    assert not artifacts.exists("/srv/other")
+    assert artifacts.list() == [
+        "db/app.db",
+        "logs/artifacts/notes.txt",
+        "srv/app/out/report.json",
+    ]
+    with pytest.raises(ValueError):
+        _ = artifacts.path("/srv/../etc/passwd")
+    assert Artifacts(tmp_path / "missing").list() == []
+
+
+def test_verify_ctx_artifacts_default_to_the_trial_dir(tmp_path: Path):
+    agent_dir = tmp_path / "trial" / "agent"
+    ctx = VerifyContext(
+        environment=FakeEnvironment(),
+        case=make_case(tmp_path),
+        runner_dir=tmp_path,
+        host_agent_dir=agent_dir,
+        secrets=Secrets([], {}),
+    )
+    assert ctx.artifacts.dir == tmp_path / "trial" / "artifacts"
 
 
 @pytest.mark.asyncio

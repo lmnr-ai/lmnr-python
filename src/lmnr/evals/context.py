@@ -18,11 +18,12 @@ import tomllib
 import uuid
 from collections.abc import Iterator, Mapping, MutableMapping
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Literal, Protocol
 
 from typing_extensions import override
 
+from lmnr.evals.artifacts import ARTIFACTS_DIR, Artifact, Artifacts, check_destination
 from lmnr.evals.errors import OUTPUT_TAIL_CHARS, CommandError, EvalConfigError, ExecResult
 from lmnr.evals.paths import caller_dir
 from lmnr.evals.readiness import Readiness
@@ -460,6 +461,21 @@ class AgentContext(Context):
             _ = path.write_text(json.dumps(current, indent=2, default=str))
         return current
 
+    async def save_artifact(self, path: str, dest: str | None = None) -> str:
+        """Copy a container file or folder into `/logs/artifacts/<dest>` (default:
+        its name), replacing what is there, so `verify` reads it with
+        `ctx.artifacts`. Call it in `collect`: the runner overwrites anything the
+        agent under test put there. Returns the container path it wrote."""
+        name = dest if dest is not None else PurePosixPath(path.rstrip("/")).name
+        check_destination("save_artifact's dest", name)
+        target = f"{ARTIFACTS_DIR}/{name.strip('/')}"
+        quoted = shlex.quote(target)
+        _ = await self._root(
+            f"rm -rf {quoted} && mkdir -p {shlex.quote(_parent(target))} && "
+            + f"cp -a {shlex.quote(path)} {quoted} && chmod -R a+rX {quoted}"
+        )
+        return target
+
 
 class VerifyContext(Context):
     """`ctx` in `verify`: logic in the Harbor process, commands in the verifier
@@ -472,11 +488,18 @@ class VerifyContext(Context):
         *,
         host_agent_dir: Path,
         secrets: Secrets,
+        host_artifacts_dir: Path | None = None,
+        artifacts: list[str | Artifact] | None = None,
         **kwargs: Any,
     ):
         super().__init__(**kwargs)
         self.host_agent_dir: Path = host_agent_dir
         self.secrets: Secrets = secrets
+        # The trial's artifacts/ dir (next to agent/), filled by Harbor after
+        # the agent phase in both verifier modes.
+        self.artifacts: Artifacts = Artifacts(
+            host_artifacts_dir or host_agent_dir.parent / "artifacts", artifacts or []
+        )
 
     def result(self, **fields: Any) -> dict[str, Any]:
         """What the agent phases recorded with `ctx.result(...)` (`{}` if nothing)."""

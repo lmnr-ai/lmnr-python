@@ -14,6 +14,7 @@ import traceback
 from pathlib import Path
 from typing import Any
 
+from lmnr.evals.artifacts import describe_artifacts
 from lmnr.evals.errors import EvalConfigError
 from lmnr.evals.paths import loaded_modules
 from lmnr.evals.runner import Secret, default_image_name, find_runner, load_module
@@ -50,6 +51,8 @@ def describe(path: Path | str) -> dict[str, Any]:
         "warnings": warnings,
         # The runner's code: module files under the evals root, relative to it.
         "modules": loaded_modules(path),
+        # The job config's `artifacts` (Harbor entries).
+        "artifacts": describe_artifacts(runner.artifacts),
     }
 
 
