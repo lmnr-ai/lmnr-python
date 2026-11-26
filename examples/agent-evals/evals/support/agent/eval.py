@@ -1,6 +1,3 @@
-# /// script
-# dependencies = ["anthropic>=2.4.0"]
-# ///
 import json
 import shlex
 
@@ -23,7 +20,7 @@ class Verdict(BaseModel):
 
 
 # An LLM judge is a plain function: verify() runs in the Harbor process, so it
-# can call any SDK (lmnr-cli installs the dependencies above). The call is
+# can call any SDK listed in evals/pyproject.toml (lmnr-cli installs them). The call is
 # traced under the trial's verifier span; @observe records the arguments as the
 # span's input, so the key is left out.
 @observe(name="judge", ignore_inputs=["api_key"])
