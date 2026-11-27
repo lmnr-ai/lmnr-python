@@ -1,9 +1,12 @@
 """One-file agent evaluations: an `EvalRunner` subclass in `agent/eval.py`.
 
-    from lmnr.evals import EvalRunner, Image, secret
+    from lmnr.evals import EvalRunner, Image, Postgres, secret
 
     class SupportEval(EvalRunner):
-        image = Image.from_dockerfile("Dockerfile", context="../../..")
+        image = Image.python("3.13").uv_sync("../../../pyproject.toml").add_dir(
+            "../../../app", "/srv/app/app"
+        )
+        services = [Postgres("16", migrations="../../../migrations")]
         secrets = ["ANTHROPIC_API_KEY"]
         env = {"ANTHROPIC_API_KEY": secret("ANTHROPIC_API_KEY")}
 
@@ -30,9 +33,11 @@ from lmnr.evals.context import (
     VerifyContext,
 )
 from lmnr.evals.errors import CommandError, EvalConfigError, ExecResult
+from lmnr.evals.fixtures import CaseFixture, case_fixture
 from lmnr.evals.image import Image
 from lmnr.evals.readiness import Readiness, cmd, http, port
 from lmnr.evals.runner import EvalRunner, Secret, secret
+from lmnr.evals.services import ClickHouse, Postgres, Service, Valkey
 
 __all__ = [
     "AgentContext",
@@ -41,6 +46,8 @@ __all__ = [
     "Artifacts",
     "BackgroundProcess",
     "Case",
+    "CaseFixture",
+    "ClickHouse",
     "CommandError",
     "Container",
     "Context",
@@ -48,9 +55,13 @@ __all__ = [
     "EvalRunner",
     "ExecResult",
     "Image",
+    "Postgres",
     "Readiness",
     "Secret",
+    "Service",
+    "Valkey",
     "VerifyContext",
+    "case_fixture",
     "cmd",
     "http",
     "port",

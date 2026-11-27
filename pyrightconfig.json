@@ -1,6 +1,7 @@
 {
   "exclude": [
     "examples/agent-evals",
+    "examples/agent-evals-services",
     "**/node_modules",
     "**/__pycache__",
     "**/.*"

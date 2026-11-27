@@ -40,7 +40,7 @@ lmnr datasets pull <id>       # Pull dataset
 - Python `>=3.11` (`requires-python`).
 - ruff is the linter and formatter: 100-column lines, `target-version = "py311"`, `BLE001` ignored on purpose (instrumentation catches bare `Exception` so it never crashes the host app). There is no flake8 config; don't lint with it.
 - basedpyright reads `pyrightconfig.json`: `reportAny` / `reportExplicitAny` are off everywhere, and `tests/` also turns off `reportPrivateUsage` / `reportUnusedParameter`.
-- `examples/agent-evals` is a standalone project (own `uv.lock`, Docker images, three `agent/eval.py` datasets: `support` is the one-file quickstart the docs quote; `support-api` and `support-test-sh` share `evals/_shared/` and together cover the rest of `lmnr.evals`: services, `wait_for`, `collect` + artifacts, separate verifier, `run_command`, `grade_with_test_sh`) excluded from the uv workspace, ruff, and basedpyright. The docs' agent evaluations quickstart links to it and quotes some files verbatim, so keep the two in step when you change it (the docs follow once lmnr and lmnr-cli are released). To run it against an unreleased SDK, `LMNR_EVAL_LMNR_SPEC=/repos/lmnr-python npx lmnr-cli eval run` (lmnr-cli `commands/eval/AGENTS.md`); in the agent sandbox unset the shell's `LMNR_PROJECT_API_KEY` / `LMNR_LOG_LEVEL` first, they win over the example's `.env`.
+- `examples/agent-evals` is a standalone project (own `uv.lock`, Docker images, three `agent/eval.py` datasets: `support` is the one-file quickstart the docs quote; `support-api` and `support-test-sh` share `evals/_shared/` and together cover the rest of `lmnr.evals`: services, `wait_for`, `collect` + artifacts, separate verifier, `run_command`, `grade_with_test_sh`) excluded from the uv workspace, ruff, and basedpyright. The docs' agent evaluations quickstart links to it and quotes some files verbatim, so keep the two in step when you change it (the docs follow once lmnr and lmnr-cli are released). To run it against an unreleased SDK, `LMNR_EVAL_LMNR_SPEC=/repos/lmnr-python npx lmnr-cli eval run` (lmnr-cli `commands/eval/AGENTS.md`); in the agent sandbox unset the shell's `LMNR_PROJECT_API_KEY` / `LMNR_LOG_LEVEL` first, they win over the example's `.env`. `examples/agent-evals-services` (a pnpm TypeScript app, no Dockerfile: `Image` builder, `Postgres` + `ClickHouse` services with `clickhouse-migrations` and config overrides, `case_fixture` seeds) is excluded the same way; run it the same way, and regenerate its `pnpm-lock.yaml` with the `packageManager` pnpm (in a `node:24` container if pnpm isn't installed).
 - Build backend is `uv_build`; `AGENTS.md` / `CLAUDE.md` are excluded from the sdist and wheel in `[tool.uv.build-backend]`.
 
 ## Architecture
@@ -66,7 +66,7 @@ lmnr datasets pull <id>       # Pull dataset
 - `harbor/` - Harbor `JobPlugin`; `harbor/runner.py` - `LaminarAgent` / `LaminarVerifier`, the only module importing Harbor at runtime
 
 ### One-file eval runner (`src/lmnr/evals/`)
-- `EvalRunner`, `ctx`, `Image`, `secret`, `python -m lmnr.evals.describe`; never imports Harbor
+- `EvalRunner`, `ctx`, the `Image` builder, services (`Postgres`, `ClickHouse`, `Valkey`, `Service.custom`), mirrors (`lmnr.evals.mirrors.Rystic`), `secret`, `python -m lmnr.evals.describe`; never imports Harbor
 
 ## Coding practices
 
@@ -140,4 +140,4 @@ LMNR_{INSTRUMENT}_{OPTION}  # Per-instrumentation options, e.g. LMNR_LANGGRAPH_R
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/pydantic_ai/AGENTS.md`
 - `src/lmnr/opentelemetry_lib/opentelemetry/instrumentation/temporal/AGENTS.md`
 - `src/lmnr/integrations/harbor/AGENTS.md` - Harbor plugin, `EvalRunner` adapters (`runner.py`), traced `verify()`
-- `src/lmnr/evals/AGENTS.md` - `EvalRunner` (`agent/eval.py` datasets): ctx, env / secrets precedence, describe JSON, no Harbor imports
+- `src/lmnr/evals/AGENTS.md` - `EvalRunner` (`agent/eval.py` datasets): ctx, env / secrets precedence, describe JSON, no Harbor imports; the `Image` builder (compile order, build context, composition, determinism, golden tests), how services get into images (bundle stages vs vendor downloads), service runtime, mirrors / Rystic, the opt-in Docker tests

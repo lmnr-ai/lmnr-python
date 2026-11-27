@@ -1,0 +1,16 @@
+{
+  "name": "usage-billing-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.23.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.14.0",
+    "@clickhouse/client": "^1.25.0",
+    "@lmnr-ai/lmnr": "^0.9.6",
+    "pg": "^8.23.1"
+  }
+}

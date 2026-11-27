@@ -38,6 +38,7 @@ VERIFIER_LOGS_DIR = "/logs/verifier"
 RESULT_FILE = "result.json"
 
 User = Literal["agent", "root"] | str | int
+VerifierMode = Literal["shared", "separate"]
 
 _SERVICE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 # Files that `setup` runs by default when a case has one in `environment/`.
@@ -203,6 +204,10 @@ class Container:
         # commands (`agents[].env`) aren't repeated here.
         self._exec_env: dict[str, str] = dict(exec_env or {})
 
+    def add_env(self, env: Mapping[str, str]) -> None:
+        """Add variables to every later command (services' `env()`)."""
+        self._exec_env.update(env)
+
     # Commands
 
     async def sh(
@@ -284,7 +289,8 @@ class Container:
         """Start a background process and wait until it is ready.
 
         Output goes to `/logs/agent/<name>.log`. `ready` is `port(5432)`,
-        `http(url)` or `cmd("...")` (a plain string is a command). If the process
+        `http(url)` or `cmd("...")` (a plain string is a command); it runs with
+        the same `env` as `cmd`. If the process
         exits or isn't ready within `timeout` seconds, the error has the end of
         its log.
         """
@@ -295,7 +301,9 @@ class Container:
             )
         log_path = f"{self.logs_dir}/{name}.log"
         start = (
-            f"mkdir -p {shlex.quote(self.logs_dir)} && "
+            # Only `nohup` goes to the background (`a && b &` would background a
+            # subshell holding the exec's stdout open until the service exits).
+            f"mkdir -p {shlex.quote(self.logs_dir)} || exit 1; "
             + f"nohup sh -c {shlex.quote(cmd)} > {shlex.quote(log_path)} 2>&1 < /dev/null & "
             + "echo $!"
         )
@@ -309,7 +317,7 @@ class Container:
                 f"Service {name!r} did not report its pid: {result.stdout!r}"
             ) from None
         process = BackgroundProcess(name=name, pid=pid, log_path=log_path)
-        status = await self._wait(ready, timeout, pid=pid, user=user)
+        status = await self._wait(ready, timeout, pid=pid, env=env, user=user)
         if status != 0:
             reason = "exited" if status == 2 else f"was not ready after {timeout:g}s"
             tail = await self._exec(
@@ -411,12 +419,20 @@ class Container:
         ready: Readiness | str,
         timeout: float,
         pid: int | None = None,
+        env: dict[str, str] | None = None,
         user: User = "agent",
     ) -> int:
         """0 once ready, 1 on timeout, 2 if `pid` exited first. One `exec`: the
         polling loop runs in the container."""
         check = ready if isinstance(ready, Readiness) else cmd_ready(ready)
-        alive = f"kill -0 {pid} 2>/dev/null || exit 2; " if pid is not None else ""
+        # A process that exited stays a zombie when PID 1 doesn't reap
+        # (`sleep infinity`), and `kill -0` still succeeds on a zombie.
+        alive = (
+            f"{{ kill -0 {pid} 2>/dev/null && "
+            + f"! grep -qs '^State:[[:space:]]*Z' /proc/{pid}/status; }} || exit 2; "
+            if pid is not None
+            else ""
+        )
         script = (
             f"end=$((SECONDS + {math.ceil(timeout)})); "
             + f"until {{ {check.command}; }} >/dev/null 2>&1; do "
@@ -425,6 +441,7 @@ class Container:
         )
         result = await self._exec(
             f"bash -c {shlex.quote(script)}",
+            env=env,
             user=user,
             timeout=timeout + 30,
             check=False,
@@ -461,6 +478,15 @@ class Context:
         self.env: dict[str, str] = dict(env or {})
         self.logger: EvalLogger = EvalLogger(case.name)
         self.runner_dir: Path = runner_dir
+        # "separate" in a verify() whose grading container is fresh, where
+        # services aren't running; None in the agent phase.
+        self.verifier_mode: VerifierMode | None = None
+
+    def add_env(self, env: Mapping[str, str], exec_env: Mapping[str, str] | None = None) -> None:
+        """Add services' env: to `ctx.env`, and to every later command
+        (`exec_env`, default the same; Harbor's own `agents[].env` wins anyway)."""
+        self.env.update(env)
+        self.container.add_env(env if exec_env is None else exec_env)
 
 
 class ArtifactSaver:
@@ -535,9 +561,11 @@ class VerifyContext(Context):
         secrets: Secrets,
         host_artifacts_dir: Path | None = None,
         artifacts: list[str | Artifact] | None = None,
+        verifier_mode: VerifierMode = "shared",
         **kwargs: Any,
     ):
         super().__init__(logs_dir=VERIFIER_LOGS_DIR, **kwargs)
+        self.verifier_mode = verifier_mode
         self.host_agent_dir: Path = host_agent_dir
         self.secrets: Secrets = secrets
         # The trial's artifacts/ dir (next to agent/), filled by Harbor after
@@ -550,6 +578,18 @@ class VerifyContext(Context):
         """What the agent phase recorded with `ctx.set_result(...)` (`{}` if
         nothing)."""
         return _read_json_object(self.host_agent_dir / RESULT_FILE)
+
+    def state(self, service: str, table: str) -> Any:
+        """A table a service saved in `collect` (`snapshot=[...]`): the rows of
+        `/logs/artifacts/state/<service>/<table>.json`. Read on the host, so it
+        works in both verifier modes."""
+        path = f"{ARTIFACTS_DIR}/state/{service}/{table}.json"
+        if not self.artifacts.exists(path):
+            raise FileNotFoundError(
+                f"No saved state for {service!r} / {table!r} ({path}): add {table!r} to the "
+                + "service's snapshot=[...] so collect saves it."
+            )
+        return self.artifacts.read_json(path)
 
 
 def normalize_rewards(value: Any) -> dict[str, float | int]:

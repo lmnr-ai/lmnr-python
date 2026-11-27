@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 _PACKAGE_DIR = Path(__file__).resolve().parent
@@ -20,13 +22,25 @@ _ASYNCIO_DIR = Path(asyncio.__file__).resolve().parent
 _SKIPPED_DIRS = {"site-packages", "dist-packages", "node_modules", "__pycache__"}
 
 
-def caller_dir() -> Path | None:
-    """The directory of the first file up the stack outside `lmnr.evals`.
+@dataclass(frozen=True)
+class CallSite:
+    """Where user code declared something: the file, the line, and the class
+    whose body ran the call (None at module level)."""
 
-    None when there is none, e.g. a coroutine started as its own task
-    (`asyncio.gather(ctx.container.run_file(...))`), whose caller is the event
-    loop.
-    """
+    file: Path
+    line: int
+    owner: str | None = None
+
+    def label(self, root: Path | None = None, owner: bool = True) -> str:
+        """`_shared/support.py:12 (SupportRunner)`, relative to `root` when the
+        file is under it."""
+        shown = Path(os.path.relpath(self.file, root)) if root is not None else self.file
+        suffix = f" ({self.owner})" if owner and self.owner else ""
+        return f"{shown.as_posix()}:{self.line}{suffix}"
+
+
+def caller_site() -> CallSite | None:
+    """The first frame up the stack outside `lmnr.evals` (see `caller_dir`)."""
     frame = inspect.currentframe()
     while frame is not None:
         path = Path(frame.f_code.co_filename)
@@ -36,9 +50,26 @@ def caller_dir() -> Path | None:
             if resolved.is_relative_to(_ASYNCIO_DIR):
                 return None
             if not resolved.is_relative_to(_PACKAGE_DIR):
-                return resolved.parent
+                # A class body's namespace has `__qualname__`; a module's doesn't.
+                owner = frame.f_locals.get("__qualname__")
+                return CallSite(
+                    file=resolved,
+                    line=frame.f_lineno,
+                    owner=owner if isinstance(owner, str) else None,
+                )
         frame = frame.f_back
     return None
+
+
+def caller_dir() -> Path | None:
+    """The directory of the first file up the stack outside `lmnr.evals`.
+
+    None when there is none, e.g. a coroutine started as its own task
+    (`asyncio.gather(ctx.container.run_file(...))`), whose caller is the event
+    loop.
+    """
+    site = caller_site()
+    return site.file.parent if site is not None else None
 
 
 def evals_root(eval_path: Path | str) -> Path:

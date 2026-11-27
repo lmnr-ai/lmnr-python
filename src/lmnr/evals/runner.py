@@ -11,17 +11,21 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypeVar, overload
 
 from lmnr.evals.artifacts import Artifact, validate_artifacts
 from lmnr.evals.context import AgentContext, VerifyContext
 from lmnr.evals.errors import EvalConfigError
 from lmnr.evals.image import Image
+from lmnr.evals.mirrors.base import Mirror
 from lmnr.evals.paths import add_evals_root_to_path
+from lmnr.evals.services.base import Service
 
 Rewards = dict[str, float | int | bool] | float | int | bool
 
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+S = TypeVar("S", bound="Service")
 
 
 @dataclass(frozen=True)
@@ -60,6 +64,11 @@ class EvalRunner:
       no `task.toml` yet (`{"agent": {"timeout_sec": 300}}`).
     - `run_command`: a shell command `run` runs in the container, instead of
       defining `run`.
+    - `services`: `Postgres(...)`, `ClickHouse(...)`, `Valkey(...)`,
+      `Service.custom(...)` or mirrors (`lmnr.evals.mirrors`). Installed into
+      the image, then started, migrated and seeded before `setup` in every
+      trial; their `env()` (`DATABASE_URL`, ...) reaches every later command.
+      Use their helpers with `self.service(Postgres)`.
     - `artifacts`: container paths (or `Artifact(source, destination=...)`)
       Harbor collects after the agent phase; `verify` reads them with
       `ctx.artifacts`, also when it grades in a separate container.
@@ -84,8 +93,8 @@ class EvalRunner:
     run_command: ClassVar[str | None] = None
     grade_with_test_sh: ClassVar[bool] = False
     artifacts: ClassVar[list[str | Artifact]] = []
-    # Not supported yet; they will start databases and mock servers before `setup`.
-    services: ClassVar[list[Any]] = []
+    services: ClassVar[list[Service]] = []
+    # Not supported yet (phase 3): a mock server started before `setup`.
     mocks: ClassVar[dict[str, Any]] = {}
 
     async def setup(self, ctx: AgentContext) -> None:
@@ -106,6 +115,42 @@ class EvalRunner:
             f"{type(self).__name__} must define verify(), or set grade_with_test_sh = True "
             + "to grade with each task's tests/test.sh."
         )
+
+    # Services
+
+    @overload
+    def service(self, key: type[S]) -> S: ...
+
+    @overload
+    def service(self, key: str) -> Service: ...
+
+    def service(self, key: type[Service] | str) -> Service:
+        """A declared service, by class (`self.service(Postgres)`) or by name
+        (`self.service("postgres")`), for its helpers."""
+        if isinstance(key, str):
+            found = [s for s in self.services if s.name == key]
+        else:
+            found = [s for s in self.services if isinstance(s, key)]
+        what = key if isinstance(key, str) else key.__name__
+        if not found:
+            names = ", ".join(repr(s.name) for s in self.services) or "none"
+            raise EvalConfigError(
+                f"{type(self).__name__} declares no service {what!r} (services: {names})."
+            )
+        if len(found) > 1:
+            names = ", ".join(repr(s.name) for s in found)
+            raise EvalConfigError(
+                f"{type(self).__name__} declares several {what} services ({names}); "
+                + 'pick one by name: self.service("<name>").'
+            )
+        return found[0]
+
+    def mirror(self, name: str) -> Mirror:
+        """A declared mirror, by name: `self.mirror("slack").state(ctx)`."""
+        service = self.service(name)
+        if not isinstance(service, Mirror):
+            raise EvalConfigError(f"Service {name!r} is not a mirror; use self.service({name!r}).")
+        return service
 
     # Configuration, as read by lmnr-cli and the Harbor adapters
 
@@ -212,12 +257,47 @@ class EvalRunner:
             raise EvalConfigError(f"{name}.new_task_toml must be plain data: {e}") from e
 
         validate_artifacts(name, cls.artifacts)
+        warnings += _validate_services(cls)
 
-        if cls.services:
-            raise EvalConfigError(f"{name}.services is not supported yet.")
         if cls.mocks:
             raise EvalConfigError(f"{name}.mocks is not supported yet.")
         return warnings
+
+
+def _validate_services(cls: type[EvalRunner]) -> list[str]:
+    name = cls.__name__
+    services = cls.services
+    if not isinstance(services, (list, tuple)) or not all(isinstance(s, Service) for s in services):
+        raise EvalConfigError(
+            f"{name}.services must be a list of services (Postgres(...), Valkey(...), "
+            + f"Service.custom(...), ...), got {services!r}."
+        )
+    warnings: list[str] = []
+    names: set[str] = set()
+    ports: dict[int, str] = {}
+    env_owner: dict[str, str] = {key: f"{name}.env" for key in cls.env}
+    for service in services:
+        warnings += service.validate(name)
+        if service.name in names:
+            raise EvalConfigError(
+                f"{name}.services has two services named {service.name!r}; pass name=... to one."
+            )
+        names.add(service.name)
+        for number in service.ports():
+            if number in ports:
+                raise EvalConfigError(
+                    f"{name}.services: {service.name!r} and {ports[number]!r} both use port "
+                    + f"{number}; pass port=... to one."
+                )
+            ports[number] = service.name
+        for key in service.env_spec:
+            if key in env_owner:
+                raise EvalConfigError(
+                    f"{name}: {key} is set by both service {service.name!r} and "
+                    + f"{env_owner[key]}; keep one (a service's env=... renames its variable)."
+                )
+            env_owner[key] = f"service {service.name!r}"
+    return warnings
 
 
 # Loading eval.py

@@ -16,8 +16,9 @@ from typing import Any
 
 from lmnr.evals.artifacts import describe_artifacts
 from lmnr.evals.errors import EvalConfigError
-from lmnr.evals.paths import loaded_modules
-from lmnr.evals.runner import Secret, default_image_name, find_runner, load_module
+from lmnr.evals.image import compile_image
+from lmnr.evals.paths import evals_root, loaded_modules
+from lmnr.evals.runner import EvalRunner, Secret, default_image_name, find_runner, load_module
 
 # Bumped when the shape changes incompatibly; later fields are added as optional.
 DESCRIBE_VERSION = 1
@@ -30,9 +31,11 @@ def describe(path: Path | str) -> dict[str, Any]:
         runner = find_runner(load_module(path))
         warnings = runner.validate()
 
-    base_dir = path.parent
+    root = evals_root(path)
     images = {
-        name or default_image_name(path): image.describe(base_dir)
+        name or default_image_name(path): compile_image(
+            image, runner.services, root=root, fallback_dir=path.parent
+        ).describe()
         for name, image in runner.images().items()
     }
     return {
@@ -53,7 +56,30 @@ def describe(path: Path | str) -> dict[str, Any]:
         "modules": loaded_modules(path),
         # The job config's `artifacts` (Harbor entries).
         "artifacts": describe_artifacts(runner.artifacts),
+        # For `lmnr-cli eval describe`: what the dataset runs on, and where
+        # each part was declared.
+        "services": [service.describe(root) for service in runner.services],
+        "classes": _class_chain(runner, root),
     }
+
+
+def _class_chain(runner: type[EvalRunner], root: Path) -> list[dict[str, Any]]:
+    """The runner and its bases up to `EvalRunner`, with their files."""
+    chain: list[dict[str, Any]] = []
+    for cls in runner.__mro__:
+        if cls is EvalRunner or not issubclass(cls, EvalRunner):
+            continue
+        file = getattr(sys.modules.get(cls.__module__), "__file__", None)
+        shown = None
+        if isinstance(file, str):
+            resolved = Path(file).resolve()
+            shown = (
+                resolved.relative_to(root).as_posix()
+                if resolved.is_relative_to(root)
+                else resolved.as_posix()
+            )
+        chain.append({"name": cls.__name__, "file": shown})
+    return chain
 
 
 def main(argv: list[str] | None = None) -> int:

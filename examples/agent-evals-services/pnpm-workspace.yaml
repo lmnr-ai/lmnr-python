@@ -1,0 +1,5 @@
+# pnpm settings (no workspace packages). pnpm fails an install whose
+# dependencies have build scripts nobody approved; these two don't need theirs.
+allowBuilds:
+  esbuild: false
+  protobufjs: false

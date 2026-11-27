@@ -282,3 +282,119 @@ async def test_verify_is_traced_under_the_plugin_verifier_span(
         "replied": 0,
         "model_ok": 1,
     }
+
+
+SERVICES_EVAL_PY = """
+from lmnr.evals import EvalRunner, Image, Service
+
+class Recorder(Service):
+    # Runs marker commands instead of a real server.
+    async def start(self, ctx):
+        await ctx.container.sh(f"start {self.name}", user="root")
+
+    async def migrate(self, ctx):
+        await ctx.container.sh(f"migrate {self.name}", user="root")
+
+    async def seed(self, ctx):
+        await ctx.container.sh(f"seed {self.name}", user="root")
+
+    async def snapshot(self, ctx, out_dir):
+        await ctx.container.sh(f"snapshot {self.name} {out_dir}", user="root")
+
+class ServicesEval(EvalRunner):
+    image = Image.from_registry("python:3.13")
+    env = {"TONE": "formal"}
+    services = [Recorder("db", "1", env={"DB_URL": "db://{host}"})]
+
+    async def setup(self, ctx):
+        await ctx.container.sh("setup")
+
+    async def run(self, ctx):
+        await ctx.container.sh("python -m app")
+        ctx.set_result(db=ctx.env["DB_URL"])
+
+    async def verify(self, ctx):
+        await ctx.container.sh("check-db")
+        return {"mode": ctx.verifier_mode == "separate"}
+"""
+
+
+@pytest.fixture
+def services_dataset(dataset: Path) -> Path:
+    _ = (dataset / "agent" / "eval.py").write_text(textwrap.dedent(SERVICES_EVAL_PY))
+    return dataset
+
+
+def services_agent(trial_paths: TrialPaths) -> LaminarAgent:
+    agent = AgentFactory.create_agent_from_config(
+        AgentConfig(
+            import_path=LAMINAR_AGENT_IMPORT_PATH,
+            kwargs={"runner": "agent/eval.py:ServicesEval"},
+            env={"TONE": "formal"},
+        ),
+        logs_dir=trial_paths.agent_dir,
+        logger=logging.getLogger(__name__),
+    )
+    assert isinstance(agent, LaminarAgent)
+    return agent
+
+
+@pytest.mark.asyncio
+async def test_services_start_before_setup_and_snapshot_after_collect(services_dataset: Path):
+    trial_paths = make_trial(services_dataset, "ok")
+    env = FakeEnvironment()
+    await services_agent(trial_paths).run("", env, AgentContext())
+    assert env.commands() == [
+        "start db",
+        "migrate db",
+        "seed db",
+        "setup",
+        "python -m app",
+        "snapshot db /logs/artifacts/state/db",
+    ]
+    # Every later command gets the services' env (Harbor sets TONE itself).
+    run = next(e for e in env.execs if e["command"] == "python -m app")
+    assert run["env"] == {"DB_URL": "db://127.0.0.1"}
+    result = json.loads((trial_paths.agent_dir / "result.json").read_text())
+    assert result == {"db": "db://127.0.0.1"}
+
+
+@pytest.mark.asyncio
+async def test_snapshots_run_when_run_fails(services_dataset: Path):
+    trial_paths = make_trial(services_dataset, "broken")
+    _ = (services_dataset / "agent" / "eval.py").write_text(
+        textwrap.dedent(SERVICES_EVAL_PY).replace(
+            'ctx.set_result(db=ctx.env["DB_URL"])', 'raise RuntimeError("agent crashed")'
+        )
+    )
+    env = FakeEnvironment()
+    with pytest.raises(RuntimeError, match="agent crashed"):
+        await services_agent(trial_paths).run("", env, AgentContext())
+    assert env.commands()[-1] == "snapshot db /logs/artifacts/state/db"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["shared", "separate"])
+async def test_verifier_mode_decides_service_env(services_dataset: Path, mode: str):
+    task_toml = services_dataset / "tasks" / "ok" / "task.toml"
+    _ = task_toml.write_text(task_toml.read_text() + f'\n[verifier]\nenvironment_mode = "{mode}"\n')
+    trial_paths = make_trial(services_dataset, "ok")
+    env = FakeEnvironment()
+    verifier = VerifierFactory.create_verifier_from_config(
+        VerifierConfig(
+            import_path=LAMINAR_VERIFIER_IMPORT_PATH,
+            kwargs={"runner": "agent/eval.py:ServicesEval"},
+        ),
+        task=Task(services_dataset / "tasks" / "ok"),
+        trial_paths=trial_paths,
+        environment=env,  # pyright: ignore[reportArgumentType]
+        logger=logging.getLogger(__name__),
+    )
+    result = await verifier.verify()
+    assert result.rewards == {"mode": int(mode == "separate")}
+    check = next(e for e in env.execs if e["command"] == "check-db")
+    # Services only run in the agent container, which a shared verifier is.
+    expected = (
+        {"TONE": "formal", "DB_URL": "db://127.0.0.1"} if mode == "shared" else {"TONE": "formal"}
+    )
+    assert check["env"] == expected

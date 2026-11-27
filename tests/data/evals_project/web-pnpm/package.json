@@ -1,0 +1,9 @@
+{
+  "name": "web-pnpm",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.20.0",
+  "dependencies": {
+    "ms": "2.1.3"
+  }
+}

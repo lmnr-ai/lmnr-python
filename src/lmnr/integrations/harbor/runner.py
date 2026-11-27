@@ -46,6 +46,7 @@ from lmnr.evals.context import (
 )
 from lmnr.evals.errors import EvalConfigError
 from lmnr.evals.runner import EvalRunner, load_runner
+from lmnr.evals.services.base import snapshot_services, start_services
 from lmnr.integrations.harbor.spans import verifier_spans
 from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.log import get_default_logger
@@ -91,8 +92,12 @@ class LaminarAgent(BaseInstalledAgent):  # pyright: ignore[reportUntypedBaseClas
             host_logs_dir=self.logs_dir,
         )
 
-        # The trial's steps, in order. Services and the mock server will start
-        # here, before setup.
+        # The trial's steps, in order. The mock server will start after the
+        # services, before setup (phase 3).
+        if runner_cls.services:
+            service_env = await start_services(runner_cls.services, ctx)
+            # Harbor's own agents[].env wins over per-command env anyway.
+            ctx.add_env(service_env, {k: v for k, v in service_env.items() if k not in harbor_env})
         await runner.setup(ctx)
         try:
             await runner.run(ctx)
@@ -107,7 +112,7 @@ class LaminarAgent(BaseInstalledAgent):  # pyright: ignore[reportUntypedBaseClas
                 # run's error is still what failed the trial, so it wins.
                 raise error from None
             raise
-        await runner.collect(ctx)
+        await _collect(runner, ctx)
 
     def populate_context_post_run(self, context: Any) -> None:
         try:
@@ -144,7 +149,20 @@ class LaminarVerifier(BaseVerifier):  # pyright: ignore[reportUntypedBaseClass]
             )
         runner = runner_cls()
         trial_paths = self.trial_paths
+        verifier_config = self.task.config.verifier
+        mode = verifier_config.environment_mode
+        # Harbor's default: separate when the verifier has its own environment.
+        if mode is None:
+            verifier_mode = "separate" if verifier_config.environment else "shared"
+        else:
+            verifier_mode = (
+                "separate" if str(getattr(mode, "value", mode)) == "separate" else "shared"
+            )
         runner_env = runner_cls.resolved_env(dict(os.environ))
+        # Services run in the agent container, which only a shared verifier sees.
+        if verifier_mode == "shared":
+            for service in runner_cls.services:
+                runner_env = {**runner_env, **service.env()}
         # What Harbor's own verifier passes to tests/test.sh.
         verifier_env = resolve_env_vars(
             {
@@ -164,6 +182,7 @@ class LaminarVerifier(BaseVerifier):  # pyright: ignore[reportUntypedBaseClass]
             secrets=Secrets(runner_cls.secrets, os.environ),
             host_artifacts_dir=trial_paths.artifacts_dir,
             artifacts=list(runner_cls.artifacts),
+            verifier_mode=verifier_mode,
         )
 
         try:
@@ -211,13 +230,21 @@ class LaminarVerifier(BaseVerifier):  # pyright: ignore[reportUntypedBaseClass]
             await ctx.container.write_file(str(env_paths.reward_json_path), json.dumps(rewards))
 
 
+async def _collect(runner: EvalRunner, ctx: AgentContext) -> None:
+    """`collect`, then the services' snapshots (also when `collect` raised)."""
+    try:
+        await runner.collect(ctx)
+    finally:
+        await snapshot_services(type(runner).services, ctx)
+
+
 async def _collect_after_failure(
     runner: EvalRunner, ctx: AgentContext, timeout: float | None = None
 ) -> None:
     """`collect` after `run` raised. Its own error is logged, so the run's wins."""
     try:
         async with asyncio.timeout(timeout):
-            await runner.collect(ctx)
+            await _collect(runner, ctx)
     except Exception:
         logger.warning(f"collect() failed after run() failed:\n{traceback.format_exc()}")
 
