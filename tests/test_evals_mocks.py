@@ -107,7 +107,7 @@ SHARED = """
 
 
     def get_customer(call, ctx):
-        return ctx.fixture_json("crm.json").get(call.args[0])
+        return ctx.case.fixture_json("crm.json").get(call.args[0])
 
 
     class SupportRunner(EvalRunner):
@@ -415,6 +415,23 @@ def test_fixtures_are_served_from_memory(evals_root: Path, tmp_path: Path):
         "id": "cus_1",
         "plan": "pro",
     }
+
+
+def test_host_and_handler_read_fixtures_the_same_way(evals_root: Path, tmp_path: Path):
+    case = make_case(tmp_path)
+    handler_case = server_for(evals_root, case).case
+    for reader in (case, handler_case):
+        assert reader.fixture_bytes("nested/a.txt") == b"nested"
+        assert reader.fixture_text("nested/a.txt") == "nested"
+        assert reader.fixture_json("crm.json") == {
+            "ana@example.com": {"id": "cus_1", "plan": "pro"}
+        }
+        with pytest.raises(
+            FileNotFoundError, match=r"^The case 'acme/refund-1' has no tests/fixtures/x\.json\.$"
+        ):
+            _ = reader.fixture_json("x.json")
+    assert case.fixture_path("crm.json") == case.dir / "tests" / "fixtures" / "crm.json"
+    assert not hasattr(handler_case, "fixture_path")
 
 
 def test_concurrent_calls_are_serialized(evals_root: Path, tmp_path: Path):

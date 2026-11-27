@@ -41,8 +41,8 @@ async def judge(reply: str, criteria: str, api_key: str) -> Verdict:
 
 # A mock: the app's observed `incidents.list_recent` (src/incidents.ts) is
 # answered by this function instead of calling the status service. It runs
-# in the container, in the mock server; ctx.fixture_json reads this case's
-# tests/fixtures/, which the agent never sees as files.
+# in the container, in the mock server; ctx.case.fixture_json reads this
+# case's tests/fixtures/, which the agent never sees as files.
 def list_incidents(call, ctx):
     [days] = call.args  # the function's arguments, in order
     now = datetime.now(timezone.utc)
@@ -54,7 +54,7 @@ def list_incidents(call, ctx):
             "resolved_at": now.isoformat() if incident["resolved"] else None,
             "summary": incident["summary"],
         }
-        for incident in ctx.fixture_json("incidents.json")
+        for incident in ctx.case.fixture_json("incidents.json")
         if incident["started_days_ago"] <= days
     ]
 

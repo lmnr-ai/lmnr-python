@@ -116,10 +116,12 @@ class MockServer:
         self.token: str = str(config["token"])
         self.env: dict[str, str] = {str(k): str(v) for k, v in (config.get("env") or {}).items()}
         case = config.get("case") or {}
-        self.case: CaseInfo = CaseInfo(
-            name=str(case.get("name", "")), metadata=dict(case.get("metadata") or {})
-        )
         self.fixtures: dict[str, bytes] = _load_fixtures(config.get("fixtures_dir"))
+        self.case: CaseInfo = CaseInfo(
+            name=str(case.get("name", "")),
+            metadata=dict(case.get("metadata") or {}),
+            fixtures=self.fixtures,
+        )
         self.state: dict[str, Any] = {}
         self.log_lines: list[str] = []
         self.calls: list[dict[str, Any]] = []
@@ -303,7 +305,6 @@ class MockServer:
         ctx = Context(
             state=self.state,
             calls=[dict(c) for c in self.calls if c["key"] == item.key],
-            fixtures=self.fixtures,
             case=self.case,
             env=self.env,
         )

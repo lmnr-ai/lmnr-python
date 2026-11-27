@@ -594,7 +594,7 @@ from lmnr.evals import mock
 
 
 def get_customer(call, ctx):
-    return ctx.fixture_json("crm.json").get(call.args[0])
+    return ctx.case.fixture_json("crm.json").get(call.args[0])
 
 
 def zendesk(req, ctx):

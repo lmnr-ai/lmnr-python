@@ -3,7 +3,7 @@
     from lmnr.evals import EvalRunner, mock
 
     def get_customer(call, ctx):              # function mock: an observed function
-        return ctx.fixture_json("crm_customers.json").get(call.args[0])
+        return ctx.case.fixture_json("crm_customers.json").get(call.args[0])
 
     def zendesk(req, ctx):                    # HTTP mock
         if req.method == "POST" and req.path.endswith("/comments"):
@@ -26,6 +26,7 @@ The mock server imports this module in the container, next to the handlers.
 from __future__ import annotations
 
 import json as jsonlib
+from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -156,10 +157,42 @@ class Request:
         return jsonlib.loads(self.body) if self.body else None
 
 
+def missing_fixture(case_name: str, path: str) -> FileNotFoundError:
+    return FileNotFoundError(f"The case {case_name!r} has no tests/fixtures/{path}.")
+
+
+class FixtureReader(ABC):
+    """`fixture_bytes(path)` / `fixture_text` / `fixture_json`: a file under
+    the case's `tests/fixtures/`, the same on `ctx.case` on the host (`Case`)
+    and in a mock handler (`CaseInfo`). A missing one raises
+    `FileNotFoundError` with its path."""
+
+    @abstractmethod
+    def fixture_bytes(self, path: str) -> bytes: ...
+
+    def fixture_text(self, path: str) -> str:
+        return self.fixture_bytes(path).decode()
+
+    def fixture_json(self, path: str) -> Any:
+        return jsonlib.loads(self.fixture_bytes(path))
+
+
 @dataclass(frozen=True)
-class CaseInfo:
+class CaseInfo(FixtureReader):
+    """A handler's `ctx.case`: `name`, `metadata` (`[metadata]` in
+    `task.toml`) and the fixture readers, over the case's `tests/fixtures/`
+    loaded when the trial started."""
+
     name: str
     metadata: dict[str, Any]
+    fixtures: Mapping[str, bytes] = field(default_factory=dict[str, bytes], repr=False)
+
+    @override
+    def fixture_bytes(self, path: str) -> bytes:
+        key = path.strip("/")
+        if key not in self.fixtures:
+            raise missing_fixture(self.name, key)
+        return self.fixtures[key]
 
 
 class Context:
@@ -168,9 +201,11 @@ class Context:
     - `state`: one dict per trial, shared by every handler.
     - `calls`: earlier calls of this key, as logged (`request`, `outcome`,
       `response`, ...), oldest first.
-    - `fixture(path)` / `fixture_text` / `fixture_json`: the case's
-      `tests/fixtures/`, loaded when the trial started.
-    - `case.name`, `case.metadata` (`[metadata]` in `task.toml`); `env`.
+    - `case`: `name`, `metadata` (`[metadata]` in `task.toml`), and
+      `fixture_bytes(path)` / `fixture_text` / `fixture_json` over the case's
+      `tests/fixtures/`, loaded when the trial started (as on the host's
+      `ctx.case`).
+    - `env`.
     """
 
     def __init__(
@@ -178,7 +213,6 @@ class Context:
         *,
         state: dict[str, Any],
         calls: list[dict[str, Any]],
-        fixtures: Mapping[str, bytes],
         case: CaseInfo,
         env: Mapping[str, str],
     ):
@@ -186,16 +220,3 @@ class Context:
         self.calls: list[dict[str, Any]] = calls
         self.case: CaseInfo = case
         self.env: dict[str, str] = dict(env)
-        self._fixtures: Mapping[str, bytes] = fixtures
-
-    def fixture(self, path: str) -> bytes:
-        key = path.strip("/")
-        if key not in self._fixtures:
-            raise FileNotFoundError(f"The case {self.case.name!r} has no tests/fixtures/{key}.")
-        return self._fixtures[key]
-
-    def fixture_text(self, path: str) -> str:
-        return self.fixture(path).decode()
-
-    def fixture_json(self, path: str) -> Any:
-        return jsonlib.loads(self.fixture(path))

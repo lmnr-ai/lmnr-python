@@ -35,6 +35,7 @@ from lmnr.evals.errors import (
 )
 from lmnr.evals.layer import LAYER_DIR, relay_command
 from lmnr.evals.mocks.calls import MockCalls
+from lmnr.evals.mocks.mock import FixtureReader, missing_fixture
 from lmnr.evals.paths import caller_dir
 from lmnr.evals.readiness import Readiness
 from lmnr.evals.readiness import cmd as cmd_ready
@@ -89,8 +90,12 @@ class BackgroundProcess:
 
 
 @dataclass(frozen=True)
-class Case:
-    """The task a trial runs, read from its directory on the host."""
+class Case(FixtureReader):
+    """The task a trial runs, read from its directory on the host.
+
+    `fixture_bytes(path)` / `fixture_text` / `fixture_json` read its
+    `tests/fixtures/`, as a mock handler's `ctx.case` does; `fixture_path`
+    is the host path."""
 
     name: str
     dir: Path
@@ -119,12 +124,18 @@ class Case:
         """A file under the case's `environment/` (data the app reads)."""
         return self.dir / "environment" / path
 
-    def fixture(self, path: str) -> Path:
-        """A file under the case's `tests/fixtures/` (data the agent must not see)."""
+    def fixture_path(self, path: str) -> Path:
+        """A file under the case's `tests/fixtures/` (data the agent must not
+        see), on the host. A mock handler's `ctx.case` has no paths, only the
+        readers."""
         return self.dir / "tests" / "fixtures" / path
 
-    def fixture_json(self, path: str) -> Any:
-        return json.loads(self.fixture(path).read_text())
+    @override
+    def fixture_bytes(self, path: str) -> bytes:
+        file = self.fixture_path(path)
+        if not file.is_file():
+            raise missing_fixture(self.name, path)
+        return file.read_bytes()
 
     def expected(self) -> Any:
         """The case's reference answer, `tests/expected.json`."""
