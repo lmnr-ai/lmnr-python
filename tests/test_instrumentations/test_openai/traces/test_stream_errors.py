@@ -1,4 +1,5 @@
 import json
+from collections.abc import Mapping
 
 import httpx2
 import pytest
@@ -13,7 +14,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai import (
 ERROR = {"error": {"message": "stream failed", "type": "server_error"}}
 
 
-def _sse(*events: dict) -> bytes:
+def _sse(*events: Mapping[str, object]) -> bytes:
     return "".join(f"data: {json.dumps(e)}\n\n" for e in events).encode()
 
 
