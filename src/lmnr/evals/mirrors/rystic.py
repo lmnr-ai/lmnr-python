@@ -6,15 +6,18 @@ methods below, so it can be amended in one place; the user-facing signature
 Checked against rystic CLI 0.0.93 and lmnr's hosted-evals proxy (LAM-2592):
 
 - the CLI is one static binary, installed by `INSTALLER_URL` at a pinned
-  `RYSTIC_VERSION`; that needs no key, so the image build is key-free;
+  `RYSTIC_VERSION`; that needs no key, so the image build is key-free. It is
+  a Go binary that reads the system's CA certificates, which slim images
+  (`node:*-slim`, `debian:*-slim`) don't have, so it ships with its own and
+  `BINARY` is a wrapper that uses them when the image has none;
 - a twin is downloaded per trial with `rystic pull <product> --version <v>`
   (into `$RYSTIC_HOME/twins/<product>/<v>`, marked current for `run`), which
   needs a key. Laminar's remote sandboxes give every trial its own:
   `RYSTIC_TOKEN`, `RYSTIC_RELEASE_ENDPOINT` and `RYSTIC_LEASE_URL` in the
   sandbox env, pointing at the app-server's Rystic proxy (lmnr-private
-  `hosted_evals/rystic.rs`). Only `--remote` runs are supported for now: a
-  trial without a token fails before the pull, and one with a token but not
-  Laminar's endpoint (a key passed with `--env` locally) gets a warning;
+  `hosted_evals/rystic.rs`). Local runs use the user's own key, passed with
+  `lmnr-cli eval run --env RYSTIC_TOKEN`, against rystic.ai. A trial without
+  a token fails before the pull, saying so;
 - `rystic run <product> --name <n> --port <p>` serves the vendor's API in the
   foreground (`-d` would detach), starting from an empty workspace (no
   `--scenario`); the twin checks in with the lease URL while it runs;
@@ -51,7 +54,17 @@ INSTALLER_URL = "https://www.rystic.ai/install.sh"
 # Any image with curl, tar and sh: the binary is static, so the stage's libc
 # doesn't matter.
 INSTALLER_IMAGE = "curlimages/curl:8.17.0"
-BINARY = "/usr/local/bin/rystic"
+BINARY = "/usr/local/bin/rystic"  # the wrapper, below
+LIB_DIR = "/usr/local/lib/rystic"  # the real binary and its CA certificates
+# Used only when the image has no CA bundle of its own (Debian / Ubuntu, RHEL).
+WRAPPER = (
+    "#!/bin/sh",
+    'if [ -z "${SSL_CERT_FILE:-}" ] && [ ! -s /etc/ssl/certs/ca-certificates.crt ] '
+    + "&& [ ! -s /etc/pki/tls/certs/ca-bundle.crt ]; then",
+    f"  export SSL_CERT_FILE={LIB_DIR}/ca-certificates.crt",
+    "fi",
+    f'exec {LIB_DIR}/rystic "$@"',
+)
 PRODUCT_SUFFIX = "-twin"
 PULL_COMMAND = "{binary} pull {product} --version {version}"
 RUN_COMMAND = "{binary} run {product} --name {name} --port {port}"
@@ -65,14 +78,12 @@ CALLS_FILE = "calls.json"
 SETTLE_TIMEOUT_SEC = 90
 # `rystic pull` downloads the twin.
 PULL_TIMEOUT_SEC = 300
-# Which Rystic access the trial has: Laminar's per-trial proxy, a bare key, none.
-ACCESS_CHECK = (
-    'if [ -z "${RYSTIC_TOKEN:-}" ]; then echo none; '
-    + 'elif [ -z "${RYSTIC_RELEASE_ENDPOINT:-}" ]; then echo key; else echo laminar; fi'
-)
-REMOTE_ONLY = (
-    "Rystic mirrors are supported only in `lmnr-cli eval run --remote` for now, where "
-    + "Laminar gives each trial its own Rystic access."
+# Whether the trial has Rystic access: Laminar's per-trial token, or the user's key.
+ACCESS_CHECK = 'if [ -n "${RYSTIC_TOKEN:-}" ]; then echo yes; fi'
+NO_ACCESS = (
+    "Rystic mirrors need Rystic access in the trial: `lmnr-cli eval run --remote` gives "
+    + "each trial its own; for a local run, pass your Rystic API key with "
+    + "`--env RYSTIC_TOKEN` (read from your shell, .env.local or .env)."
 )
 
 
@@ -83,8 +94,8 @@ class Rystic(Mirror):
         Rystic("slack", version="1.4", seed=case_fixture("slack.json"),
                env={"SLACK_API_URL": "{url}/api/"})
 
-    Remote runs only for now (`lmnr-cli eval run --remote`): Laminar's
-    sandboxes give each trial its Rystic access.
+    `lmnr-cli eval run --remote` gives each trial its Rystic access; a local
+    run needs your Rystic API key (`--env RYSTIC_TOKEN`).
 
     `seed` is a register map (`{"<register>": {"<key>": {record}}}`, see
     `rystic docs slack-twin seeding-state`), merged into the twin's empty
@@ -137,15 +148,20 @@ class Rystic(Mirror):
 
     @override
     def bundle_stages(self, rel: PathMap) -> list[str]:
-        bin_dir = f"{BUNDLE_DIR}{Path(BINARY).parent}"
+        lib_dir = f"{BUNDLE_DIR}{LIB_DIR}"
+        wrapper = f"{BUNDLE_DIR}{BINARY}"
+        lines = " ".join(shlex.quote(line) for line in WRAPPER)
         return [
             f"FROM {INSTALLER_IMAGE} AS {self.stage_name()}",
             "USER root",
             # Saved first: `curl | sh` would pass on a failed download.
-            f"RUN curl -fsSL {INSTALLER_URL} -o /tmp/rystic-install.sh && mkdir -p {bin_dir} && "
-            + f"RYSTIC_VERSION={shlex.quote(self.cli_version)} RYSTIC_BIN={bin_dir} "
+            f"RUN curl -fsSL {INSTALLER_URL} -o /tmp/rystic-install.sh && "
+            + f"mkdir -p {lib_dir} {Path(wrapper).parent} && "
+            + f"RYSTIC_VERSION={shlex.quote(self.cli_version)} RYSTIC_BIN={lib_dir} "
             + "RYSTIC_NO_LOGIN=1 CI=1 sh /tmp/rystic-install.sh && "
-            + f"{BUNDLE_DIR}{BINARY} --help >/dev/null",
+            + f"cp /etc/ssl/certs/ca-certificates.crt {lib_dir}/ && "
+            + f"printf '%s\\n' {lines} > {wrapper} && chmod 755 {wrapper} && "
+            + f"{lib_dir}/rystic --help >/dev/null",
         ]
 
     @override
@@ -157,13 +173,8 @@ class Rystic(Mirror):
     @override
     async def start(self, ctx: AgentContext) -> None:
         access = (await ctx.container.sh(ACCESS_CHECK, user="root", check=False)).stdout.strip()
-        if access not in ("laminar", "key"):
-            raise RuntimeError(f"{REMOTE_ONLY} This trial has no RYSTIC_TOKEN ({self.name}).")
-        if access == "key":
-            ctx.logger.warning(
-                f"{REMOTE_ONLY} {self.name}: trying the RYSTIC_TOKEN this trial has, "
-                + "against rystic.ai."
-            )
+        if access != "yes":
+            raise RuntimeError(f"{NO_ACCESS} This trial has no RYSTIC_TOKEN ({self.name}).")
         _ = await ctx.container.sh(
             PULL_COMMAND.format(
                 binary=BINARY,

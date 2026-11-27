@@ -224,7 +224,7 @@ EOF
 # service: Rystic slack-twin 1.4, CLI 0.0.93 (_shared/images.py:59)
 FROM curlimages/curl:8.17.0 AS svc-slack
 USER root
-RUN curl -fsSL https://www.rystic.ai/install.sh -o /tmp/rystic-install.sh && mkdir -p /bundle/usr/local/bin && RYSTIC_VERSION=0.0.93 RYSTIC_BIN=/bundle/usr/local/bin RYSTIC_NO_LOGIN=1 CI=1 sh /tmp/rystic-install.sh && /bundle/usr/local/bin/rystic --help >/dev/null
+RUN curl -fsSL https://www.rystic.ai/install.sh -o /tmp/rystic-install.sh && mkdir -p /bundle/usr/local/lib/rystic /bundle/usr/local/bin && RYSTIC_VERSION=0.0.93 RYSTIC_BIN=/bundle/usr/local/lib/rystic RYSTIC_NO_LOGIN=1 CI=1 sh /tmp/rystic-install.sh && cp /etc/ssl/certs/ca-certificates.crt /bundle/usr/local/lib/rystic/ && printf '%s\n' '#!/bin/sh' 'if [ -z "${SSL_CERT_FILE:-}" ] && [ ! -s /etc/ssl/certs/ca-certificates.crt ] && [ ! -s /etc/pki/tls/certs/ca-bundle.crt ]; then' '  export SSL_CERT_FILE=/usr/local/lib/rystic/ca-certificates.crt' fi 'exec /usr/local/lib/rystic/rystic "$@"' > /bundle/usr/local/bin/rystic && chmod 755 /bundle/usr/local/bin/rystic && /bundle/usr/local/lib/rystic/rystic --help >/dev/null
 
 # _shared/images.py:32 (ServicesRunner)
 FROM debian:trixie-slim
