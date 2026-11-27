@@ -38,7 +38,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from typing_extensions import override
@@ -195,12 +195,20 @@ class MockServer:
 
     def _function(self, key: str, body: bytes) -> Reply:
         try:
-            request = json.loads(body or b"null")
+            parsed: Any = json.loads(body or b"null")
         except ValueError:
-            request = None
-        if not isinstance(request, dict) or "args" not in request:
+            parsed = None
+        if not isinstance(parsed, dict) or "args" not in parsed:
             return _error(400, "BadRequest", 'expected a JSON object with "args"')
-        logged = {"args": request.get("args"), "lang": request.get("lang")}
+        request = cast(dict[str, Any], parsed)
+        args: Any = request["args"]
+        kwargs: Any = request.get("kwargs", {})
+        if not isinstance(args, list):
+            return _error(400, "BadRequest", '"args" must be an array')
+        if not isinstance(kwargs, dict):
+            return _error(400, "BadRequest", '"kwargs" must be an object')
+        args, kwargs = cast(list[Any], args), cast(dict[str, Any], kwargs)
+        logged = {"args": args, "kwargs": kwargs, "lang": request.get("lang")}
         trace = (request.get("trace_id"), request.get("span_id"))
         item = self.functions.get(key)
         start = time.perf_counter()
@@ -211,7 +219,7 @@ class MockServer:
                 self._record("function", key, logged, "unmatched", {"error": error}, start, trace)
                 return _json(404, {"error": error})
             index = self._next_index(key)
-            call = Call(key=key, args=request.get("args"), index=index)
+            call = Call(key=key, args=args, kwargs=kwargs, index=index)
             try:
                 result = self._call(item, call)
                 if isinstance(result, Response):

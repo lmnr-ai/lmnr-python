@@ -44,7 +44,7 @@ async def judge(reply: str, criteria: str, api_key: str) -> Verdict:
 # in the container, in the mock server; ctx.fixture_json reads this case's
 # tests/fixtures/, which the agent never sees as files.
 def list_incidents(call, ctx):
-    [days] = call.args  # a TypeScript function's arguments, in order
+    [days] = call.args  # the function's arguments, in order
     now = datetime.now(timezone.utc)
     return [
         {

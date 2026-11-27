@@ -3,7 +3,7 @@
     from lmnr.evals import EvalRunner, mock
 
     def get_customer(call, ctx):              # function mock: an observed function
-        return ctx.fixture_json("crm_customers.json").get(call.args["email"])
+        return ctx.fixture_json("crm_customers.json").get(call.args[0])
 
     def zendesk(req, ctx):                    # HTTP mock
         if req.method == "POST" and req.path.endswith("/comments"):
@@ -126,9 +126,12 @@ class Call:
     """A call of a mocked function."""
 
     key: str
-    # As the SDK sent them: an object by parameter name from Python, an array
-    # from TypeScript.
-    args: Any
+    # Positional, in every language: Python sends every positional parameter
+    # in order (defaults filled in), then the `*args` values.
+    args: list[Any]
+    # Python's keyword-only parameters and `**kwargs` entries; `{}` from
+    # TypeScript.
+    kwargs: dict[str, Any]
     # 0-based, per key.
     index: int
 

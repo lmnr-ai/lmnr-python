@@ -5,9 +5,10 @@
       "method": "POST",
       "path": "/fn/search.web",
       "body": {
-        "args": {
-          "q": "weather"
-        },
+        "args": [
+          "weather"
+        ],
+        "kwargs": {},
         "lang": "python",
         "trace_id": null,
         "span_id": null

@@ -107,7 +107,7 @@ SHARED = """
 
 
     def get_customer(call, ctx):
-        return ctx.fixture_json("crm.json").get(call.args["email"])
+        return ctx.fixture_json("crm.json").get(call.args[0])
 
 
     class SupportRunner(EvalRunner):
@@ -171,7 +171,7 @@ def server_for(root: Path, case: Case) -> MockServer:
 
 
 def call_fn(server: MockServer, key: str, args: Any, **extra: Any) -> tuple[int, Any]:
-    body = json.dumps({"args": args, "lang": "python", **extra}).encode()
+    body = json.dumps({"args": args, "kwargs": {}, "lang": "python", **extra}).encode()
     status, _, payload = server.route(
         "POST", f"/_lmnr/v1/{TOKEN}/fn/{quote(key, safe='')}", {}, body
     )
@@ -183,19 +183,19 @@ def call_fn(server: MockServer, key: str, args: Any, **extra: Any) -> tuple[int,
 
 def test_function_outcomes(evals_root: Path, tmp_path: Path):
     server = server_for(evals_root, make_case(tmp_path))
-    assert call_fn(server, "crm.get_customer", {"email": "ana@example.com"}) == (
+    assert call_fn(server, "crm.get_customer", ["ana@example.com"]) == (
         200,
         {"action": "respond", "value": {"id": "cus_1", "plan": "pro"}},
     )
-    assert call_fn(server, "crm.get_customer", {"email": "bob@example.com"}) == (
+    assert call_fn(server, "crm.get_customer", ["bob@example.com"]) == (
         200,
         {"action": "respond", "value": None},
     )
-    assert call_fn(server, "payments.refund", {"charge_id": "ch_1"}) == (
+    assert call_fn(server, "payments.refund", ["ch_1"]) == (
         200,
         {"action": "respond", "value": {"status": "ok", "index": 0}},
     )
-    assert call_fn(server, "payments.refund", {"charge_id": "ch_1"}) == (
+    assert call_fn(server, "payments.refund", ["ch_1"]) == (
         200,
         {
             "action": "raise",
@@ -206,17 +206,17 @@ def test_function_outcomes(evals_root: Path, tmp_path: Path):
         200,
         {"action": "respond", "value": {"quote": 42}},
     )
-    assert call_fn(server, "search.web", {"q": "x"}) == (200, {"action": "passthrough"})
-    assert call_fn(server, "inventory.check", {}) == (
+    assert call_fn(server, "search.web", ["x"]) == (200, {"action": "passthrough"})
+    assert call_fn(server, "inventory.check", []) == (
         500,
         {
             "action": "handler_error",
             "error": {"type": "ValueError", "message": "handler is broken"},
         },
     )
-    status, body = call_fn(server, "wrong.kind", {})
+    status, body = call_fn(server, "wrong.kind", [])
     assert (status, body["action"], body["error"]["type"]) == (500, "handler_error", "TypeError")
-    assert call_fn(server, "crm.delete", {}) == (
+    assert call_fn(server, "crm.delete", []) == (
         404,
         {"error": {"type": "UnknownMockKey", "message": "no function mock 'crm.delete'"}},
     )
@@ -236,7 +236,7 @@ def test_function_outcomes(evals_root: Path, tmp_path: Path):
         (7, "wrong.kind", 0, "handler_error"),
         (8, "crm.delete", None, "unmatched"),
     ]
-    assert log[3]["request"] == {"args": {"charge_id": "ch_1"}, "lang": "python"}
+    assert log[3]["request"] == {"args": ["ch_1"], "kwargs": {}, "lang": "python"}
     assert log[3]["response"] == {
         "error": {"type": "DuplicateRefund", "message": "charge already refunded"}
     }
@@ -247,9 +247,50 @@ def test_function_outcomes(evals_root: Path, tmp_path: Path):
     assert "ValueError: handler is broken" in text
 
 
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        ({"lang": "python"}, 'expected a JSON object with "args"'),
+        ([], 'expected a JSON object with "args"'),
+        ({"args": {"email": "a"}, "lang": "python"}, '"args" must be an array'),
+        ({"args": None, "lang": "python"}, '"args" must be an array'),
+        ({"args": [], "kwargs": [1], "lang": "python"}, '"kwargs" must be an object'),
+        ({"args": [], "kwargs": None, "lang": "python"}, '"kwargs" must be an object'),
+    ],
+)
+def test_function_calls_must_have_args_and_kwargs_of_the_right_type(
+    evals_root: Path, tmp_path: Path, body: Any, message: str
+):
+    server = server_for(evals_root, make_case(tmp_path))
+    status, _, payload = server.route(
+        "POST", f"/_lmnr/v1/{TOKEN}/fn/crm.get_customer", {}, json.dumps(body).encode()
+    )
+    assert (status, json.loads(payload)) == (
+        400,
+        {"error": {"type": "BadRequest", "message": message}},
+    )
+    assert server.calls == []
+
+
+def test_kwargs_default_to_an_empty_object(evals_root: Path, tmp_path: Path):
+    server = server_for(evals_root, make_case(tmp_path))
+    for body in (
+        {"args": ["x"], "lang": "typescript"},
+        {"args": ["x"], "kwargs": {"limit": 3}, "lang": "python"},
+    ):
+        status, _, _ = server.route(
+            "POST", f"/_lmnr/v1/{TOKEN}/fn/search.web", {}, json.dumps(body).encode()
+        )
+        assert status == 200
+    assert [c["request"] for c in server.calls] == [
+        {"args": ["x"], "kwargs": {}, "lang": "typescript"},
+        {"args": ["x"], "kwargs": {"limit": 3}, "lang": "python"},
+    ]
+
+
 def test_function_calls_carry_trace_ids(evals_root: Path, tmp_path: Path):
     server = server_for(evals_root, make_case(tmp_path))
-    _ = call_fn(server, "search.web", {}, trace_id="a" * 32, span_id="b" * 16)
+    _ = call_fn(server, "search.web", [], trace_id="a" * 32, span_id="b" * 16)
     assert (server.calls[0]["trace_id"], server.calls[0]["span_id"]) == ("a" * 32, "b" * 16)
 
 
@@ -361,7 +402,7 @@ def test_token_and_routes_reveal_nothing(evals_root: Path, tmp_path: Path):
         ("GET", "/h/"),
     ]:
         assert server.route(method, path, {}, b"") == not_found, path
-    assert call_fn(server, "crm.get_customer", {"email": "x"})[0] == 200
+    assert call_fn(server, "crm.get_customer", ["x"])[0] == 200
     assert server.route("POST", f"/_lmnr/v1/{TOKEN}/fn/crm.get_customer", {}, b"{")[0] == 400
 
 
@@ -370,7 +411,7 @@ def test_fixtures_are_served_from_memory(evals_root: Path, tmp_path: Path):
     server = server_for(evals_root, case)
     assert server.fixtures["nested/a.txt"] == b"nested"
     shutil.rmtree(case.dir / "tests" / "fixtures")
-    assert call_fn(server, "crm.get_customer", {"email": "ana@example.com"})[1]["value"] == {
+    assert call_fn(server, "crm.get_customer", ["ana@example.com"])[1]["value"] == {
         "id": "cus_1",
         "plan": "pro",
     }
@@ -386,7 +427,7 @@ def test_concurrent_calls_are_serialized(evals_root: Path, tmp_path: Path):
 
     def one(_: int) -> dict[str, Any]:
         request = urllib.request.Request(
-            url, data=json.dumps({"args": {}, "lang": "python"}).encode(), method="POST"
+            url, data=json.dumps({"args": [], "lang": "python"}).encode(), method="POST"
         )
         with urllib.request.urlopen(request, timeout=10) as response:
             return json.loads(response.read())["value"]
@@ -663,7 +704,7 @@ def test_lifecycle_in_a_container_like_shell(evals_root: Path, tmp_path: Path, h
             ctx.container,
             "POST",
             f"{url}/fn/crm.get_customer",
-            body=json.dumps({"args": {"email": "ana@example.com"}, "lang": "python"}).encode(),
+            body=json.dumps({"args": ["ana@example.com"], "lang": "python"}).encode(),
         )
         assert fn.json() == {"action": "respond", "value": {"id": "cus_1", "plan": "pro"}}
         out = await ctx.container.sh(
@@ -699,8 +740,10 @@ def test_lifecycle_in_a_container_like_shell(evals_root: Path, tmp_path: Path, h
         secrets=Secrets([], {}),
         mock_keys=list(runner.mocks),
     )
-    assert verify_ctx.mocks.calls("crm.get_customer")[0]["request"]["args"] == {
-        "email": "ana@example.com"
+    assert verify_ctx.mocks.calls("crm.get_customer")[0]["request"] == {
+        "args": ["ana@example.com"],
+        "kwargs": {},
+        "lang": "python",
     }
     assert verify_ctx.mocks.calls("payments.refund") == []
     assert len(verify_ctx.mocks.all()) == 2

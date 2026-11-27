@@ -9,7 +9,7 @@ from lmnr.evals import mock
 
 
 def get_customer(call: mock.Call, ctx: mock.Context) -> Any:
-    return {"id": "cus_1", "email": call.args["email"], "plan": "pro"}
+    return {"id": "cus_1", "email": call.args[0], "plan": "pro"}
 
 
 def find_order(call: mock.Call, ctx: mock.Context) -> Any:
@@ -17,7 +17,7 @@ def find_order(call: mock.Call, ctx: mock.Context) -> Any:
 
 
 def echo_args(call: mock.Call, ctx: mock.Context) -> Any:
-    return {"args": call.args, "index": call.index}
+    return {"args": call.args, "kwargs": call.kwargs, "index": call.index}
 
 
 def refund(call: mock.Call, ctx: mock.Context) -> Any:

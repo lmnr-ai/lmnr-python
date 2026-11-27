@@ -64,10 +64,28 @@ Request body:
 
 | Field | Type | |
 |---|---|---|
-| `args` | object or array | REQUIRED. The call's arguments, serialized as the SDK serializes span input: an object by parameter name (Python), an array of positional arguments (TypeScript). |
+| `args` | array | REQUIRED. The call's positional arguments, in order (below). |
+| `kwargs` | object | OPTIONAL, default `{}`. The call's keyword arguments by name (below). |
 | `lang` | `"python"` or `"typescript"` | REQUIRED |
 | `trace_id` | string or null | The current trace id (32 hex digits), if any |
 | `span_id` | string or null | The id of the span the SDK records for this call (16 hex digits), if any |
+
+Arguments are positional in every language, so a handler reads them the
+same way whatever language the app is written in: it gets `call.args` and
+`call.kwargs` (`{}` when the request had none).
+
+- **Python**: the call bound to the function's signature
+  (`inspect.signature(...).bind`), with defaults applied and a method's
+  `self` / `cls` dropped. `args` is the value of every positional-only and
+  positional-or-keyword parameter, in order, then the `*args` values;
+  `kwargs` is the keyword-only parameters and the `**kwargs` entries. A call
+  that doesn't bind (it would raise `TypeError` when run) sends the
+  positional arguments as passed in `args` and the keyword arguments as
+  passed in `kwargs`.
+- **TypeScript**: `args` is the argument list. It sends no `kwargs`.
+
+Values are serialized as the SDK serializes span input (Python:
+`json_dumps`). The span's own recorded input is unaffected.
 
 Responses:
 
@@ -78,7 +96,7 @@ Responses:
 | 200 | `{"action": "passthrough"}` | call the real function |
 | 404 | `{"error": {"type": "UnknownMockKey", "message": <string>}}` | fail (raise) |
 | 500 | `{"action": "handler_error", "error": {"type": <string>, "message": <string>}}` | fail (raise), with the handler's error type and message |
-| 400 | `{"error": {"type": "BadRequest", "message": <string>}}` | fail (raise) |
+| 400 | `{"error": {"type": "BadRequest", "message": <string>}}` (no `args`, `args` not an array, `kwargs` not an object) | fail (raise) |
 
 Any other status, a body that isn't one of the above, and a transport error
 (connection refused, timeout) are failures too: the SDK raises. It MUST NOT
@@ -136,7 +154,7 @@ One object per call, in the order the server handled them:
 
 ```json
 {"seq": 3, "ts": "2026-11-26T10:00:00.123Z", "type": "function", "key": "payments.refund", "index": 1,
- "request": {"args": {"charge_id": "ch_1"}, "lang": "python"},
+ "request": {"args": ["ch_1"], "kwargs": {}, "lang": "python"},
  "outcome": "raise", "response": {"error": {"type": "DuplicateRefund", "message": "charge already refunded"}},
  "duration_ms": 0.4, "trace_id": "...", "span_id": "..."}
 ```
@@ -148,7 +166,7 @@ One object per call, in the order the server handled them:
 | `type` | `function` or `http` |
 | `key` | the mock's key as declared (`"https://api.zendesk.com"` for HTTP mocks) |
 | `index` | 0-based, per key (`call.index` / `req.index` the handler saw); null for an unknown function key |
-| `request` | function: `{"args", "lang"}`; HTTP: `{"method", "path", "query", "headers", "body_text" or "body_b64"}` (headers lower-cased) |
+| `request` | function: `{"args", "kwargs", "lang"}` (`kwargs` is `{}` when the request had none); HTTP: `{"method", "path", "query", "headers", "body_text" or "body_b64"}` (headers lower-cased) |
 | `outcome` | `respond`, `raise`, `passthrough`, `unmatched` or `handler_error` |
 | `response` | function: `{"value"}` (respond), `{"error"}` (raise, handler_error, unmatched), `{}` (passthrough); HTTP: `{"status", "headers", "body_text" or "body_b64"}` |
 | `duration_ms` | time in the server, handler included |
@@ -169,7 +187,7 @@ handlers in `cases/lmnr_mock_reference.py`:
 ```json
 {"description": "...",
  "calls": [{"method": "POST", "path": "/fn/crm.get_customer",
-            "body": {"args": {"email": "ana@example.com"}, "lang": "python"},
+            "body": {"args": ["ana@example.com"], "kwargs": {}, "lang": "python"},
             "status": 200, "response": {"action": "respond", "value": {...}},
             "sdk": {"returns": {...}}}]}
 ```

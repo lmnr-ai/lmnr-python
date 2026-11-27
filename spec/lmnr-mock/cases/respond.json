@@ -5,9 +5,10 @@
       "method": "POST",
       "path": "/fn/crm.get_customer",
       "body": {
-        "args": {
-          "email": "ana@example.com"
-        },
+        "args": [
+          "ana@example.com"
+        ],
+        "kwargs": {},
         "lang": "python",
         "trace_id": "0123456789abcdef0123456789abcdef",
         "span_id": "0123456789abcdef"
@@ -33,9 +34,10 @@
       "method": "POST",
       "path": "/fn/orders.find",
       "body": {
-        "args": {
-          "order_id": "o_9"
-        },
+        "args": [
+          "o_9"
+        ],
+        "kwargs": {},
         "lang": "python",
         "trace_id": null,
         "span_id": null

@@ -1,13 +1,14 @@
 {
-  "description": "A handler error, an unknown key and a malformed request are failures: the SDK raises and never calls the real function.",
+  "description": "A handler error, an unknown key and a malformed request (no args, args not an array, kwargs not an object) are failures: the SDK raises and never calls the real function.",
   "calls": [
     {
       "method": "POST",
       "path": "/fn/inventory.check",
       "body": {
-        "args": {
-          "sku": "A"
-        },
+        "args": [
+          "A"
+        ],
+        "kwargs": {},
         "lang": "python",
         "trace_id": null,
         "span_id": null
@@ -28,7 +29,8 @@
       "method": "POST",
       "path": "/fn/crm.delete_customer",
       "body": {
-        "args": {},
+        "args": [],
+        "kwargs": {},
         "lang": "python",
         "trace_id": null,
         "span_id": null
@@ -55,6 +57,49 @@
         "error": {
           "type": "BadRequest",
           "message": "expected a JSON object with \"args\""
+        }
+      },
+      "sdk": {
+        "fails": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/fn/crm.get_customer",
+      "body": {
+        "args": {
+          "email": "ana@example.com"
+        },
+        "lang": "python"
+      },
+      "status": 400,
+      "response": {
+        "error": {
+          "type": "BadRequest",
+          "message": "\"args\" must be an array"
+        }
+      },
+      "sdk": {
+        "fails": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/fn/crm.get_customer",
+      "body": {
+        "args": [
+          "ana@example.com"
+        ],
+        "kwargs": [
+          "ana@example.com"
+        ],
+        "lang": "python"
+      },
+      "status": 400,
+      "response": {
+        "error": {
+          "type": "BadRequest",
+          "message": "\"kwargs\" must be an object"
         }
       },
       "sdk": {

@@ -28,11 +28,19 @@ def fn_path(key: str) -> str:
     return "/fn/" + quote(key, safe="")
 
 
-def request_body(args: dict[str, Any], trace_id: str | None, span_id: str | None) -> bytes:
-    """Args go through `json_dumps`, like span input: an unserializable value
-    becomes its string form instead of failing the call."""
+def request_body(
+    args: list[Any], kwargs: dict[str, Any], trace_id: str | None, span_id: str | None
+) -> bytes:
+    """Arguments go through `json_dumps`, like span input: an unserializable
+    value becomes its string form instead of failing the call."""
     return json_dumps(
-        {"args": args, "lang": "python", "trace_id": trace_id, "span_id": span_id}
+        {
+            "args": args,
+            "kwargs": kwargs,
+            "lang": "python",
+            "trace_id": trace_id,
+            "span_id": span_id,
+        }
     ).encode()
 
 

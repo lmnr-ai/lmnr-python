@@ -3,7 +3,7 @@
     from lmnr.evals import EvalRunner, Image, Postgres, secret
 
     def get_customer(call, ctx):          # replaces observe(name="crm.get_customer")
-        return ctx.fixture_json("customers.json").get(call.args["email"])
+        return ctx.fixture_json("customers.json").get(call.args[0])
 
     class SupportEval(EvalRunner):
         image = Image.python("3.13").uv_sync("../../../pyproject.toml").add_dir(
