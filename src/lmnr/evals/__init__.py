@@ -37,7 +37,7 @@ from lmnr.evals.context import (
     Context,
     VerifyContext,
 )
-from lmnr.evals.errors import CommandError, EvalConfigError, ExecResult
+from lmnr.evals.errors import CommandError, CommandTimeout, EvalConfigError, ExecResult
 from lmnr.evals.fixtures import CaseFixture, case_fixture
 from lmnr.evals.image import Image
 from lmnr.evals.mirrors import Mirror, Rystic
@@ -56,6 +56,7 @@ __all__ = [
     "CaseFixture",
     "ClickHouse",
     "CommandError",
+    "CommandTimeout",
     "Container",
     "Context",
     "EvalConfigError",

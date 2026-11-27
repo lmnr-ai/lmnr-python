@@ -25,12 +25,20 @@ from typing import Any, Literal, Protocol
 from typing_extensions import override
 
 from lmnr.evals.artifacts import ARTIFACTS_DIR, Artifact, Artifacts, check_destination
-from lmnr.evals.errors import OUTPUT_TAIL_CHARS, CommandError, EvalConfigError, ExecResult
+from lmnr.evals.errors import (
+    OUTPUT_TAIL_CHARS,
+    CommandError,
+    CommandTimeout,
+    EvalConfigError,
+    ExecResult,
+    output_tails,
+)
 from lmnr.evals.layer import LAYER_DIR, relay_command
 from lmnr.evals.mocks.calls import MockCalls
 from lmnr.evals.paths import caller_dir
 from lmnr.evals.readiness import Readiness
 from lmnr.evals.readiness import cmd as cmd_ready
+from lmnr.evals.relay import parse_result
 from lmnr.sdk.log import get_default_logger
 
 logger = get_default_logger("lmnr.evals")
@@ -42,6 +50,10 @@ RESULT_FILE = "result.json"
 
 User = Literal["agent", "root"] | str | int
 VerifierMode = Literal["shared", "separate"]
+
+# Harbor's own timeout for a command run through `relay.py exec`: the
+# command's plus this, so the relay's fires first in every environment.
+EXEC_TIMEOUT_MARGIN_SEC = 30
 
 _SERVICE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 # Files that `setup` runs by default when a case has one in `environment/`.
@@ -219,6 +231,11 @@ class Container:
         """Add variables to every later command (services' `env()`)."""
         self._exec_env.update(env)
 
+    @property
+    def exec_env(self) -> dict[str, str]:
+        """What `add_env` added (a copy)."""
+        return dict(self._exec_env)
+
     # Commands
 
     async def sh(
@@ -230,12 +247,18 @@ class Container:
         timeout: float | None = None,
         check: bool = True,
     ) -> ExecResult:
-        """Run a shell command (`sh -c`) in the container.
+        """Run a shell command (`bash -c`, or `sh -c` without bash) in the container.
 
         `user="agent"` runs as the task's agent (or verifier) user, `"root"` as root.
-        With `check=True`, a non-zero exit raises `CommandError`.
+        `stdout` and `stderr` come back apart. With `check=True`, a non-zero exit
+        raises `CommandError`. After `timeout` seconds the command and everything
+        it started are killed and `CommandTimeout` (a `TimeoutError`) is raised,
+        whatever `check` is; its `result` has the output so far.
+
+        Commands run through the Laminar layer's relay, so they behave the same
+        in local Docker and in Laminar's hosted sandboxes.
         """
-        return await self._exec(cmd, env=env, cwd=cwd, user=user, timeout=timeout, check=check)
+        return await self._run(cmd, env=env, cwd=cwd, user=user, timeout=timeout, check=check)
 
     async def run_file(
         self,
@@ -253,7 +276,8 @@ class Container:
         calls `run_file` (`eval.py`, or a shared module). The file goes to a fresh
         directory under `/tmp`, so harness scripts never stay where the agent
         under test could read them. A file with a shebang runs directly, a `.py`
-        file with `python3`, anything else with `bash`.
+        file with `python3`, anything else with `bash`. Output, exit code and
+        `timeout` work as in `sh`.
         """
         local = self._host_path(path)
         if not local.is_file():
@@ -272,7 +296,7 @@ class Container:
             else:
                 argv = ["bash", remote]
             command = shlex.join([*argv, *args])
-            return await self._exec(
+            return await self._run(
                 command,
                 env=env,
                 cwd=cwd,
@@ -320,6 +344,7 @@ class Container:
             + f"nohup sh -c {shlex.quote(cmd)} > {shlex.quote(log_path)} 2>&1 < /dev/null & "
             + "echo $!"
         )
+        # Not through the relay: it returns at once, and only the pid is read.
         result = await self._exec(
             start, env=env, cwd=cwd, user=user, timeout=30, what=f"Starting service {name!r}"
         )
@@ -333,8 +358,12 @@ class Container:
         status = await self._wait(ready, timeout, pid=pid, env=env, user=user)
         if status != 0:
             reason = "exited" if status == 2 else f"was not ready after {timeout:g}s"
+            # stderr dropped: some environments merge it into stdout.
             tail = await self._exec(
-                f"tail -n 50 {shlex.quote(log_path)}", user="root", check=False, timeout=30
+                f"tail -n 50 {shlex.quote(log_path)} 2>/dev/null",
+                user="root",
+                check=False,
+                timeout=30,
             )
             log_tail = tail.stdout[-OUTPUT_TAIL_CHARS:].rstrip() or "(empty)"
             raise RuntimeError(
@@ -398,6 +427,57 @@ class Container:
     async def _root(self, command: str, check: bool = True) -> ExecResult:
         return await self._exec(command, user="root", check=check, timeout=60, base_env=False)
 
+    async def _run(
+        self,
+        command: str,
+        *,
+        env: dict[str, str] | None = None,
+        cwd: str | None = None,
+        user: User = "agent",
+        timeout: float | None = None,
+        check: bool = True,
+        what: str = "Command",
+    ) -> ExecResult:
+        """A user command, through `relay.py exec`: stdout and stderr apart and
+        the timeout enforced in the container, whatever the environment (Harbor's
+        local Docker merges stderr into stdout and raises on a timeout; Laminar's
+        sandboxes keep them apart and exit 124). One `exec`, plus the payload
+        upload; a second `exec` removes the payload when the relay's user couldn't
+        (`stdin_unlinked`)."""
+        path = await _upload_payload(self.environment, {"cmd": command, "timeout": timeout})
+        removed = False
+        try:
+            raw = await self._exec(
+                _relay_shell("exec", path),
+                env=env,
+                cwd=cwd,
+                user=user,
+                timeout=None if timeout is None else timeout + EXEC_TIMEOUT_MARGIN_SEC,
+                check=False,
+            )
+            _check_layer(raw)
+            framed = parse_result(raw.stdout)
+            if framed is None:
+                raise RuntimeError(
+                    f"{what}: the Laminar layer's relay printed no result (exit code "
+                    + f"{raw.return_code}): {command}"
+                    + output_tails(raw)
+                )
+            removed = bool(framed.get("stdin_unlinked"))
+        finally:
+            if not removed:
+                await _remove_payload(self.environment, path)
+        result = ExecResult(
+            stdout=str(framed.get("stdout") or ""),
+            stderr=str(framed.get("stderr") or ""),
+            return_code=int(framed.get("return_code") or 0),
+        )
+        if framed.get("timed_out"):
+            raise CommandTimeout(command, result, timeout or 0, what=what)
+        if check and result.return_code != 0:
+            raise CommandError(command, result, what=what)
+        return result
+
     async def _exec(
         self,
         command: str,
@@ -410,18 +490,13 @@ class Container:
         what: str = "Command",
         base_env: bool = True,
     ) -> ExecResult:
+        """`command` straight through the environment's `exec`: how stdout and
+        stderr come back and what a timeout does depend on the environment.
+        For the runner's own plumbing (the relay itself, mkdir / chmod / rm
+        around uploads, `service`'s background start)."""
         merged = {**self._exec_env, **(env or {})} if base_env else dict(env or {})
-        raw = await self.environment.exec(
-            command,
-            cwd=cwd,
-            env=merged or None,
-            timeout_sec=math.ceil(timeout) if timeout is not None else None,
-            user=None if user == "agent" else user,
-        )
-        result = ExecResult(
-            stdout=getattr(raw, "stdout", None) or "",
-            stderr=getattr(raw, "stderr", None) or "",
-            return_code=int(getattr(raw, "return_code", 0) or 0),
+        result = await _exec_raw(
+            self.environment, command, env=merged, cwd=cwd, user=user, timeout=timeout
         )
         if check and result.return_code != 0:
             raise CommandError(command, result, what=what)
@@ -478,31 +553,83 @@ async def relay(
 ) -> ExecResult:
     """Run `relay.py <command>` in the container with `payload` as its JSON
     stdin. The payload goes through a temp file the shell deletes before the
-    relay starts, so nothing of it shows in `ps` or stays on disk."""
-    path = f"/tmp/.{uuid.uuid4().hex[:12]}"
-    await container.write_file(path, json.dumps(payload))
-    quoted = shlex.quote(path)
+    relay starts, so nothing of it shows in `ps` or stays on disk. Runs with
+    the container's env (`add_env`) plus `env`."""
+    path = await _upload_payload(container.environment, payload)
     try:
-        result = await container.sh(
-            f"{{ rm -f {quoted} 2>/dev/null; {relay_command()} {command}; }} < {quoted}",
-            env=env,
+        result = await _exec_raw(
+            container.environment,
+            _relay_shell(command, path),
+            env={**container.exec_env, **(env or {})},
             user=user,
             timeout=timeout,
-            check=False,
         )
     finally:
         if user != "root":
             # /tmp is sticky: only root removes the file root uploaded.
-            _ = await container.sh(f"rm -f {quoted}", user="root", timeout=60, check=False)
+            await _remove_payload(container.environment, path)
+    _check_layer(result)
+    if check and result.return_code != 0:
+        raise CommandError(f"relay {command}", result, what=what or f"relay {command}")
+    return result
+
+
+async def _exec_raw(
+    environment: Environment,
+    command: str,
+    *,
+    env: dict[str, str] | None,
+    user: User,
+    timeout: float | None,
+    cwd: str | None = None,
+) -> ExecResult:
+    raw = await environment.exec(
+        command,
+        cwd=cwd,
+        env=env or None,
+        timeout_sec=math.ceil(timeout) if timeout is not None else None,
+        user=None if user == "agent" else user,
+    )
+    return ExecResult(
+        stdout=getattr(raw, "stdout", None) or "",
+        stderr=getattr(raw, "stderr", None) or "",
+        return_code=int(getattr(raw, "return_code", 0) or 0),
+    )
+
+
+async def _upload_payload(environment: Environment, payload: Any) -> str:
+    """A relay's JSON input, as a temp file in the container's /tmp."""
+    path = f"/tmp/.{uuid.uuid4().hex[:12]}"
+    with tempfile.TemporaryDirectory(prefix="lmnr-evals-") as tmp:
+        local = Path(tmp) / "payload"
+        _ = local.write_text(json.dumps(payload))
+        await environment.upload_file(local, path)
+    return path
+
+
+async def _remove_payload(environment: Environment, path: str) -> None:
+    try:
+        _ = await _exec_raw(
+            environment, f"rm -f {shlex.quote(path)}", env=None, user="root", timeout=60
+        )
+    except Exception as e:
+        logger.warning(f"Could not remove {path}: {e}")
+
+
+def _relay_shell(command: str, path: str) -> str:
+    """`relay.py <command>` reading `path` on stdin, which the shell deletes
+    first (when it may: /tmp is sticky, and root uploaded it)."""
+    quoted = shlex.quote(path)
+    return f"{{ rm -f {quoted} 2>/dev/null; {relay_command()} {command}; }} < {quoted}"
+
+
+def _check_layer(result: ExecResult) -> None:
     if result.return_code == 127:
         raise RuntimeError(
             f"{LAYER_DIR} is missing in this container: the runner's helpers run on the "
             + "Laminar layer lmnr-cli adds to every image of an eval.py runner. Rebuild the "
-            + f"image with lmnr-cli.\n{result.stderr[-OUTPUT_TAIL_CHARS:]}"
+            + f"image with lmnr-cli.\n{(result.stderr or result.stdout)[-OUTPUT_TAIL_CHARS:]}"
         )
-    if check and result.return_code != 0:
-        raise CommandError(f"relay {command}", result, what=what or f"relay {command}")
-    return result
 
 
 async def relay_http(

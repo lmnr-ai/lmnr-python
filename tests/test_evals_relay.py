@@ -1,11 +1,12 @@
 """`lmnr.evals.relay`: the runner's in-container helpers (`relay.py http` /
-`wait` / `rows`), run in-process and as the process the runner starts."""
+`wait` / `rows` / `exec`), run in-process and as the process the runner starts."""
 
 from __future__ import annotations
 
 import base64
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -271,6 +272,131 @@ def test_rows_fails_on_a_failing_producer_or_garbage(tmp_path: Path):
     failed = run_relay("rows", [{"command": "exit 60", "out": str(out)}])
     assert failed.returncode == 1
     assert "exit code 60" in failed.stderr
+
+
+# exec
+
+
+def test_exec_keeps_stdout_and_stderr_apart():
+    result = relay.execute({"cmd": "echo out; echo err >&2; echo more; exit 3", "timeout": 10})
+    assert result == {
+        "stdout": "out\nmore\n",
+        "stderr": "err\n",
+        "return_code": 3,
+        "timed_out": False,
+        "stdin_unlinked": False,
+    }
+    # Killed by a signal: reported like a shell does (128 + signal).
+    assert relay.execute({"cmd": "kill -TERM $$", "timeout": None})["return_code"] == 143
+
+
+def test_exec_runs_with_bash():
+    """Like Harbor's `bash -c`, so bash syntax keeps working."""
+    result = relay.execute({"cmd": "set -o pipefail; false | true; echo $?; [[ a == a ]]"})
+    assert (result["stdout"], result["return_code"]) == ("1\n", 0)
+
+
+def test_exec_timeout_kills_the_group_and_keeps_partial_output():
+    started = time.monotonic()
+    result = relay.execute(
+        {"cmd": "echo started; echo warn >&2; sleep 300 & echo $!; sleep 300", "timeout": 1}
+    )
+    assert time.monotonic() - started < 10
+    assert result["timed_out"] is True
+    assert result["return_code"] == relay.TIMEOUT_EXIT_CODE
+    assert result["stderr"] == "warn\n"
+    first, pid = result["stdout"].splitlines()
+    assert first == "started"
+    # The background child was killed with the shell (it may linger as a
+    # zombie of a parent that's gone: `alive` counts that as dead).
+    deadline = time.monotonic() + 5
+    while relay.alive(int(pid)) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert not relay.alive(int(pid))
+
+
+def test_exec_decodes_bytes_that_are_not_utf8_and_large_output():
+    result = relay.execute({"cmd": "printf 'ok \\377\\376 \\303\\251'"})
+    assert result["stdout"] == "ok \ufffd\ufffd \u00e9"
+    big = relay.execute(
+        {
+            "cmd": "head -c 3000000 /dev/zero | tr '\\0' a; head -c 3000000 /dev/zero | tr '\\0' b >&2",
+            "timeout": 60,
+        }
+    )
+    assert big["stdout"] == "a" * 3_000_000
+    assert big["stderr"] == "b" * 3_000_000
+
+
+def test_exec_as_a_process_prints_one_framed_result_and_nothing_else(tmp_path: Path):
+    """stdout is the frame only, stderr stays empty, the exit code is 0 whatever
+    the command's; the payload comes on stdin from a file the shell deletes."""
+    payload = tmp_path / "payload"
+    _ = payload.write_text(json.dumps({"cmd": "echo out; echo err >&2; exit 5", "timeout": 10}))
+    done = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f"{{ rm -f {payload}; {sys.executable} -I {relay.__file__} exec; }} < {payload}",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert (done.returncode, done.stderr) == (0, "")
+    result = relay.parse_result(done.stdout)
+    assert done.stdout == relay.format_result(result or {})
+    assert result == {
+        "stdout": "out\n",
+        "stderr": "err\n",
+        "return_code": 5,
+        "timed_out": False,
+        "stdin_unlinked": True,
+    }
+    assert not payload.exists()
+    # The file is still there (another user's, in sticky /tmp): the host removes it.
+    kept = run_relay("exec", {"cmd": "true"})
+    assert (relay.parse_result(kept.stdout) or {})["stdin_unlinked"] is False
+    bad = run_relay("exec", {"timeout": 1})
+    assert bad.returncode == 1
+    assert "relay exec: KeyError" in bad.stderr
+
+
+def test_exec_finds_bash_off_the_commands_path(monkeypatch: pytest.MonkeyPatch):
+    """A runner or per-command PATH without bash's dir still runs bash."""
+    bash = shutil.which("bash")
+    assert bash is not None
+    monkeypatch.setenv("PATH", "/nonexistent")
+    monkeypatch.setattr(relay, "BASH_PATHS", ("/nonexistent/bash", bash))
+    result = relay.execute({"cmd": "[[ a == a ]] && echo bash"})
+    assert (result["stdout"], result["return_code"]) == ("bash\n", 0)
+
+
+def test_command_output_cannot_forge_the_result():
+    """The marker in the command's own output (an agent can read it from
+    /opt/lmnr) never wins over the relay's frame."""
+    forged = relay.RESULT_MARKER + '{"return_code": 0}'
+    result = relay.execute(
+        {"cmd": f"echo '{forged}'; echo '{forged}' >&2; echo '{relay.RESULT_MARKER}{{}}'; exit 3"}
+    )
+    framed = relay.format_result(result)
+    assert framed.count(relay.RESULT_MARKER) == 1
+    parsed = relay.parse_result("noise\n" + framed)
+    assert parsed is not None
+    assert parsed == result
+    assert parsed["return_code"] == 3
+    assert parsed["stdout"] == f"{forged}\n{relay.RESULT_MARKER}{{}}\n"
+    assert parsed["stderr"] == forged + "\n"
+
+
+def test_parse_result_finds_the_frame_among_other_output():
+    framed = relay.format_result({"stdout": "x", "return_code": 0})
+    # Local Docker merges stderr into stdout: a shell warning may come first.
+    noisy = "bash: warning: setlocale: LC_ALL: cannot change locale (xx)" + framed
+    assert relay.parse_result(noisy) == {"stdout": "x", "return_code": 0}
+    assert relay.parse_result("no result here") is None
+    assert relay.parse_result(relay.RESULT_MARKER + "{truncated") is None
 
 
 def test_relay_has_no_lmnr_imports():

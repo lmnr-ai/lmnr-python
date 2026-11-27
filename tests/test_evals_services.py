@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -50,22 +51,42 @@ def host_relay(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(layer, "RELAY_COMMAND", f"{sys.executable} -I {relay.__file__}")
 
 
+# How `ctx.container.sh` runs a command: `relay.py exec` reading its payload file.
+RELAY_EXEC = re.compile(r"^\{ rm -f (\S+) 2>/dev/null; .+ exec; \} < \S+$")
+PAYLOAD = re.compile(r"^/tmp/\.[0-9a-f]{12}$")
+
+
 class RecordingEnvironment:
-    """Records commands; every command succeeds with empty output."""
+    """Records commands; every command succeeds with empty output. A `relay.py
+    exec` is answered as the relay would and recorded as the command it runs;
+    relay payloads aren't recorded as uploads."""
 
     def __init__(self):
         self.commands: list[tuple[str, Any]] = []
         self.envs: list[dict[str, str] | None] = []
+        self.payloads: dict[str, str] = {}
 
     async def exec(self, command: str, cwd=None, env=None, timeout_sec=None, user=None) -> Any:
+        relayed = RELAY_EXEC.match(command)
+        if relayed:
+            command = json.loads(self.payloads[relayed[1]])["cmd"]
         self.commands.append((command, user))
         self.envs.append(env)
         # `service` reads the pid from the last line.
+        stdout = "42\n" if "echo $!" in command else ""
+        if not relayed:
+            return SimpleNamespace(stdout=stdout, stderr="", return_code=0)
+        result = {"stdout": stdout, "stderr": "", "return_code": 0, "timed_out": False}
         return SimpleNamespace(
-            stdout="42\n" if "echo $!" in command else "", stderr="", return_code=0
+            stdout=relay.format_result({**result, "stdin_unlinked": True}),
+            stderr="",
+            return_code=0,
         )
 
     async def upload_file(self, source_path, target_path) -> None:
+        if PAYLOAD.match(target_path):
+            self.payloads[target_path] = Path(source_path).read_text()
+            return
         self.commands.append((f"upload {Path(source_path).name} -> {target_path}", None))
         self.envs.append(None)
 

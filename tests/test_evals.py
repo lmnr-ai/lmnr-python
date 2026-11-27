@@ -3,12 +3,16 @@ environment records the `exec` / `upload` calls `ctx` makes."""
 
 from __future__ import annotations
 
+import asyncio
 import importlib.metadata
 import json
 import logging
+import os
+import re
 import subprocess
 import sys
 import textwrap
+import time
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,6 +20,7 @@ from typing import Any
 from unittest.mock import ANY
 
 import pytest
+from typing_extensions import override
 
 from lmnr.evals import (
     AgentContext,
@@ -23,26 +28,45 @@ from lmnr.evals import (
     Artifacts,
     Case,
     CommandError,
+    CommandTimeout,
     EvalConfigError,
     EvalRunner,
+    ExecResult,
     Image,
     VerifyContext,
     http,
+    layer,
     port,
+    relay,
     secret,
 )
 from lmnr.evals.context import EvalLogger, Secrets, normalize_rewards
 from lmnr.evals.describe import describe
 from lmnr.evals.runner import find_runner, load_module, load_runner
 
+# How `ctx.container.sh` runs a command: `relay.py exec` reading its payload file.
+RELAY_EXEC = re.compile(r"^\{ rm -f (\S+) 2>/dev/null; .+ exec; \} < \S+$")
+PAYLOAD = re.compile(r"^/tmp/\.[0-9a-f]{12}$")
+
 
 class FakeEnvironment:
-    """Records calls; `responder(command)` returns `(return_code, stdout)`."""
+    """Records calls; `responder(command)` returns `(return_code, stdout)`, with
+    "boom" on stderr when it fails. A command run through `relay.py exec` is
+    answered as the relay would and recorded as the command it runs
+    (`relayed`); `stdin_unlinked=False` is a relay whose user couldn't delete
+    the payload file (a non-root agent user). Relay payloads are recorded as
+    `upload_payload`."""
 
-    def __init__(self, responder: Callable[[str], tuple[int, str]] | None = None):
+    def __init__(
+        self,
+        responder: Callable[[str], tuple[int, str]] | None = None,
+        stdin_unlinked: bool = True,
+    ):
         self.calls: list[tuple[str, Any]] = []
         self.files: dict[str, bytes] = {}
         self.responder: Callable[[str], tuple[int, str]] = responder or (lambda _: (0, ""))
+        self.stdin_unlinked: bool = stdin_unlinked
+        self.raw: list[str] = []  # commands as `exec` got them
 
     async def exec(
         self,
@@ -52,17 +76,34 @@ class FakeEnvironment:
         timeout_sec: int | None = None,
         user: str | int | None = None,
     ) -> Any:
+        self.raw.append(command)
+        relayed = RELAY_EXEC.match(command)
+        if relayed:
+            command = json.loads(self.files[relayed[1]])["cmd"]
         self.calls.append(
             (
                 "exec",
-                {"command": command, "cwd": cwd, "env": env, "timeout": timeout_sec, "user": user},
+                {
+                    "command": command,
+                    "cwd": cwd,
+                    "env": env,
+                    "timeout": timeout_sec,
+                    "user": user,
+                    "relayed": relayed is not None,
+                },
             )
         )
         code, stdout = self.responder(command)
-        return SimpleNamespace(stdout=stdout, stderr="boom" if code else None, return_code=code)
+        stderr = "boom" if code else ""
+        if not relayed:
+            return SimpleNamespace(stdout=stdout, stderr=stderr or None, return_code=code)
+        result = {"stdout": stdout, "stderr": stderr, "return_code": code, "timed_out": False}
+        framed = relay.format_result({**result, "stdin_unlinked": self.stdin_unlinked})
+        return SimpleNamespace(stdout=framed, stderr=None, return_code=0)
 
     async def upload_file(self, source_path: Path | str, target_path: str) -> None:
-        self.calls.append(("upload_file", (Path(source_path).name, target_path)))
+        kind = "upload_payload" if PAYLOAD.match(target_path) else "upload_file"
+        self.calls.append((kind, (Path(source_path).name, target_path)))
         self.files[target_path] = Path(source_path).read_bytes()
 
     async def upload_dir(self, source_dir: Path | str, target_dir: str) -> None:
@@ -391,7 +432,7 @@ async def test_shared_runner_files_resolve_from_its_own_file(shared_evals: Path,
     )
     await runner_cls().setup(ctx)
     shared = eval_path.parent.parent.parent / "_shared"
-    assert [c for c in env.calls if c[0] != "exec"] == [
+    assert [c for c in env.calls if c[0] in ("upload_file", "upload_dir")] == [
         ("upload_file", ("start.sh", ANY)),
         ("upload_dir", (str(shared / "fixtures"), "/srv/fixtures")),
     ]
@@ -504,8 +545,9 @@ async def test_sh_adds_runner_env_and_maps_users(tmp_path: Path):
         "command": "echo hi",
         "cwd": None,
         "env": {"TONE": "formal", "EXTRA": "1"},
-        "timeout": 3,
+        "timeout": 33,  # Harbor's: the relay's 2.5 s fire first
         "user": None,  # the task's agent user
+        "relayed": True,
     }
     assert second["user"] == "root"
     assert result.return_code == 0
@@ -513,14 +555,152 @@ async def test_sh_adds_runner_env_and_maps_users(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_sh_check_raises_with_output_tail(tmp_path: Path):
-    ctx = agent_ctx(tmp_path, FakeEnvironment(lambda _: (3, "partial output")))
-    with pytest.raises(CommandError, match="exit code 3: false") as info:
-        _ = await ctx.container.sh("false")
-    assert "partial output" in str(info.value)
-    assert "boom" in str(info.value)
-    result = await ctx.container.sh("false", check=False)
-    assert result.return_code == 3
+async def test_sh_runs_through_the_relay_with_the_command_on_stdin(tmp_path: Path):
+    env = FakeEnvironment()
+    ctx = agent_ctx(tmp_path, env)
+    result = await ctx.container.sh("psql -c 'select 1'", timeout=5)
+    assert result == ExecResult(stdout="", stderr="", return_code=0)
+    ((_, (_, payload)),) = [c for c in env.calls if c[0] == "upload_payload"]
+    # One exec: the shell deletes the payload, then the relay reads it.
+    assert env.raw == [
+        f"{{ rm -f {payload} 2>/dev/null; /opt/lmnr/venv/bin/python -I /opt/lmnr/relay.py exec; }}"
+        + f" < {payload}"
+    ]
+    assert json.loads(env.files[payload]) == {"cmd": "psql -c 'select 1'", "timeout": 5}
+    _ = await ctx.container.sh("true")
+    assert env.execs()[-1]["timeout"] is None
+
+
+@pytest.mark.asyncio
+async def test_sh_removes_the_payload_when_the_relay_could_not(tmp_path: Path):
+    """A non-root agent user can't delete root's file in sticky /tmp: root does."""
+    env = FakeEnvironment(stdin_unlinked=False)
+    _ = await agent_ctx(tmp_path, env).container.sh("whoami")
+    ((_, (_, payload)),) = [c for c in env.calls if c[0] == "upload_payload"]
+    assert env.commands() == ["whoami", f"rm -f {payload}"]
+    assert [e["user"] for e in env.execs()] == [None, "root"]
+
+
+class RelayOutputEnvironment(FakeEnvironment):
+    """`exec` returns what the relay launcher printed, as given."""
+
+    def __init__(self, return_code: int, stdout: str, stderr: str = ""):
+        super().__init__()
+        self.output: SimpleNamespace = SimpleNamespace(
+            stdout=stdout, stderr=stderr, return_code=return_code
+        )
+
+    @override
+    async def exec(
+        self,
+        command: str,
+        cwd: str | None = None,
+        env: dict[str, str] | None = None,
+        timeout_sec: int | None = None,
+        user: str | int | None = None,
+    ) -> Any:
+        self.raw.append(command)
+        return self.output
+
+
+@pytest.mark.asyncio
+async def test_sh_on_an_image_without_the_laminar_layer(tmp_path: Path):
+    env = RelayOutputEnvironment(127, "sh: 1: /opt/lmnr/venv/bin/python: not found")
+    with pytest.raises(RuntimeError, match="/opt/lmnr is missing") as info:
+        _ = await agent_ctx(tmp_path, env).container.sh("true", check=False)
+    assert "not found" in str(info.value)
+    # The payload is removed all the same.
+    assert env.raw[-1].startswith("rm -f /tmp/.")
+
+
+@pytest.mark.asyncio
+async def test_sh_without_a_relay_result_raises_with_the_output(tmp_path: Path):
+    env = RelayOutputEnvironment(1, "Traceback (most recent call last):\n  oops", "more")
+    with pytest.raises(RuntimeError, match="relay printed no result") as info:
+        _ = await agent_ctx(tmp_path, env).container.sh("true", check=False)
+    assert "oops" in str(info.value) and "more" in str(info.value)
+
+
+class HarborLikeEnvironment:
+    """Runs commands on the host the way Harbor's environments do: `"docker"`
+    merges stderr into stdout and raises when `timeout_sec` passes (local
+    Docker), `"hosted"` keeps them apart and wraps the command in `timeout`
+    (lmnr-cli's hosted sandboxes, exit 124)."""
+
+    def __init__(self, kind: str):
+        self.kind: str = kind
+        self.uploaded: list[str] = []
+
+    async def exec(
+        self,
+        command: str,
+        cwd: str | None = None,
+        env: dict[str, str] | None = None,
+        timeout_sec: int | None = None,
+        user: str | int | None = None,
+    ) -> Any:
+        argv = ["bash", "-c", command]
+        if self.kind == "hosted" and timeout_sec:
+            argv = ["timeout", str(timeout_sec), *argv]
+        proc = await asyncio.create_subprocess_exec(
+            *argv,
+            cwd=cwd,
+            env={**os.environ, **(env or {})},
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT if self.kind == "docker" else subprocess.PIPE,
+        )
+        try:
+            out, err = await asyncio.wait_for(proc.communicate(), timeout_sec)
+        except TimeoutError:
+            proc.kill()
+            raise RuntimeError(f"Command timed out after {timeout_sec} seconds") from None
+        return SimpleNamespace(
+            stdout=out.decode(), stderr=err.decode() if err else None, return_code=proc.returncode
+        )
+
+    async def upload_file(self, source_path: Path | str, target_path: str) -> None:
+        self.uploaded.append(target_path)
+        _ = Path(target_path).write_bytes(Path(source_path).read_bytes())
+
+    async def upload_dir(self, source_dir: Path | str, target_dir: str) -> None:
+        raise NotImplementedError
+
+    async def download_file(self, source_path: str, target_path: Path | str) -> None:
+        _ = Path(target_path).write_bytes(Path(source_path).read_bytes())
+
+
+@pytest.fixture
+def host_relay(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The relay from this checkout instead of the Laminar layer's."""
+    monkeypatch.setattr(layer, "RELAY_COMMAND", f"{sys.executable} -I {relay.__file__}")
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("host_relay")
+@pytest.mark.parametrize("kind", ["docker", "hosted"])
+async def test_sh_is_the_same_in_every_environment(tmp_path: Path, kind: str):
+    env = HarborLikeEnvironment(kind)
+    ctx = agent_ctx(tmp_path, env)  # pyright: ignore[reportArgumentType]
+    # What differs underneath: local Docker merges stderr into stdout.
+    raw = await ctx.container._exec("echo out; echo err >&2", check=False)
+    assert (raw.stdout, raw.stderr) == (
+        ("out\nerr\n", "") if kind == "docker" else ("out\n", "err\n")
+    )
+
+    result = await ctx.container.sh("echo out; echo err >&2; exit 3", check=False)
+    assert result == ExecResult(stdout="out\n", stderr="err\n", return_code=3)
+    with pytest.raises(CommandError, match="exit code 3") as failed:
+        _ = await ctx.container.sh("echo out; echo err >&2; exit 3")
+    assert "--- stderr (tail) ---\nerr" in str(failed.value)
+
+    started = time.monotonic()
+    with pytest.raises(CommandTimeout, match="timed out after 1s: echo started") as info:
+        _ = await ctx.container.sh("echo started; sleep 30", timeout=1, check=False)
+    assert time.monotonic() - started < 10
+    assert isinstance(info.value, TimeoutError)
+    assert info.value.result == ExecResult(stdout="started\n", stderr="", return_code=124)
+    # Every payload was deleted by the shell before the relay read it.
+    assert env.uploaded and not any(Path(path).exists() for path in env.uploaded)
 
 
 @pytest.mark.asyncio

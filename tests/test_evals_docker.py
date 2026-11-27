@@ -23,7 +23,17 @@ from typing import Any
 
 import pytest
 
-from lmnr.evals import AgentContext, Case, ClickHouse, Image, Postgres, Valkey, VerifyContext
+from lmnr.evals import (
+    AgentContext,
+    Case,
+    ClickHouse,
+    CommandTimeout,
+    ExecResult,
+    Image,
+    Postgres,
+    Valkey,
+    VerifyContext,
+)
 from lmnr.evals.context import Secrets
 from lmnr.evals.fixtures import case_fixture
 from lmnr.evals.image import compile_image
@@ -43,10 +53,13 @@ REPO = Path(__file__).resolve().parent.parent
 
 
 class DockerEnvironment:
-    """Harbor's environment interface over `docker exec` / `docker cp`."""
+    """Harbor's environment interface over `docker exec` / `docker cp`.
+    `merge_stderr=True` execs like Harbor's local Docker environment: `bash -c`,
+    stderr merged into stdout, and a `RuntimeError` when `timeout_sec` passes."""
 
-    def __init__(self, container: str):
+    def __init__(self, container: str, merge_stderr: bool = False):
         self.container: str = container
+        self.merge_stderr: bool = merge_stderr
 
     async def exec(
         self,
@@ -63,13 +76,19 @@ class DockerEnvironment:
             argv += ["-w", cwd]
         for key, value in (env or {}).items():
             argv += ["-e", f"{key}={value}"]
-        argv += [self.container, "sh", "-c", command]
+        argv += [self.container, "bash" if self.merge_stderr else "sh", "-c", command]
         proc = await asyncio.create_subprocess_exec(
-            *argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            *argv,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT if self.merge_stderr else subprocess.PIPE,
         )
-        out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec or 600)
+        try:
+            out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec or 600)
+        except TimeoutError:
+            proc.kill()
+            raise RuntimeError(f"Command timed out after {timeout_sec} seconds") from None
         return SimpleNamespace(
-            stdout=out.decode(), stderr=err.decode(), return_code=proc.returncode
+            stdout=out.decode(), stderr=err.decode() if err else "", return_code=proc.returncode
         )
 
     async def upload_file(self, source_path: Path | str, target_path: str) -> None:
@@ -461,6 +480,52 @@ def test_clickhouse_migrations_on_bookworm_fails_the_build_with_a_hint(tmp_path:
     stderr = result.stderr.decode()
     assert "this image has glibc 2.36, but 2.38 or newer is needed." in stderr
     assert 'pass migrator="clickhouse-client"' in stderr
+
+
+def test_sh_through_docker_exec_with_and_without_merged_stderr(tmp_path: Path):
+    """`ctx.container.sh` runs through `relay.py exec`: stdout and stderr come
+    back apart and a timeout raises `CommandTimeout`, also when the exec merges
+    stderr into stdout and raises on its own timeout (Harbor's local Docker)."""
+    tag = build(Image.from_registry("debian:trixie-slim"), [], tmp_path)
+    container = start_container(tag)
+    try:
+
+        async def scenario(env: DockerEnvironment) -> None:
+            ctx = agent_ctx(env, Case(name="c", dir=tmp_path), tmp_path)
+            result = await ctx.container.sh("echo out; echo err >&2; exit 3", check=False)
+            assert result == ExecResult(stdout="out\n", stderr="err\n", return_code=3)
+            # Non-root: the relay can't delete root's payload, the runner does.
+            nobody = await ctx.container.sh("id -u; printf '\\377'", user="nobody")
+            assert nobody.stdout == "65534\n\ufffd"
+            with pytest.raises(CommandTimeout) as info:
+                _ = await ctx.container.sh("echo started; sleep 300 & sleep 300", timeout=2)
+            assert info.value.result == ExecResult("started\n", "", 124)
+            # The whole group was killed (the zombies have no command line).
+            left = await ctx.container.sh(
+                "for p in /proc/[0-9]*; do tr '\\0' ' ' < $p/cmdline 2>/dev/null; echo; done",
+                user="root",
+            )
+            assert "sleep 300" not in left.stdout
+            payloads = await ctx.container.sh(
+                "find /tmp -maxdepth 1 -name '.*' -type f", user="root"
+            )
+            assert payloads.stdout == ""
+
+        asyncio.run(scenario(DockerEnvironment(container)))
+        asyncio.run(scenario(DockerEnvironment(container, merge_stderr=True)))
+    finally:
+        _ = subprocess.run(["docker", "rm", "-f", container], check=False, capture_output=True)
+        _ = subprocess.run(["docker", "rmi", tag], check=False, capture_output=True)
+
+
+def test_sh_on_an_image_without_the_laminar_layer(tmp_path: Path):
+    container = start_container("debian:trixie-slim")
+    try:
+        ctx = agent_ctx(DockerEnvironment(container), Case(name="c", dir=tmp_path), tmp_path)
+        with pytest.raises(RuntimeError, match="/opt/lmnr is missing"):
+            _ = asyncio.run(ctx.container.sh("true"))
+    finally:
+        _ = subprocess.run(["docker", "rm", "-f", container], check=False, capture_output=True)
 
 
 def test_verify_reads_snapshots_in_separate_mode(tmp_path: Path):
