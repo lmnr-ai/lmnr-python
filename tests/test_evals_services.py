@@ -425,9 +425,13 @@ FAKE_RYSTIC = textwrap.dedent(
             if url.path == "/_rystic/inspect":
                 return self.reply(200, state)
             if url.path == "/_rystic/calls":
-                return self.reply(200, calls)
+                query = parse_qs(url.query)
+                assert query == {"summary": ["1"], "writes": ["1"]}, query
+                return self.reply(200, {"calls": calls, "dropped": 0, "epoch": 1,
+                                        "total": len(calls)})
             if url.path == "/_rystic/settle":
-                return self.reply(200, {"quiet_ms": int(parse_qs(url.query)["quiet_ms"][0])})
+                quiet = int(parse_qs(url.query)["quiet_ms"][0])
+                return self.reply(200, {"settled": True, "idle_ms": quiet, "last_call_seq": 0})
             if url.path == "/api/conversations.history":
                 calls.append({"path": url.path, "ok": True})
                 return self.reply(200, {"channel": parse_qs(url.query)["channel"][0],
@@ -436,9 +440,11 @@ FAKE_RYSTIC = textwrap.dedent(
 
         def do_POST(self):
             body = self.rfile.read(int(self.headers["Content-Length"]))
-            if self.path == "/_rystic/seed":
+            if self.path == "/_rystic/seed":  # merges; 204, no body
                 state.update(json.loads(body))
-                return self.reply(200, {"ok": True})
+                self.send_response(204)
+                self.end_headers()
+                return
             self.reply(404, {})
 
         def log_message(self, *args):
@@ -480,6 +486,11 @@ def test_rystic_against_a_fake_simulator(
     elif shutil.which("curl") is None:
         pytest.skip("no curl")
 
+    # What Laminar's remote sandboxes set for every trial.
+    monkeypatch.setenv("RYSTIC_TOKEN", "rys_" + "a" * 43)
+    monkeypatch.setenv(
+        "RYSTIC_RELEASE_ENDPOINT", "http://127.0.0.1:9/v1/hosted-evals/rystic/download"
+    )
     port = free_port()
     slack = Rystic(
         "slack",
@@ -508,7 +519,7 @@ def test_rystic_against_a_fake_simulator(
         assert state == {"product": "slack-twin", "messages": [{"text": "refund please"}]}
         history = await slack.get(ctx, "/api/conversations.history", channel="C1")
         assert history == {"channel": "C1", "messages": [{"text": "refund please"}]}
-        await slack.settle(ctx, quiet_ms=10)
+        assert (await slack.settle(ctx, quiet_ms=10))["settled"] is True
         assert await slack.calls(ctx) == [{"path": "/api/conversations.history", "ok": True}]
         # Saved in collect, read back in a separate verifier.
         await slack.snapshot(ctx, str(tmp_path / "trial" / "artifacts" / "state" / "slack"))
@@ -542,6 +553,37 @@ def test_rystic_against_a_fake_simulator(
     ]
     with pytest.raises(EvalConfigError, match="isn't running in separate verifier mode"):
         asyncio.run(slack.get(verify_ctx, "/api/x"))
+
+
+@pytest.mark.parametrize("token", [False, True])
+def test_rystic_is_remote_only_for_now(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, token: bool
+):
+    """No RYSTIC_TOKEN (a local run): fail before the pull, with the reason. A
+    token without Laminar's endpoint (`--env RYSTIC_TOKEN`): warn and try."""
+    monkeypatch.delenv("RYSTIC_RELEASE_ENDPOINT", raising=False)
+    if token:
+        monkeypatch.setenv("RYSTIC_TOKEN", "rys_" + "b" * 43)
+    else:
+        monkeypatch.delenv("RYSTIC_TOKEN", raising=False)
+    binary = tmp_path / "rystic"
+    _ = binary.write_text("#!/bin/sh\necho pulled-without-access >&2; exit 3\n")
+    binary.chmod(0o755)
+    monkeypatch.setattr(rystic_module, "BINARY", str(binary))
+    ctx = AgentContext(
+        environment=LocalEnvironment(),
+        case=make_case(tmp_path),
+        runner_dir=tmp_path,
+        host_logs_dir=tmp_path / "agent",
+    )
+    warnings: list[str] = []
+    monkeypatch.setattr(ctx.logger, "warning", lambda msg, *a, **k: warnings.append(msg))
+    message = "pulled-without-access" if token else "only in `lmnr-cli eval run --remote`"
+    with pytest.raises(Exception, match=message):
+        asyncio.run(Rystic("slack", version="1.4").start(ctx))
+    assert bool(warnings) == token
+    if token:
+        assert "only in `lmnr-cli eval run --remote`" in warnings[0]
 
 
 def test_rystic_build_and_start_assumptions():

@@ -7,17 +7,24 @@ Checked against rystic CLI 0.0.93 and lmnr's hosted-evals proxy (LAM-2592):
 
 - the CLI is one static binary, installed by `INSTALLER_URL` at a pinned
   `RYSTIC_VERSION`; that needs no key, so the image build is key-free;
-- a twin is downloaded per trial with `rystic pull <product> --version <v>`,
-  which needs a key: `RYSTIC_TOKEN` (plus `RYSTIC_RELEASE_ENDPOINT` /
-  `RYSTIC_LEASE_URL`) in the container's env. Laminar's remote sandboxes have
-  them per trial; locally pass a key with `lmnr-cli eval run --env
-  RYSTIC_TOKEN`. The running twin checks in with Rystic's lease server;
+- a twin is downloaded per trial with `rystic pull <product> --version <v>`
+  (into `$RYSTIC_HOME/twins/<product>/<v>`, marked current for `run`), which
+  needs a key. Laminar's remote sandboxes give every trial its own:
+  `RYSTIC_TOKEN`, `RYSTIC_RELEASE_ENDPOINT` and `RYSTIC_LEASE_URL` in the
+  sandbox env, pointing at the app-server's Rystic proxy (lmnr-private
+  `hosted_evals/rystic.rs`). Only `--remote` runs are supported for now: a
+  trial without a token fails before the pull, and one with a token but not
+  Laminar's endpoint (a key passed with `--env` locally) gets a warning;
 - `rystic run <product> --name <n> --port <p>` serves the vendor's API in the
-  foreground (`-d` would detach);
-- `GET /_rystic/routes` answers once it serves; `POST /_rystic/seed` takes a
-  scenario (register map) and replaces the state; `GET /_rystic/inspect` is
-  the state, `GET /_rystic/calls` every API call the app made, and
-  `GET /_rystic/settle?quiet_ms=` returns once the app stopped reacting.
+  foreground (`-d` would detach), starting from an empty workspace (no
+  `--scenario`); the twin checks in with the lease URL while it runs;
+- control plane (`rystic help control-plane`; every route used here is on
+  every plan): `GET /_rystic/routes` answers once it serves; `POST
+  /_rystic/seed` merges a register map (or lands a scenario document) into
+  the state and answers 204; `GET /_rystic/inspect` is the state,
+  `GET /_rystic/calls` every vendor API call since reset (`{"calls": [...]}`),
+  and `GET /_rystic/settle?quiet_ms=` long-polls until the app stopped
+  reacting (`{"settled": bool, ...}`, unsettled after `timeout_ms`).
 """
 
 from __future__ import annotations
@@ -58,6 +65,15 @@ SETTLE_PATH = "/_rystic/settle"
 CALLS_FILE = "calls.json"
 # `rystic pull` downloads the twin.
 PULL_TIMEOUT_SEC = 300
+# Which Rystic access the trial has: Laminar's per-trial proxy, a bare key, none.
+ACCESS_CHECK = (
+    'if [ -z "${RYSTIC_TOKEN:-}" ]; then echo none; '
+    + 'elif [ -z "${RYSTIC_RELEASE_ENDPOINT:-}" ]; then echo key; else echo laminar; fi'
+)
+REMOTE_ONLY = (
+    "Rystic mirrors are supported only in `lmnr-cli eval run --remote` for now, where "
+    + "Laminar gives each trial its own Rystic access."
+)
 
 
 class Rystic(Mirror):
@@ -67,8 +83,12 @@ class Rystic(Mirror):
         Rystic("slack", version="1.4", seed=case_fixture("slack.json"),
                env={"SLACK_API_URL": "{url}/api/"})
 
-    `seed` is a Rystic scenario (`{"<register>": {"<key>": {record}}}`, see
-    `rystic docs slack-twin seeding-state`), loaded after start; `clock` (RFC
+    Remote runs only for now (`lmnr-cli eval run --remote`): Laminar's
+    sandboxes give each trial its Rystic access.
+
+    `seed` is a register map (`{"<register>": {"<key>": {record}}}`, see
+    `rystic docs slack-twin seeding-state`), merged into the twin's empty
+    workspace after start; `clock` (RFC
     3339) starts the twin's clock. In `verify`: `await
     self.mirror("slack").state(ctx)` (`/_rystic/inspect`), `.calls(ctx)`
     (`/_rystic/calls`) or `.get(ctx, "/api/conversations.history",
@@ -136,6 +156,14 @@ class Rystic(Mirror):
 
     @override
     async def start(self, ctx: AgentContext) -> None:
+        access = (await ctx.container.sh(ACCESS_CHECK, user="root", check=False)).stdout.strip()
+        if access not in ("laminar", "key"):
+            raise RuntimeError(f"{REMOTE_ONLY} This trial has no RYSTIC_TOKEN ({self.name}).")
+        if access == "key":
+            ctx.logger.warning(
+                f"{REMOTE_ONLY} {self.name}: trying the RYSTIC_TOKEN this trial has, "
+                + "against rystic.ai."
+            )
         _ = await ctx.container.sh(
             PULL_COMMAND.format(
                 binary=BINARY,
@@ -179,19 +207,26 @@ class Rystic(Mirror):
     async def snapshot(self, ctx: AgentContext, out_dir: str) -> None:
         await super().snapshot(ctx, out_dir)
         if self.snapshot_state:
-            calls = await self.request(ctx, "GET", CALLS_PATH)
+            calls = await self._live_calls(ctx)
             await ctx.container.write_file(f"{out_dir}/{CALLS_FILE}", json.dumps(calls))
 
     # Grading
 
     async def calls(self, ctx: Context) -> Any:
-        """Every API call the app made (`/_rystic/calls`); in a separate
-        verifier, what `collect` saved (`snapshot=True`)."""
+        """Every vendor API call the app made, oldest first (`/_rystic/calls`),
+        each with its `summary` and `writes` (the records it created, changed
+        or deleted); in a separate verifier, what `collect` saved
+        (`snapshot=True`)."""
         if getattr(ctx, "verifier_mode", None) == "separate":
             return self.saved(ctx, CALLS_FILE)
-        return await self.request(ctx, "GET", CALLS_PATH)
+        return await self._live_calls(ctx)
 
-    async def settle(self, ctx: Context, quiet_ms: int = 2000) -> None:
+    async def _live_calls(self, ctx: Context) -> Any:
+        log = await self.request(ctx, "GET", CALLS_PATH, params={"summary": 1, "writes": 1})
+        return log.get("calls", log) if isinstance(log, dict) else log
+
+    async def settle(self, ctx: Context, quiet_ms: int = 2000) -> Any:
         """Wait until the app stopped reacting for `quiet_ms` (e.g. a bot's
-        turn after an event)."""
-        _ = await self.request(ctx, "GET", SETTLE_PATH, params={"quiet_ms": quiet_ms})
+        turn after an event). Returns Rystic's answer: `settled` is false
+        when it timed out, with what is still `pending`."""
+        return await self.request(ctx, "GET", SETTLE_PATH, params={"quiet_ms": quiet_ms})
