@@ -45,6 +45,7 @@ from lmnr.evals.context import (
     normalize_rewards,
 )
 from lmnr.evals.errors import EvalConfigError
+from lmnr.evals.mocks import RunningMocks, collect_mocks, start_mock_server
 from lmnr.evals.runner import EvalRunner, load_runner
 from lmnr.evals.services.base import snapshot_services, start_services
 from lmnr.integrations.harbor.spans import verifier_spans
@@ -92,27 +93,34 @@ class LaminarAgent(BaseInstalledAgent):  # pyright: ignore[reportUntypedBaseClas
             host_logs_dir=self.logs_dir,
         )
 
-        # The trial's steps, in order. The mock server will start after the
-        # services, before setup (phase 3).
+        # The trial's steps, in order: services, the mock server, setup, run,
+        # collect.
         if runner_cls.services:
             service_env = await start_services(runner_cls.services, ctx)
             # Harbor's own agents[].env wins over per-command env anyway.
             ctx.add_env(service_env, {k: v for k, v in service_env.items() if k not in harbor_env})
+        mocks = None
+        specs = runner_cls.mock_specs()
+        if specs:
+            mocks = await start_mock_server(ctx, specs, eval_path=eval_path)
+            ctx.add_env(mocks.env, {k: v for k, v in mocks.env.items() if k not in harbor_env})
         await runner.setup(ctx)
         try:
             await runner.run(ctx)
         except asyncio.CancelledError:
-            await _collect_after_failure(runner, ctx, timeout=COLLECT_AFTER_CANCEL_TIMEOUT_SEC)
+            await _collect_after_failure(
+                runner, ctx, mocks, timeout=COLLECT_AFTER_CANCEL_TIMEOUT_SEC
+            )
             raise
         except Exception as error:
             try:
-                await _collect_after_failure(runner, ctx)
+                await _collect_after_failure(runner, ctx, mocks)
             except asyncio.CancelledError:
                 # Cancelled while collecting (the agent timed out, say): the
                 # run's error is still what failed the trial, so it wins.
                 raise error from None
             raise
-        await _collect(runner, ctx)
+        await _collect(runner, ctx, mocks)
 
     def populate_context_post_run(self, context: Any) -> None:
         try:
@@ -183,6 +191,7 @@ class LaminarVerifier(BaseVerifier):  # pyright: ignore[reportUntypedBaseClass]
             host_artifacts_dir=trial_paths.artifacts_dir,
             artifacts=list(runner_cls.artifacts),
             verifier_mode=verifier_mode,
+            mock_keys=list(runner_cls.mocks),
         )
 
         try:
@@ -230,21 +239,29 @@ class LaminarVerifier(BaseVerifier):  # pyright: ignore[reportUntypedBaseClass]
             await ctx.container.write_file(str(env_paths.reward_json_path), json.dumps(rewards))
 
 
-async def _collect(runner: EvalRunner, ctx: AgentContext) -> None:
-    """`collect`, then the services' snapshots (also when `collect` raised)."""
+async def _collect(runner: EvalRunner, ctx: AgentContext, mocks: RunningMocks | None) -> None:
+    """`collect`, then the services' snapshots and the mock call log (each
+    also when an earlier one raised)."""
     try:
         await runner.collect(ctx)
     finally:
-        await snapshot_services(type(runner).services, ctx)
+        try:
+            await snapshot_services(type(runner).services, ctx)
+        finally:
+            if mocks is not None:
+                await collect_mocks(ctx, mocks)
 
 
 async def _collect_after_failure(
-    runner: EvalRunner, ctx: AgentContext, timeout: float | None = None
+    runner: EvalRunner,
+    ctx: AgentContext,
+    mocks: RunningMocks | None,
+    timeout: float | None = None,
 ) -> None:
     """`collect` after `run` raised. Its own error is logged, so the run's wins."""
     try:
         async with asyncio.timeout(timeout):
-            await _collect(runner, ctx)
+            await _collect(runner, ctx, mocks)
     except Exception:
         logger.warning(f"collect() failed after run() failed:\n{traceback.format_exc()}")
 

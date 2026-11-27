@@ -3,7 +3,7 @@ import shlex
 
 from anthropic import AsyncAnthropic
 from lmnr import observe
-from lmnr.evals import EvalRunner, Image, secret
+from lmnr.evals import EvalRunner, Image, mock, secret
 from pydantic import BaseModel
 
 # Runs in the container in verify(): what actually happened in the database.
@@ -46,6 +46,25 @@ async def judge(reply: str, criteria: str, api_key: str) -> Verdict:
     return response.parsed_output
 
 
+# Mocks: plain functions that run inside the container, in the mock server, for
+# every trial. ctx.fixture_json reads this case's tests/fixtures/, which the
+# agent never sees as files.
+def get_customer(call, ctx):
+    """Replaces the app's observed `crm.get_customer`, once the app's Laminar
+    SDK supports function mocks. Until then the app calls CRM_API_URL."""
+    customer = ctx.fixture_json("crm.json").get(call.args["email"])
+    if customer is None:
+        raise mock.Error("CustomerNotFound", f"no customer {call.args['email']}")
+    return customer
+
+
+def helpdesk(req, ctx):
+    """The helpdesk API, which the app reaches through HELPDESK_API_URL."""
+    if req.method == "POST" and req.path.endswith("/replies"):
+        return mock.Response(201, json={"id": f"reply-{req.index}"})
+    return None  # anything else: 501, logged as unmatched
+
+
 class SupportEval(EvalRunner):
     # The image every case starts from. The context is the example's root, so
     # the image copies the app's code.
@@ -54,6 +73,13 @@ class SupportEval(EvalRunner):
     # Names only: lmnr-cli reads the values from your shell, .env.local or .env.
     secrets = ["ANTHROPIC_API_KEY"]
     env = {"ANTHROPIC_API_KEY": secret("ANTHROPIC_API_KEY")}
+    mocks = {
+        "crm.get_customer": get_customer,
+        "https://helpdesk.example.com/api": mock.http(helpdesk, base_url_env="HELPDESK_API_URL"),
+    }
+    # The mock server imports this file in the container, and the file imports
+    # anthropic (for the judge): install it there too.
+    mock_dependencies = ["anthropic>=2.4.0"]
     # The task.toml lmnr-cli writes for new cases (tasks without one).
     new_task_toml = {"environment": {"workdir": "/case"}, "agent": {"timeout_sec": 300}}
 
@@ -83,7 +109,7 @@ class SupportEval(EvalRunner):
         result = ctx.result()
         if result.get("outcome") != "completed":
             ctx.logger.info(f"agent run did not complete: {result}")
-            return {"refund": 0, "reply": 0}
+            return {"refund": 0, "reply": 0, "posted": 0}
 
         # 1. Hard check: what actually happened in the database.
         r = await ctx.container.sh(f"python -c {shlex.quote(REFUNDS_QUERY)}")
@@ -96,4 +122,11 @@ class SupportEval(EvalRunner):
             result["reply"], expected["reply_should"], ctx.secrets["ANTHROPIC_API_KEY"]
         )
         ctx.logger.info(f"judge: {'pass' if verdict.passed else 'fail'}: {verdict.reason}")
-        return {"refund": refund_ok, "reply": verdict.passed}
+
+        # 3. The mocks' call log: the reply went out through the helpdesk, once.
+        posts = [
+            c
+            for c in ctx.mocks.calls("https://helpdesk.example.com/api")
+            if c["request"]["method"] == "POST"
+        ]
+        return {"refund": refund_ok, "reply": verdict.passed, "posted": len(posts) == 1}

@@ -1,0 +1,57 @@
+{
+  "description": "Async handlers are awaited; ctx.calls has earlier calls of the key.",
+  "calls": [
+    {
+      "method": "POST",
+      "path": "/fn/pricing.quote",
+      "body": {
+        "args": {
+          "sku": "A"
+        },
+        "lang": "python",
+        "trace_id": null,
+        "span_id": null
+      },
+      "status": 200,
+      "response": {
+        "action": "respond",
+        "value": {
+          "quote": 42,
+          "earlier_calls": 0
+        }
+      },
+      "sdk": {
+        "returns": {
+          "quote": 42,
+          "earlier_calls": 0
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/fn/pricing.quote",
+      "body": {
+        "args": {
+          "sku": "B"
+        },
+        "lang": "python",
+        "trace_id": null,
+        "span_id": null
+      },
+      "status": 200,
+      "response": {
+        "action": "respond",
+        "value": {
+          "quote": 42,
+          "earlier_calls": 1
+        }
+      },
+      "sdk": {
+        "returns": {
+          "quote": 42,
+          "earlier_calls": 1
+        }
+      }
+    }
+  ]
+}

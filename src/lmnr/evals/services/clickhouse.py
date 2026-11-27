@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from typing_extensions import override
 
+from lmnr.evals.context import relay
 from lmnr.evals.errors import EvalConfigError
 from lmnr.evals.fixtures import SeedSpec, resolve_seed
 from lmnr.evals.image import PathMap
@@ -278,18 +279,19 @@ record_glibc {self.name}-migrations"""
         if not self.snapshot_tables:
             return
         quoted = shlex.quote(out_dir)
-        # pipefail: a failed query must fail the snapshot, not save `[]`.
-        lines = ["set -eo pipefail", f"rm -rf {quoted}", f"mkdir -p {quoted}"]
-        for table in self.snapshot_tables:
-            query = f"SELECT * FROM {table} FORMAT JSONEachRow"
-            target = shlex.quote(f"{out_dir}/{table}.json")
-            # JSONEachRow lines -> one JSON array.
-            lines.append(
-                f"{{ echo '['; {self._client(database=True)} {JSON_SETTINGS} "
-                + f"-q {shlex.quote(query)} | sed '$!s/$/,/'; echo ']'; }} > {target}"
-            )
-        lines.append(f"chmod -R a+rX {quoted}")
-        _ = await run_script(ctx, "\n".join(lines), what=f"Snapshot of {self.name}")
+        _ = await ctx.container.sh(f"rm -rf {quoted} && mkdir -p {quoted}", user="root", timeout=60)
+        # JSONEachRow lines -> one JSON array per table; a failed query fails
+        # the snapshot instead of saving `[]`.
+        jobs = [
+            {
+                "command": f"{self._client(database=True)} {JSON_SETTINGS} "
+                + f"-q {shlex.quote(f'SELECT * FROM {table} FORMAT JSONEachRow')}",
+                "out": f"{out_dir}/{table}.json",
+            }
+            for table in self.snapshot_tables
+        ]
+        _ = await relay(ctx.container, "rows", jobs, timeout=600, what=f"Snapshot of {self.name}")
+        _ = await ctx.container.sh(f"chmod -R a+rX {quoted}", user="root", timeout=60)
 
     # Helpers
 

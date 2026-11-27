@@ -1,0 +1,29 @@
+{
+  "description": "Health and the list of function keys.",
+  "calls": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "status": 200,
+      "response": {
+        "ok": true
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/keys",
+      "status": 200,
+      "response": {
+        "keys": [
+          "crm.get_customer",
+          "inventory.check",
+          "orders.find",
+          "payments.refund",
+          "pricing.quote",
+          "search.web",
+          "tools/search web"
+        ]
+      }
+    }
+  ]
+}

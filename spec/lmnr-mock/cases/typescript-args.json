@@ -1,0 +1,74 @@
+{
+  "description": "TypeScript sends positional arguments as an array; keys are percent-encoded as one path segment; index counts per key.",
+  "calls": [
+    {
+      "method": "POST",
+      "path": "/fn/tools%2Fsearch%20web",
+      "body": {
+        "args": [
+          "refund policy",
+          {
+            "limit": 3
+          }
+        ],
+        "lang": "typescript",
+        "trace_id": null,
+        "span_id": null
+      },
+      "status": 200,
+      "response": {
+        "action": "respond",
+        "value": {
+          "args": [
+            "refund policy",
+            {
+              "limit": 3
+            }
+          ],
+          "index": 0
+        }
+      },
+      "sdk": {
+        "returns": {
+          "args": [
+            "refund policy",
+            {
+              "limit": 3
+            }
+          ],
+          "index": 0
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/fn/tools%2Fsearch%20web",
+      "body": {
+        "args": [
+          "shipping"
+        ],
+        "lang": "typescript",
+        "trace_id": null,
+        "span_id": null
+      },
+      "status": 200,
+      "response": {
+        "action": "respond",
+        "value": {
+          "args": [
+            "shipping"
+          ],
+          "index": 1
+        }
+      },
+      "sdk": {
+        "returns": {
+          "args": [
+            "shipping"
+          ],
+          "index": 1
+        }
+      }
+    }
+  ]
+}

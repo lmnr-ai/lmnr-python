@@ -8,10 +8,13 @@ tests/test_evals_docker.py`. Images build for linux/amd64, like remote runs.
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import os
+import shlex
 import shutil
 import subprocess
+import tempfile
 import textwrap
 import uuid
 from pathlib import Path
@@ -24,7 +27,10 @@ from lmnr.evals import AgentContext, Case, ClickHouse, Image, Postgres, Valkey, 
 from lmnr.evals.context import Secrets
 from lmnr.evals.fixtures import case_fixture
 from lmnr.evals.image import compile_image
+from lmnr.evals.layer import WHEEL_CONTEXT, LaminarLayer
 from lmnr.evals.mirrors import Rystic
+from lmnr.evals.mocks import collect_mocks, start_mock_server
+from lmnr.evals.runner import find_runner, load_module
 from lmnr.evals.services.base import Service, snapshot_services, start_services
 
 pytestmark = pytest.mark.skipif(
@@ -33,6 +39,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 BASES = ["python:3.13-slim-bookworm", "debian:trixie-slim", "ubuntu:24.04"]
+REPO = Path(__file__).resolve().parent.parent
 
 
 class DockerEnvironment:
@@ -87,8 +94,23 @@ class DockerEnvironment:
         )
 
 
+@functools.cache
+def lmnr_wheel() -> Path:
+    """This checkout as a wheel, for the Laminar layer (what lmnr-cli does for
+    `LMNR_EVAL_LMNR_SPEC=<path>`)."""
+    out = Path(tempfile.mkdtemp(prefix="lmnr-wheel-"))
+    _ = subprocess.run(
+        ["uv", "build", "--wheel", "--out-dir", str(out), str(REPO)],
+        check=True,
+        capture_output=True,
+    )
+    return out
+
+
 def build(image: Image, services: list[Service], tmp_path: Path) -> str:
-    compiled = compile_image(image, services, fallback_dir=tmp_path)
+    """Builds like lmnr-cli: the services plus the Laminar layer, which the
+    runner's helpers (readiness, HTTP, snapshots) run on."""
+    compiled = compile_image(image, [*services, LaminarLayer(lmnr=None)], fallback_dir=tmp_path)
     assert compiled.kind == "generated" and compiled.dockerfile_text and compiled.context
     tag = f"lmnr-evals-test:{uuid.uuid4().hex[:10]}"
     result = subprocess.run(
@@ -97,6 +119,8 @@ def build(image: Image, services: list[Service], tmp_path: Path) -> str:
             "build",
             "--platform",
             "linux/amd64",
+            "--build-context",
+            f"{WHEEL_CONTEXT}={lmnr_wheel()}",
             "-q",
             "-t",
             tag,
@@ -440,3 +464,225 @@ def test_rystic_cli_installs_without_a_key(tmp_path: Path):
         assert "Rystic simulators" in out.stdout.decode()
     finally:
         _ = subprocess.run(["docker", "rmi", tag], check=False, capture_output=True)
+
+
+# The Laminar layer on an image with neither curl nor Python
+
+FAKE_RYSTIC_JS = """\
+#!/usr/bin/env node
+// rystic pull <product> --version <v> | rystic run <product> --name <n> --port <p>
+const http = require("http");
+const args = process.argv.slice(2);
+if (args[0] === "pull") { console.log(`pulled ${args[1]}`); process.exit(0); }
+const port = Number(args[args.indexOf("--port") + 1]);
+const state = { messages: [] };
+const calls = [];
+http.createServer((req, res) => {
+  let body = "";
+  req.on("data", (c) => (body += c));
+  req.on("end", () => {
+    const url = new URL(req.url, "http://x");
+    // No Content-Length: Node answers chunked.
+    const reply = (code, value) => { res.writeHead(code, { "Content-Type": "application/json" });
+                                     res.write(JSON.stringify(value)); res.end(); };
+    if (url.pathname === "/_rystic/routes") return reply(200, { routes: [] });
+    if (url.pathname === "/_rystic/seed") { Object.assign(state, JSON.parse(body));
+                                            res.writeHead(204); return res.end(); }
+    if (url.pathname === "/_rystic/inspect") return reply(200, state);
+    if (url.pathname === "/_rystic/calls") return reply(200, { calls, total: calls.length });
+    if (url.pathname === "/_rystic/settle") return reply(200, { settled: true });
+    calls.push({ path: url.pathname });
+    reply(200, { ok: true, messages: state.messages });
+  });
+}).listen(port, "127.0.0.1");
+"""
+
+SHARED_HANDLERS = """
+from lmnr.evals import mock
+
+
+def get_customer(call, ctx):
+    return ctx.fixture_json("crm.json").get(call.args[0] if isinstance(call.args, list)
+                                            else call.args["email"])
+
+
+def zendesk(req, ctx):
+    if req.method == "POST":
+        return mock.Response(201, json={"created": req.json()})
+    return None
+"""
+
+MOCKS_EVAL = """
+from lmnr.evals import EvalRunner, Image, mock
+from _shared.handlers import get_customer, zendesk
+
+
+def refund(call, ctx):
+    if ctx.state.setdefault("refunded", False):
+        raise mock.Error("DuplicateRefund", "charge already refunded")
+    ctx.state["refunded"] = True
+    return {"status": "ok"}
+
+
+class SupportEval(EvalRunner):
+    image = Image.node("24")
+    mocks = {
+        "crm.get_customer": get_customer,
+        "payments.refund": refund,
+        "https://api.zendesk.com": mock.http(zendesk, base_url_env="ZENDESK_URL"),
+    }
+    run_command = "true"
+    grade_with_test_sh = True
+"""
+
+# What the app does with LMNR_MOCK_URL / ZENDESK_URL (phase 4's SDK does the
+# function route itself).
+FETCH_JS = """
+const [key, args, method] = process.argv.slice(2);
+const url = key ? `${process.env.LMNR_MOCK_URL}/fn/${encodeURIComponent(key)}`
+                : `${process.env.ZENDESK_URL}/api/v2/tickets/1/comments`;
+const body = key ? JSON.stringify({ args: JSON.parse(args), lang: "typescript" }) : args;
+fetch(url, { method: method || "POST", body: method === "GET" ? undefined : body })
+  .then(async (r) => console.log(JSON.stringify({ status: r.status, body: await r.json() })));
+"""
+
+
+class NoCli(Rystic):
+    """Rystic with the fake simulator the image already has, not the real CLI."""
+
+    def bundle_stages(self, rel: Any) -> list[str]:
+        return []
+
+    def install_steps(self, rel: Any) -> list[str]:
+        return []
+
+
+def test_layer_on_an_image_without_curl_or_python(tmp_path: Path):
+    """Readiness, mirror HTTP (chunked), ClickHouse snapshots and the mock
+    server all run on the layer's Python, on `node:24-trixie-slim`."""
+    root, case = project(tmp_path)
+    fake = tmp_path / "rystic.js"
+    _ = fake.write_text(FAKE_RYSTIC_JS)
+    _ = (case.dir / "tests" / "fixtures" / "crm.json").write_text(
+        json.dumps({"ana@example.com": {"id": "cus_1"}})
+    )
+    _ = (case.dir / "tests" / "fixtures" / "slack.json").write_text(
+        json.dumps({"messages": [{"text": "refund please"}]})
+    )
+    evals = tmp_path / "evals"
+    (evals / "_shared").mkdir(parents=True)
+    _ = (evals / "_shared" / "handlers.py").write_text(textwrap.dedent(SHARED_HANDLERS))
+    eval_path = evals / "support" / "agent" / "eval.py"
+    eval_path.parent.mkdir(parents=True)
+    _ = eval_path.write_text(textwrap.dedent(MOCKS_EVAL))
+    runner = find_runner(load_module(eval_path))
+    assert runner.validate() == []
+
+    postgres = Postgres("16", migrations=str(root / "migrations"), snapshot=["refunds"])
+    clickhouse = ClickHouse("24.8", migrations=str(root / "clickhouse"), snapshot=["events"])
+    slack = NoCli("slack", version="1.4", seed=case_fixture("slack.json"), snapshot=True)
+    services: list[Service] = [postgres, clickhouse, slack]
+    image = (
+        Image.node("24")
+        .add_file(str(fake), "/usr/local/bin/rystic")
+        .run_commands("chmod 755 /usr/local/bin/rystic")
+    )
+    tag = build(image, services, tmp_path)
+    container = start_container(tag)
+    try:
+        env = DockerEnvironment(container)
+        ctx = AgentContext(
+            environment=env,
+            case=case,
+            runner_dir=eval_path.parent,
+            host_logs_dir=tmp_path / "trial" / "agent",
+            exec_env={"RYSTIC_TOKEN": "rys_" + "a" * 43, "RYSTIC_RELEASE_ENDPOINT": "http://x"},
+        )
+
+        async def sh(command: str) -> str:
+            return (await ctx.container.sh(command, user="root")).stdout
+
+        async def scenario() -> None:
+            assert "not found" in await sh("command -v curl python3 python || echo not found")
+            size = await sh("du -sh /opt/lmnr | cut -f1")
+            print(f"Laminar layer: {size.strip()}")
+
+            ctx.add_env(await start_services(services, ctx))
+            assert (await slack.state(ctx))["messages"] == [{"text": "refund please"}]
+            assert (await slack.get(ctx, "/api/conversations.history"))["ok"] is True
+            assert (await slack.settle(ctx))["settled"] is True
+
+            running = await start_mock_server(ctx, runner.mock_specs(), eval_path=eval_path)
+            ctx.add_env(running.env)
+            # Nothing of the mocks on disk, a neutral process.
+            leftovers = await sh(
+                "find /tmp /logs /case \\( -name c.json -o -name 'mocks*' -o -name '*.py' "
+                "-o -name crm.json \\) 2>/dev/null"
+            )
+            assert leftovers == ""
+            assert (await sh(f"cat /proc/{running.pid}/comm")).strip() == "relay"
+            processes = await sh(
+                "for p in /proc/[0-9]*; do tr '\\0' ' ' < $p/cmdline 2>/dev/null; echo; done"
+            )
+            assert "relay.py serve /tmp/." in processes
+            for word in ("mock", "eval", "test", "fixture"):
+                assert word not in processes, processes
+
+            _ = await env.upload_file(_write(tmp_path / "fetch.js", FETCH_JS), "/srv/fetch.js")
+
+            async def app(*args: str) -> Any:
+                out = await ctx.container.sh(shlex.join(["node", "/srv/fetch.js", *args]))
+                return json.loads(out.stdout)
+
+            assert await app("crm.get_customer", '["ana@example.com"]') == {
+                "status": 200,
+                "body": {"action": "respond", "value": {"id": "cus_1"}},
+            }
+            assert (await app("payments.refund", "{}"))["body"]["action"] == "respond"
+            assert (await app("payments.refund", "{}"))["body"]["error"]["type"] == (
+                "DuplicateRefund"
+            )
+            assert await app("", '{"body": "hi"}') == {
+                "status": 201,
+                "body": {"created": {"body": "hi"}},
+            }
+            assert (await app("", "{}", "GET"))["status"] == 501
+
+            # The agent plants a call log; collect replaces it.
+            _ = await sh(
+                "mkdir -p /logs/artifacts && echo '{\"forged\": 1}' > /logs/artifacts/mocks.jsonl"
+            )
+            await snapshot_services(services, ctx)
+            await collect_mocks(ctx, running)
+            await env.download_file("/logs/artifacts/mocks.jsonl", tmp_path / "mocks.jsonl")
+            await env.download_file(
+                "/logs/artifacts/state/clickhouse/events.json", tmp_path / "events.json"
+            )
+            await env.download_file(
+                "/logs/artifacts/state/slack/calls.json", tmp_path / "calls.json"
+            )
+
+        asyncio.run(scenario())
+    finally:
+        _ = subprocess.run(["docker", "rm", "-f", container], check=False, capture_output=True)
+        _ = subprocess.run(["docker", "rmi", tag], check=False, capture_output=True)
+
+    calls = [json.loads(line) for line in (tmp_path / "mocks.jsonl").read_text().splitlines()]
+    assert [(c["key"], c["outcome"]) for c in calls] == [
+        ("crm.get_customer", "respond"),
+        ("payments.refund", "respond"),
+        ("payments.refund", "raise"),
+        ("https://api.zendesk.com", "respond"),
+        ("https://api.zendesk.com", "unmatched"),
+    ]
+    assert calls[0]["request"] == {"args": ["ana@example.com"], "lang": "typescript"}
+    assert json.loads((tmp_path / "events.json").read_text()) == [{"id": 1, "kind": "open"}]
+    assert json.loads((tmp_path / "calls.json").read_text()) == [
+        {"path": "/api/conversations.history"}
+    ]
+    assert "listening on 127.0.0.1" in (tmp_path / "trial" / "agent" / "mocks.log").read_text()
+
+
+def _write(path: Path, text: str) -> Path:
+    _ = path.write_text(text)
+    return path

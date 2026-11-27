@@ -8,6 +8,7 @@ environment is duck-typed (`Environment`).
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import math
@@ -25,6 +26,8 @@ from typing_extensions import override
 
 from lmnr.evals.artifacts import ARTIFACTS_DIR, Artifact, Artifacts, check_destination
 from lmnr.evals.errors import OUTPUT_TAIL_CHARS, CommandError, EvalConfigError, ExecResult
+from lmnr.evals.layer import LAYER_DIR, relay_command
+from lmnr.evals.mock_calls import MockCalls
 from lmnr.evals.paths import caller_dir
 from lmnr.evals.readiness import Readiness
 from lmnr.evals.readiness import cmd as cmd_ready
@@ -423,30 +426,104 @@ class Container:
         user: User = "agent",
     ) -> int:
         """0 once ready, 1 on timeout, 2 if `pid` exited first. One `exec`: the
-        polling loop runs in the container."""
+        polling loop runs in the container (`relay.py wait`)."""
         check = ready if isinstance(ready, Readiness) else cmd_ready(ready)
-        # A process that exited stays a zombie when PID 1 doesn't reap
-        # (`sleep infinity`), and `kill -0` still succeeds on a zombie.
-        alive = (
-            f"{{ kill -0 {pid} 2>/dev/null && "
-            + f"! grep -qs '^State:[[:space:]]*Z' /proc/{pid}/status; }} || exit 2; "
-            if pid is not None
-            else ""
-        )
-        script = (
-            f"end=$((SECONDS + {math.ceil(timeout)})); "
-            + f"until {{ {check.command}; }} >/dev/null 2>&1; do "
-            + alive
-            + '[ "$SECONDS" -ge "$end" ] && exit 1; sleep 0.5; done'
-        )
-        result = await self._exec(
-            f"bash -c {shlex.quote(script)}",
+        result = await relay(
+            self,
+            "wait",
+            {"ready": check.spec(), "timeout": timeout, "pid": pid},
             env=env,
             user=user,
             timeout=timeout + 30,
             check=False,
         )
         return result.return_code if result.return_code in (0, 2) else 1
+
+
+@dataclass(frozen=True)
+class HttpResponse:
+    """An HTTP response read inside the container (`relay_http`)."""
+
+    status: int
+    headers: dict[str, str]
+    body: bytes
+
+    def text(self) -> str:
+        return self.body.decode(errors="replace")
+
+    def json(self) -> Any:
+        return json.loads(self.body)
+
+
+async def relay(
+    container: Container,
+    command: str,
+    payload: Any,
+    *,
+    env: dict[str, str] | None = None,
+    user: User = "root",
+    timeout: float = 60,
+    check: bool = True,
+    what: str | None = None,
+) -> ExecResult:
+    """Run `relay.py <command>` in the container with `payload` as its JSON
+    stdin. The payload goes through a temp file the shell deletes before the
+    relay starts, so nothing of it shows in `ps` or stays on disk."""
+    path = f"/tmp/.{uuid.uuid4().hex[:12]}"
+    await container.write_file(path, json.dumps(payload))
+    quoted = shlex.quote(path)
+    try:
+        result = await container.sh(
+            f"{{ rm -f {quoted} 2>/dev/null; {relay_command()} {command}; }} < {quoted}",
+            env=env,
+            user=user,
+            timeout=timeout,
+            check=False,
+        )
+    finally:
+        if user != "root":
+            # /tmp is sticky: only root removes the file root uploaded.
+            _ = await container.sh(f"rm -f {quoted}", user="root", timeout=60, check=False)
+    if result.return_code == 127:
+        raise RuntimeError(
+            f"{LAYER_DIR} is missing in this container: the runner's helpers run on the "
+            + "Laminar layer lmnr-cli adds to every image of an eval.py runner. Rebuild the "
+            + f"image with lmnr-cli.\n{result.stderr[-OUTPUT_TAIL_CHARS:]}"
+        )
+    if check and result.return_code != 0:
+        raise CommandError(f"relay {command}", result, what=what or f"relay {command}")
+    return result
+
+
+async def relay_http(
+    container: Container,
+    method: str,
+    url: str,
+    *,
+    body: bytes | None = None,
+    headers: dict[str, str] | None = None,
+    timeout: float = 60,
+) -> HttpResponse:
+    """One HTTP request from inside the container (any status is a result)."""
+    result = await relay(
+        container,
+        "http",
+        {
+            "method": method,
+            "url": url,
+            "headers": headers or {},
+            "body_b64": base64.b64encode(body).decode() if body is not None else None,
+            "timeout": timeout,
+        },
+        timeout=timeout + 30,
+        what=f"{method} {url}",
+    )
+    response = json.loads(result.stdout)
+    return HttpResponse(
+        status=int(response["status"]),
+        headers=dict(response.get("headers") or {}),
+        body=base64.b64decode(response.get("body_b64") or ""),
+    )
 
 
 class Context:
@@ -550,9 +627,9 @@ class AgentContext(Context):
 
 class VerifyContext(Context):
     """`ctx` in `verify`, which runs on the host. `ctx.container` is the
-    grading container (see `Container`); `result()`, `case`, `secrets` and
-    `artifacts` are read on the host, so reference answers and keys never
-    have to enter a container."""
+    grading container (see `Container`); `result()`, `case`, `secrets`,
+    `artifacts` and `mocks` are read on the host, so reference answers and
+    keys never have to enter a container."""
 
     def __init__(
         self,
@@ -562,6 +639,7 @@ class VerifyContext(Context):
         host_artifacts_dir: Path | None = None,
         artifacts: list[str | Artifact] | None = None,
         verifier_mode: VerifierMode = "shared",
+        mock_keys: list[str] | None = None,
         **kwargs: Any,
     ):
         super().__init__(logs_dir=VERIFIER_LOGS_DIR, **kwargs)
@@ -573,6 +651,8 @@ class VerifyContext(Context):
         self.artifacts: Artifacts = Artifacts(
             host_artifacts_dir or host_agent_dir.parent / "artifacts", artifacts or []
         )
+        # The runner's mock call log (`ctx.mocks.calls("payments.refund")`).
+        self.mocks: MockCalls = MockCalls(self.artifacts, mock_keys or [])
 
     def result(self) -> dict[str, Any]:
         """What the agent phase recorded with `ctx.set_result(...)` (`{}` if

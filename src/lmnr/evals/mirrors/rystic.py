@@ -38,9 +38,8 @@ from typing_extensions import override
 
 from lmnr.evals.fixtures import SeedSpec
 from lmnr.evals.image import PathMap
-from lmnr.evals.mirrors.base import HTTP_FUNCTION, Mirror
-from lmnr.evals.readiness import Readiness, cmd
-from lmnr.evals.services.base import run_script
+from lmnr.evals.mirrors.base import Mirror
+from lmnr.evals.readiness import Readiness, http
 from lmnr.evals.services.bundle import BUNDLE_DIR
 
 if TYPE_CHECKING:
@@ -62,6 +61,8 @@ STATE_PATH = "/_rystic/inspect"
 CALLS_PATH = "/_rystic/calls"
 SETTLE_PATH = "/_rystic/settle"
 CALLS_FILE = "calls.json"
+# `settle` long-polls; Rystic answers unsettled after its own 30 s default.
+SETTLE_TIMEOUT_SEC = 90
 # `rystic pull` downloads the twin.
 PULL_TIMEOUT_SEC = 300
 # Which Rystic access the trial has: Laminar's per-trial proxy, a bare key, none.
@@ -188,15 +189,11 @@ class Rystic(Mirror):
 
     @override
     def ready(self) -> Readiness:
-        return cmd(f"{HTTP_FUNCTION}\nhttp GET {self.url}{READY_PATH} >/dev/null")
+        return http(f"{self.url}{READY_PATH}")
 
     @override
-    async def load_seed(self, ctx: AgentContext, path: str) -> None:
-        _ = await run_script(
-            ctx,
-            f"{HTTP_FUNCTION}\nhttp POST {self.url}{SEED_PATH} {shlex.quote(path)} >/dev/null",
-            what=f"Seeding {self.name}",
-        )
+    async def load_seed(self, ctx: AgentContext, path: Path) -> None:
+        _ = await self.request(ctx, "POST", SEED_PATH, body=path.read_bytes())
 
     @override
     async def read_state(self, ctx: Context) -> Any:
@@ -225,4 +222,6 @@ class Rystic(Mirror):
         """Wait until the app stopped reacting for `quiet_ms` (e.g. a bot's
         turn after an event). Returns Rystic's answer: `settled` is false
         when it timed out, with what is still `pending`."""
-        return await self.request(ctx, "GET", SETTLE_PATH, params={"quiet_ms": quiet_ms})
+        return await self.request(
+            ctx, "GET", SETTLE_PATH, params={"quiet_ms": quiet_ms}, timeout=SETTLE_TIMEOUT_SEC
+        )

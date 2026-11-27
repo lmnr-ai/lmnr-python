@@ -1,0 +1,65 @@
+{
+  "description": "A handler error, an unknown key and a malformed request are failures: the SDK raises and never calls the real function.",
+  "calls": [
+    {
+      "method": "POST",
+      "path": "/fn/inventory.check",
+      "body": {
+        "args": {
+          "sku": "A"
+        },
+        "lang": "python",
+        "trace_id": null,
+        "span_id": null
+      },
+      "status": 500,
+      "response": {
+        "action": "handler_error",
+        "error": {
+          "type": "ValueError",
+          "message": "inventory handler is broken"
+        }
+      },
+      "sdk": {
+        "fails": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/fn/crm.delete_customer",
+      "body": {
+        "args": {},
+        "lang": "python",
+        "trace_id": null,
+        "span_id": null
+      },
+      "status": 404,
+      "response": {
+        "error": {
+          "type": "UnknownMockKey",
+          "message": "no function mock 'crm.delete_customer'"
+        }
+      },
+      "sdk": {
+        "fails": true
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/fn/crm.get_customer",
+      "body": {
+        "lang": "python"
+      },
+      "status": 400,
+      "response": {
+        "error": {
+          "type": "BadRequest",
+          "message": "expected a JSON object with \"args\""
+        }
+      },
+      "sdk": {
+        "fails": true
+      }
+    }
+  ]
+}

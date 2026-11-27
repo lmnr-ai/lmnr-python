@@ -82,6 +82,9 @@ class Service:
         where = f" ({self.site.label(root, owner=False)})" if self.site else ""
         return f"service: {self.display_name} {self.version}{where}"
 
+    def image_step(self) -> str:
+        return "service"
+
     def host_paths(self) -> list[Path]:
         """Host files the stages copy (for the build context)."""
         return []

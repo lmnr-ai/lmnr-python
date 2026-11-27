@@ -90,11 +90,15 @@ class Step:
 
 class ImageContributor(Protocol):
     """Something that adds stages and final-image lines to every image of a
-    runner: services now, the Laminar layer in phase 3. Lines that read host
-    files get them through `rel` (context-relative paths), which is known only
-    once every contributor's `host_paths` is."""
+    runner: services and the Laminar layer (`lmnr.evals.layer`). Lines that
+    read host files get them through `rel` (context-relative paths), which is
+    known only once every contributor's `host_paths` is."""
 
     def image_title(self, root: Path | None) -> str: ...
+
+    def image_step(self) -> str:
+        """What `lmnr-cli eval describe` lists it as (`service`)."""
+        ...
 
     def host_paths(self) -> list[Path]: ...
 
@@ -315,7 +319,7 @@ def compile_image(
     base = image.base
     origin = _origin(base.site, root)
     steps_info = [{"origin": origin, "step": _base_summary(base)}]
-    steps_info += [{"origin": c.image_title(root), "step": "service"} for c in contributors]
+    steps_info += [{"origin": c.image_title(root), "step": c.image_step()} for c in contributors]
     steps_info += [{"origin": _origin(s.site, root), "step": s.summary(root)} for s in image.steps]
 
     if isinstance(base, FromRegistry) and not image.steps and not contributors:
@@ -400,7 +404,7 @@ def _compose(
 ) -> str:
     """The user's Dockerfile, its last stage named, then services and steps on
     top of that stage. The one place where builder images and Dockerfiles meet,
-    so phase 3's Laminar layer (a contributor) works on both."""
+    so the Laminar layer (a contributor) works on both."""
     source = text.splitlines()
     directives: list[str] = []
     while source and _PARSER_DIRECTIVE.match(source[0]):

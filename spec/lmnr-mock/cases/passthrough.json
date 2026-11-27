@@ -1,0 +1,24 @@
+{
+  "description": "mock.PASSTHROUGH runs the real function.",
+  "calls": [
+    {
+      "method": "POST",
+      "path": "/fn/search.web",
+      "body": {
+        "args": {
+          "q": "weather"
+        },
+        "lang": "python",
+        "trace_id": null,
+        "span_id": null
+      },
+      "status": 200,
+      "response": {
+        "action": "passthrough"
+      },
+      "sdk": {
+        "calls_real_function": true
+      }
+    }
+  ]
+}

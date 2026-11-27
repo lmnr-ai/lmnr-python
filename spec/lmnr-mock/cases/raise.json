@@ -1,0 +1,55 @@
+{
+  "description": "State persists across calls; mock.Error makes the SDK raise MockedError / an Error named after its type.",
+  "calls": [
+    {
+      "method": "POST",
+      "path": "/fn/payments.refund",
+      "body": {
+        "args": {
+          "charge_id": "ch_1"
+        },
+        "lang": "python",
+        "trace_id": null,
+        "span_id": null
+      },
+      "status": 200,
+      "response": {
+        "action": "respond",
+        "value": {
+          "status": "ok"
+        }
+      },
+      "sdk": {
+        "returns": {
+          "status": "ok"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/fn/payments.refund",
+      "body": {
+        "args": {
+          "charge_id": "ch_1"
+        },
+        "lang": "python",
+        "trace_id": null,
+        "span_id": null
+      },
+      "status": 200,
+      "response": {
+        "action": "raise",
+        "error": {
+          "type": "DuplicateRefund",
+          "message": "charge already refunded"
+        }
+      },
+      "sdk": {
+        "raises": {
+          "type": "DuplicateRefund",
+          "message": "charge already refunded"
+        }
+      }
+    }
+  ]
+}

@@ -1,6 +1,10 @@
 # Agent evaluation example
 
+<<<<<<< HEAD
 A support agent that handles billing tickets, with [agent evaluation](https://laminar.sh/docs/agent-evaluations/introduction) datasets you run with `lmnr-cli eval run`. The agent looks up a customer's charges in a SQLite database and can refund one. Each case starts with its own copy of the database, and a verifier checks both the database and the reply.
+=======
+A support agent that handles billing tickets, with an [agent evaluation](https://laminar.sh/docs/agent-evaluations/introduction) dataset you run with `lmnr-cli eval run`. The agent looks up a customer's charges in a SQLite database, can refund one, and posts its reply through a helpdesk API. Each case starts with its own copy of the database and mocks of the CRM and the helpdesk, and a verifier checks the database, the reply, and what the agent sent to the helpdesk.
+>>>>>>> 3b7eb16 (feat(evals): mock server, lmnr-mock protocol and the Laminar image layer)
 
 The [quickstart](https://laminar.sh/docs/agent-evaluations/quickstart#get-started-manually) walks through the files.
 
@@ -15,7 +19,7 @@ evals/
   pyproject.toml              # what eval.py imports (the judge's Anthropic SDK), installed next to Harbor
   support/                    # a dataset
     agent/
-      eval.py                 # the dataset in one file: image, secrets, setup / run / verify
+      eval.py                 # the dataset in one file: image, secrets, mocks, setup / run / verify
       Dockerfile              # the image every case starts from
       seed.py                 # creates this case's database from its seed.json (eval.py runs it)
     tasks/
@@ -36,9 +40,10 @@ evals/
 
 `eval.py` holds one `EvalRunner` (from `lmnr.evals`):
 
+- `mocks` replaces two production services. `helpdesk` is an HTTP mock: the runner points the app's `HELPDESK_API_URL` at a mock server in the container, and the handler answers `POST .../replies`. `get_customer` mocks the app's observed `crm.get_customer` function and reads the case's `tests/fixtures/crm.json`; it takes effect once the app's Laminar SDK supports function mocks (until then the app calls `CRM_API_URL` and the tool reports the CRM as unavailable). The handlers run in the container, in the mock server, and are never visible to the agent as files.
 - `setup` uploads `seed.py` into the container and runs it, so this case's database exists before the agent starts.
 - `run` calls the agent on the case's ticket and records its reply with `ctx.set_result(...)`.
-- `verify` runs in the process that runs Harbor, not in the container. It checks the refunds in the database (a command in the container, `ctx.container.sh`) and asks an LLM judge (a plain function in `eval.py` calling the Anthropic SDK, listed in `evals/pyproject.toml`) whether the reply meets `expected.json`'s `reply_should`. The reference answer never enters the container.
+- `verify` runs in the process that runs Harbor, not in the container. It checks the refunds in the database (a command in the container, `ctx.container.sh`), asks an LLM judge (a plain function in `eval.py` calling the Anthropic SDK, listed in `evals/pyproject.toml`) whether the reply meets `expected.json`'s `reply_should`, and reads the mocks' call log (`ctx.mocks.calls(...)`) to check the reply was posted once. The reference answer never enters the container.
 
 `lmnr-cli` builds the image, writes the job config Harbor needs, and runs every case through Harbor. There is no `agent.py`, verifier script or `harbor.yaml`.
 
@@ -64,7 +69,7 @@ You need [Docker](https://docs.docker.com/get-docker/), [uv](https://docs.astral
 
 Each trial shows up in Laminar as a datapoint with a `refund` score and a `reply` score, next to the trace of the agent's model and tool calls.
 
-To add a case, create a folder in `evals/support/tasks/` with its `environment/case.json`, `environment/seed.json` and `tests/expected.json`. The next `eval run` writes the rest (`task.toml` with the case's name, `instruction.md`, and the stub `tests/test.sh`), or create them first with `npx lmnr-cli@latest eval task new evals/support/tasks/<name>`.
+To add a case, create a folder in `evals/support/tasks/` with its `environment/case.json`, `environment/seed.json`, `tests/expected.json` and `tests/fixtures/crm.json`. The next `eval run` writes the rest (`task.toml` with the case's name, `instruction.md`, and the stub `tests/test.sh`), or create them first with `npx lmnr-cli@latest eval task new evals/support/tasks/<name>`.
 
 ## More datasets
 

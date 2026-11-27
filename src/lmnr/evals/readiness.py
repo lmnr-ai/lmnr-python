@@ -1,19 +1,25 @@
 """Readiness checks for `ctx.container.service(...)` and `ctx.container.wait_for(...)`.
 
-Each check is a shell command that exits 0 once the thing is ready. It runs
-inside the container, so it only relies on bash and whatever the image has.
+The runner polls them inside the container with `relay.py wait` (the Laminar
+layer's Python), so `port` and `http` need nothing from the image; `cmd` runs
+the command with `sh -c`.
 """
 
 from __future__ import annotations
 
-import shlex
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass(frozen=True)
 class Readiness:
-    command: str
+    kind: str
     description: str
+    # What `relay.py wait` gets as `ready` (with `kind`).
+    params: dict[str, Any] = field(default_factory=dict)
+
+    def spec(self) -> dict[str, Any]:
+        return {"kind": self.kind, **self.params}
 
     def __str__(self) -> str:
         return self.description
@@ -21,27 +27,19 @@ class Readiness:
 
 def port(number: int, host: str = "127.0.0.1") -> Readiness:
     """Ready once something accepts TCP connections on `host:number`."""
-    target = f"/dev/tcp/{host}/{int(number)}"
-    return Readiness(
-        command=f"(exec 3<>{shlex.quote(target)}) 2>/dev/null",
-        description=f"port {host}:{number}",
-    )
+    return Readiness("port", f"port {host}:{number}", {"host": host, "port": int(number)})
 
 
 def http(url: str) -> Readiness:
-    """Ready once `url` answers with a 2xx or 3xx status (curl, wget or python3)."""
-    quoted = shlex.quote(url)
-    python = shlex.quote(f"import urllib.request; urllib.request.urlopen({url!r}, timeout=5)")
-    return Readiness(
-        command=(
-            f"if command -v curl >/dev/null 2>&1; then curl -fsS -o /dev/null {quoted}; "
-            f"elif command -v wget >/dev/null 2>&1; then wget -q -O /dev/null {quoted}; "
-            f"else python3 -c {python}; fi"
-        ),
-        description=f"HTTP {url}",
-    )
+    """Ready once `url` answers with a 2xx or 3xx status."""
+    return Readiness("http", f"HTTP {url}", {"url": url})
+
+
+def file(path: str) -> Readiness:
+    """Ready once `path` exists and isn't empty."""
+    return Readiness("file", f"file {path}", {"path": path})
 
 
 def cmd(command: str) -> Readiness:
-    """Ready once `command` exits 0."""
-    return Readiness(command=command, description=f"`{command}`")
+    """Ready once `command` exits 0 (`sh -c`)."""
+    return Readiness("cmd", f"`{command}`", {"command": command})

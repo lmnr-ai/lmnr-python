@@ -1,0 +1,9 @@
+{
+  "crm.get_customer": "get_customer",
+  "orders.find": "find_order",
+  "tools/search web": "echo_args",
+  "payments.refund": "refund",
+  "search.web": "web_search",
+  "inventory.check": "check_inventory",
+  "pricing.quote": "slow_quote"
+}
