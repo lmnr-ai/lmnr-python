@@ -101,7 +101,7 @@ class Service:
 
     async def start(self, ctx: AgentContext) -> None:
         """Start the process and wait for `ready()`."""
-        _ = await ctx.container.service(
+        _ = await ctx.container.spawn(
             self.name,
             self.start_command(),
             ready=self.ready(),
@@ -295,7 +295,7 @@ record_glibc {self.name}"""
     @override
     async def start(self, ctx: AgentContext) -> None:
         env = {"LD_LIBRARY_PATH": self.lib_dir} if self.bundle_paths else None
-        _ = await ctx.container.service(
+        _ = await ctx.container.spawn(
             self.name,
             self.start_cmd,
             ready=self.readiness,

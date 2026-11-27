@@ -1,4 +1,4 @@
-"""Readiness checks for `ctx.container.service(...)` and `ctx.container.wait_for(...)`.
+"""Readiness checks for `ctx.container.spawn(...)` and `ctx.container.wait_for(...)`.
 
 The runner polls them inside the container with `relay.py wait` (the Laminar
 layer's Python), so `port` and `http` need nothing from the image; `cmd` runs

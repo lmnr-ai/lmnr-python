@@ -56,7 +56,7 @@ VerifierMode = Literal["shared", "separate"]
 # command's plus this, so the relay's fires first in every environment.
 EXEC_TIMEOUT_MARGIN_SEC = 30
 
-_SERVICE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_PROCESS_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 # Files that `setup` runs by default when a case has one in `environment/`.
 _SEED_SUFFIXES = (".py", ".sh", ".bash")
 
@@ -82,7 +82,7 @@ class Environment(Protocol):
 
 @dataclass(frozen=True)
 class BackgroundProcess:
-    """A process started with `ctx.container.service(...)`."""
+    """A process started with `ctx.container.spawn(...)`."""
 
     name: str
     pid: int
@@ -233,7 +233,7 @@ class Container:
         exec_env: dict[str, str] | None = None,
     ):
         self.environment: Environment = environment
-        # Where `service` logs go: /logs/agent, or /logs/verifier in verify.
+        # Where `spawn` logs go: /logs/agent, or /logs/verifier in verify.
         self.logs_dir: str = logs_dir
         self._runner_dir: Path = runner_dir
         # Added to every command. Variables Harbor already sets on the agent's
@@ -324,7 +324,7 @@ class Container:
             except Exception as e:
                 logger.warning(f"Could not remove {remote_dir}: {e}")
 
-    async def service(
+    async def spawn(
         self,
         name: str,
         cmd: str,
@@ -334,7 +334,8 @@ class Container:
         cwd: str | None = None,
         user: User = "agent",
     ) -> BackgroundProcess:
-        """Start a background process and wait until it is ready.
+        """Start a background process (a server, a worker) and wait until it
+        is ready. Declared `services` are started this way.
 
         Output goes to `<logs dir>/<name>.log` (`/logs/agent`, or
         `/logs/verifier` in `verify`). `ready` is `port(5432)`, `http(url)`,
@@ -344,28 +345,28 @@ class Container:
         exits or isn't ready within `timeout` seconds, the error has the end of
         its log.
         """
-        if not _SERVICE_NAME.match(name):
+        if not _PROCESS_NAME.match(name):
             raise EvalConfigError(
-                f"Service name {name!r} must be letters, digits, '.', '_' or '-' (it names "
+                f"Process name {name!r} must be letters, digits, '.', '_' or '-' (it names "
                 + "the log file)."
             )
         log_path = f"{self.logs_dir}/{name}.log"
         start = (
             # Only `nohup` goes to the background (`a && b &` would background a
-            # subshell holding the exec's stdout open until the service exits).
+            # subshell holding the exec's stdout open until the process exits).
             f"mkdir -p {shlex.quote(self.logs_dir)} || exit 1; "
             + f"nohup sh -c {shlex.quote(cmd)} > {shlex.quote(log_path)} 2>&1 < /dev/null & "
             + "echo $!"
         )
         # Not through the relay: it returns at once, and only the pid is read.
         result = await self._exec(
-            start, env=env, cwd=cwd, user=user, timeout=30, what=f"Starting service {name!r}"
+            start, env=env, cwd=cwd, user=user, timeout=30, what=f"Starting process {name!r}"
         )
         try:
             pid = int(result.stdout.strip().splitlines()[-1])
         except (ValueError, IndexError):
             raise RuntimeError(
-                f"Service {name!r} did not report its pid: {result.stdout!r}"
+                f"Process {name!r} did not report its pid: {result.stdout!r}"
             ) from None
         process = BackgroundProcess(name=name, pid=pid, log_path=log_path)
         status = await self._wait(ready, timeout, pid=pid, env=env, user=user)
@@ -380,7 +381,7 @@ class Container:
             )
             log_tail = tail.stdout[-OUTPUT_TAIL_CHARS:].rstrip() or "(empty)"
             raise RuntimeError(
-                f"Service {name!r} {reason} (waiting for {_readiness(ready)}). "
+                f"Process {name!r} {reason} (waiting for {_readiness(ready)}). "
                 + f"End of {log_path}:\n{log_tail}"
             )
         return process

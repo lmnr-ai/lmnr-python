@@ -772,10 +772,10 @@ async def test_run_file_runs_shebang_scripts_directly(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_service_starts_in_background_and_waits(tmp_path: Path):
+async def test_spawn_starts_in_background_and_waits(tmp_path: Path):
     env = FakeEnvironment(lambda command: (0, "4242\n") if "nohup" in command else (0, ""))
     ctx = agent_ctx(tmp_path, env)
-    process = await ctx.container.service("api", "python -m http.server 8000", ready=port(8000))
+    process = await ctx.container.spawn("api", "python -m http.server 8000", ready=port(8000))
     assert (process.name, process.pid, process.log_path) == ("api", 4242, "/logs/agent/api.log")
     start, wait = [c for c in env.commands() if "nohup" in c or "relay.py wait" in c]
     assert "nohup sh -c 'python -m http.server 8000' > /logs/agent/api.log 2>&1" in start
@@ -796,7 +796,7 @@ async def test_service_starts_in_background_and_waits(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_service_that_exits_reports_its_log(tmp_path: Path):
+async def test_spawned_process_that_exits_reports_its_log(tmp_path: Path):
     def respond(command: str) -> tuple[int, str]:
         if "nohup" in command:
             return 0, "7\n"
@@ -807,8 +807,8 @@ async def test_service_that_exits_reports_its_log(tmp_path: Path):
         return 0, ""
 
     ctx = agent_ctx(tmp_path, FakeEnvironment(respond))
-    with pytest.raises(RuntimeError, match="'api' exited") as info:
-        _ = await ctx.container.service("api", "serve", ready=http("http://127.0.0.1:8000/health"))
+    with pytest.raises(RuntimeError, match="Process 'api' exited") as info:
+        _ = await ctx.container.spawn("api", "serve", ready=http("http://127.0.0.1:8000/health"))
     assert "Error: port in use" in str(info.value)
 
 
