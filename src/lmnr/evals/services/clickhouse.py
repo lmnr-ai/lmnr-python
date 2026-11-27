@@ -86,9 +86,9 @@ class ClickHouse(Service):
     server with `database` created, `migrations` (see `migrator`) and this
     case's `seed` (`.sql`).
 
-    - `env`: `"CLICKHOUSE_URL"` (the default) gets `http://127.0.0.1:<http_port>`;
-      templates can use `{url}`, `{host}`, `{port}` (HTTP), `{tcp_port}`,
-      `{database}`, `{user}`, `{password}`.
+    - `env`: variables to templates over `{url}` (`http://127.0.0.1:<http_port>`),
+      `{host}`, `{port}` (HTTP), `{tcp_port}`, `{database}`, `{user}`,
+      `{password}`; default `{"CLICKHOUSE_URL": "{url}"}`.
     - `migrator`: `"clickhouse-migrations"` (the default) applies
       `migrations` with the `clickhouse-migrations` CLI (files named
       `1_init.sql`, `2_events.sql`, ...; applied versions are recorded in a
@@ -118,7 +118,7 @@ class ClickHouse(Service):
         config: str | None = None,
         users: str | None = None,
         seed: SeedSpec = None,
-        env: EnvSpec = "CLICKHOUSE_URL",
+        env: EnvSpec = {"CLICKHOUSE_URL": "{url}"},
         snapshot: Sequence[str] = (),
         source: str | None = None,
         name: str = "clickhouse",

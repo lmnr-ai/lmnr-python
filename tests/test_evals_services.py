@@ -158,7 +158,7 @@ def make_case(tmp_path: Path, fixtures: dict[str, str] | None = None) -> Case:
         ([Postgres("16"), Postgres("16")], "two services named 'postgres'"),
         ([Postgres("16"), Postgres("16", name="pg2")], "both use port 5432"),
         (
-            [Valkey("8"), Valkey("8", name="cache", port=6380, env="REDIS_URL")],
+            [Valkey("8"), Valkey("8", name="cache", port=6380, env={"REDIS_URL": "{url}"})],
             "REDIS_URL is set by both",
         ),
         ([Postgres("")], "needs a version"),
@@ -236,7 +236,7 @@ def test_env_templates():
         "PGPORT": "5432",
     }
     assert ClickHouse("25.8", http_port=8124).env() == {"CLICKHOUSE_URL": "http://127.0.0.1:8124"}
-    assert Valkey("8", env="CACHE_URL").env() == {"CACHE_URL": "redis://127.0.0.1:6379"}
+    assert Valkey("8", env={"CACHE_URL": "{url}"}).env() == {"CACHE_URL": "redis://127.0.0.1:6379"}
 
 
 def test_self_service_finds_declared_services():
@@ -247,7 +247,9 @@ def test_self_service_finds_declared_services():
     assert instance.service(Rystic) is mirror
     with pytest.raises(EvalConfigError, match="declares no service 'ClickHouse'"):
         _ = instance.service(ClickHouse)
-    two = runner(services=[Valkey("8"), Valkey("8", name="cache", port=6380, env="CACHE_URL")])()
+    two = runner(
+        services=[Valkey("8"), Valkey("8", name="cache", port=6380, env={"CACHE_URL": "{url}"})]
+    )()
     with pytest.raises(EvalConfigError, match="several Valkey services"):
         _ = two.service(Valkey)
 

@@ -70,9 +70,8 @@ class Postgres(Service):
 
     - `migrate_at="build"` (SQL migrations only) runs them while the image is
       built, so trials start from a ready data directory.
-    - `env`: `"DATABASE_URL"` (the default) gets the URL; a dict maps several
-      variables to templates over `{url}`, `{host}`, `{port}`, `{database}`,
-      `{user}`, `{password}`.
+    - `env`: variables to templates over `{url}`, `{host}`, `{port}`,
+      `{database}`, `{user}`, `{password}`; default `{"DATABASE_URL": "{url}"}`.
     - `snapshot=["refunds"]`: `collect` saves those tables as JSON for
       `ctx.state("postgres", "refunds")`, which works in a separate verifier.
     - `source="pgvector/pgvector:pg16-bookworm"`: install from another image
@@ -95,7 +94,7 @@ class Postgres(Service):
         extensions: Sequence[str] = (),
         init_sql: Sequence[str] = (),
         seed: SeedSpec = None,
-        env: EnvSpec = "DATABASE_URL",
+        env: EnvSpec = {"DATABASE_URL": "{url}"},
         snapshot: Sequence[str] = (),
         source: str | None = None,
         name: str = "postgres",

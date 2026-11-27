@@ -40,7 +40,7 @@ _NAME = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _PLACEHOLDER = re.compile(r"{([a-z_]+)}")
 
-EnvSpec = str | Mapping[str, str] | None
+EnvSpec = Mapping[str, str] | None
 
 
 class Service:
@@ -51,8 +51,7 @@ class Service:
     Subclasses override the hooks below; keep this interface small and stable.
 
     `env` maps variable names to templates over `template_values()`
-    (`{"DATABASE_URL": "{url}"}`); a plain string names the variable that gets
-    `{url}`.
+    (`{"DATABASE_URL": "{url}"}`).
     """
 
     # Shown in provenance comments and errors.
@@ -399,11 +398,12 @@ def heredoc(command: str, text: str) -> str:
 def _env_templates(env: EnvSpec) -> dict[str, str]:
     if env is None:
         return {}
-    if isinstance(env, str):
-        return {env: "{url}"}
     if isinstance(env, Mapping):
         return {str(k): str(v) for k, v in env.items()}
-    raise EvalConfigError(f"Service env must be a variable name or a dict, got {env!r}.")
+    raise EvalConfigError(
+        'Service env must be a dict of variables to templates ({"DATABASE_URL": "{url}"}), '
+        + f"got {env!r}."
+    )
 
 
 def _render(template: str, values: dict[str, str]) -> str:
