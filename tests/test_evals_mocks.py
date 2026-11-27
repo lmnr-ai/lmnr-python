@@ -547,7 +547,10 @@ def test_describe_lists_mocks_and_the_layer(evals_root: Path):
     }
     text = result["images"]["refunds-evals"]["dockerfile_text"]
     assert "COPY --from=lmnr-dev / /tmp/lmnr-dist/" in text
-    assert "RUN uv pip install --python /opt/lmnr/venv/bin/python /tmp/lmnr-dist/*.whl" in text
+    assert (
+        "RUN uv pip install --python /opt/lmnr/venv/bin/python "
+        + '--python-platform "$(uname -m)-manylinux_2_36" /tmp/lmnr-dist/*.whl'
+    ) in text
 
 
 def test_describe_cli_takes_the_layer_requirement(evals_root: Path):

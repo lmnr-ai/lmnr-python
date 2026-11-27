@@ -343,7 +343,7 @@ def test_clickhouse_migrators(tmp_path: Path, migrator: str):
     assert uploads
     stages = "\n".join(ch.bundle_stages(lambda p: str(p)))
     if migrator == "clickhouse-migrations":
-        assert "FROM node:24-bookworm-slim AS svc-clickhouse-migrations" in stages
+        assert "FROM node:24-trixie-slim AS svc-clickhouse-migrations" in stages
         assert "clickhouse-migrations@1.6.0" in stages
     else:
         assert "node" not in stages

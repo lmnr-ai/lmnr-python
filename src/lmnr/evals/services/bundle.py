@@ -8,7 +8,8 @@ never re-downloads a service, and the service doesn't depend on what the app's
 base has installed. Binaries run through small wrappers that put the bundled
 libraries first on `LD_LIBRARY_PATH`.
 
-The final image needs glibc at least as new as the source image's: the install
+The final image needs glibc at least as new as the source image's (or, for a
+bundle that records it, the newest version its files reference): the install
 step checks it and fails the build with a hint otherwise.
 """
 
@@ -56,6 +57,16 @@ wrap() {
 record_glibc() {
   mkdir -p "$out/usr/local/share"
   getconf GNU_LIBC_VERSION | awk '{print $2}' > "$out/usr/local/share/.glibc-required-$1"
+}""",
+    "record_glibc_needed": r"""# record_glibc_needed NAME PATH...: the newest glibc symbol version the bundled files
+# under PATHs reference (glibc's own libraries aren't bundled), for a source image
+# whose glibc is newer than what its binaries need.
+record_glibc_needed() {
+  name=$1; shift
+  need=$(for p in "$@"; do grep -rahoE 'GLIBC_2\.[0-9]+' "$out$p" || true; done |
+    sed 's/^GLIBC_//' | sort -uV | tail -n1)
+  mkdir -p "$out/usr/local/share"
+  echo "${need:-2.17}" > "$out/usr/local/share/.glibc-required-$name"
 }""",
 }
 

@@ -31,10 +31,11 @@ GLIBC_REQUIRED = "2.17"
 JSON_SETTINGS = "--output_format_json_quote_64bit_integers=0"
 # The default migrator: https://www.npmjs.com/package/clickhouse-migrations, a
 # Node CLI bundled with its own `node` from `MIGRATIONS_NODE_IMAGE`, so the
-# app's image needs no Node.
+# app's image needs no Node. trixie's libstdc++ needs glibc 2.38 (Ubuntu 24.04
+# and newer); bookworm apps use migrator="clickhouse-client".
 MIGRATIONS_TOOL = "clickhouse-migrations"
 MIGRATIONS_TOOL_VERSION = "1.6.0"
-MIGRATIONS_NODE_IMAGE = "node:24-bookworm-slim"
+MIGRATIONS_NODE_IMAGE = "node:24-trixie-slim"
 MIGRATIONS_TOOL_DIR = "/usr/lib/clickhouse-migrations"
 MIGRATIONS_TOOL_BIN = f"{MIGRATIONS_TOOL_DIR}/bin/clickhouse-migrations"
 # Its file names: the version number, `_`, anything (`1_init.sql`).
@@ -172,7 +173,7 @@ cp -L "$(command -v node)" "$out{tool}/node"
 collect_deps {tool}/libs "$(command -v node)"
 wrap "{tool}/node {tool}/node_modules/{MIGRATIONS_TOOL}/lib/cli.js" {MIGRATIONS_TOOL_BIN} {tool}/libs
 "$out{tool}/node" {tool}/node_modules/{MIGRATIONS_TOOL}/lib/cli.js --help >/dev/null
-record_glibc {self.name}-migrations"""
+record_glibc_needed {self.name}-migrations {tool}/node {tool}/libs"""
         return stage(MIGRATIONS_NODE_IMAGE, self.stage_name("-migrations"), script)
 
     @override

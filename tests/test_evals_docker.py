@@ -194,7 +194,12 @@ def test_services_on_base(base: str, tmp_path: Path):
     )
     valkey = Valkey("8")
     clickhouse = ClickHouse(
-        "24.8", database="analytics", migrations=str(root / "clickhouse"), snapshot=["events"]
+        "24.8",
+        database="analytics",
+        migrations=str(root / "clickhouse"),
+        snapshot=["events"],
+        # The default migrator's Node comes from trixie and needs glibc 2.38.
+        migrator="clickhouse-client" if "bookworm" in base else "clickhouse-migrations",
     )
     services: list[Service] = [postgres, valkey, clickhouse]
     tag = build(Image.from_registry(base), services, tmp_path)
@@ -232,9 +237,10 @@ def test_services_on_base(base: str, tmp_path: Path):
             assert await clickhouse.query(ctx, "SELECT id, kind FROM events") == [
                 {"id": 1, "kind": "open"}
             ]
-            # clickhouse-migrations recorded what it applied.
-            applied = await clickhouse.query(ctx, "SELECT version FROM _migrations")
-            assert applied == [{"version": 1}]
+            if clickhouse.migrator == "clickhouse-migrations":
+                # The tool recorded what it applied.
+                applied = await clickhouse.query(ctx, "SELECT version FROM _migrations")
+                assert applied == [{"version": 1}]
             await clickhouse.insert(ctx, "events", [{"id": 2, "kind": "close"}])
             rows = await clickhouse.query(ctx, "SELECT count() AS n FROM events")
             assert rows == [{"n": 2}]
@@ -434,6 +440,27 @@ def test_alpine_base_fails_the_build_with_a_hint(tmp_path: Path):
     )
     assert result.returncode != 0
     assert "this image has no glibc (Alpine?)" in result.stderr.decode()
+
+
+def test_clickhouse_migrations_on_bookworm_fails_the_build_with_a_hint(tmp_path: Path):
+    """The tool's bundled libstdc++ (trixie) needs glibc 2.38; bookworm has 2.36."""
+    clickhouse = ClickHouse("24.8", migrations=str(tmp_path))
+    compiled = compile_image(
+        Image.from_registry("python:3.13-slim-bookworm"), [clickhouse], fallback_dir=tmp_path
+    )
+    assert compiled.dockerfile_text is not None
+    result = subprocess.run(
+        # Plain progress: the check's message is the step's output.
+        ["docker", "build", "--platform", "linux/amd64", "--progress=plain", "-f", "-"]
+        + [str(tmp_path)],
+        input=compiled.dockerfile_text.encode(),
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    stderr = result.stderr.decode()
+    assert "this image has glibc 2.36, but 2.38 or newer is needed." in stderr
+    assert 'pass migrator="clickhouse-client"' in stderr
 
 
 def test_verify_reads_snapshots_in_separate_mode(tmp_path: Path):

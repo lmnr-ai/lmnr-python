@@ -148,7 +148,7 @@ XML
 echo 2.17 > "$out/usr/local/share/.glibc-required-clickhouse"
 EOF
 
-FROM node:24-bookworm-slim AS svc-clickhouse-migrations
+FROM node:24-trixie-slim AS svc-clickhouse-migrations
 RUN <<'EOF'
 set -eu
 out=/bundle
@@ -170,11 +170,15 @@ wrap() {
     "$3" "$1" > "$out$2"
   chmod 755 "$out$2"
 }
-# record_glibc NAME: the source image's glibc version, checked by the install step.
-# Not under /tmp: COPY would give the image's /tmp the bundle's mode (0755).
-record_glibc() {
+# record_glibc_needed NAME PATH...: the newest glibc symbol version the bundled files
+# under PATHs reference (glibc's own libraries aren't bundled), for a source image
+# whose glibc is newer than what its binaries need.
+record_glibc_needed() {
+  name=$1; shift
+  need=$(for p in "$@"; do grep -rahoE 'GLIBC_2\.[0-9]+' "$out$p" || true; done |
+    sed 's/^GLIBC_//' | sort -uV | tail -n1)
   mkdir -p "$out/usr/local/share"
-  getconf GNU_LIBC_VERSION | awk '{print $2}' > "$out/usr/local/share/.glibc-required-$1"
+  echo "${need:-2.17}" > "$out/usr/local/share/.glibc-required-$name"
 }
 npm install --prefix /usr/lib/clickhouse-migrations --omit=dev --no-fund --no-audit --no-update-notifier \
   clickhouse-migrations@1.6.0
@@ -184,7 +188,7 @@ cp -L "$(command -v node)" "$out/usr/lib/clickhouse-migrations/node"
 collect_deps /usr/lib/clickhouse-migrations/libs "$(command -v node)"
 wrap "/usr/lib/clickhouse-migrations/node /usr/lib/clickhouse-migrations/node_modules/clickhouse-migrations/lib/cli.js" /usr/lib/clickhouse-migrations/bin/clickhouse-migrations /usr/lib/clickhouse-migrations/libs
 "$out/usr/lib/clickhouse-migrations/node" /usr/lib/clickhouse-migrations/node_modules/clickhouse-migrations/lib/cli.js --help >/dev/null
-record_glibc clickhouse-migrations
+record_glibc_needed clickhouse-migrations /usr/lib/clickhouse-migrations/node /usr/lib/clickhouse-migrations/libs
 EOF
 
 # service: mailpit 1.21 (_shared/images.py:49)
@@ -256,8 +260,8 @@ RUN need=$(cat /usr/local/share/.glibc-required-clickhouse) && rm -f /usr/local/
 COPY --from=svc-clickhouse-migrations /bundle/ /
 RUN need=$(cat /usr/local/share/.glibc-required-clickhouse-migrations) && rm -f /usr/local/share/.glibc-required-clickhouse-migrations && \
     have=$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{print $2}' || true) && \
-    if [ -z "$have" ]; then echo 'lmnr.evals: this image has no glibc (Alpine?). clickhouse-migrations comes from node:24-bookworm-slim. Use a Debian or Ubuntu base with a newer glibc, or pass migrator="clickhouse-client".' >&2; exit 1; fi && \
-    if [ "$(printf '%s\n%s\n' "$need" "$have" | sort -V | head -n1)" != "$need" ]; then echo "lmnr.evals: this image has glibc $have, but $need or newer is needed." 'clickhouse-migrations comes from node:24-bookworm-slim. Use a Debian or Ubuntu base with a newer glibc, or pass migrator="clickhouse-client".' >&2; exit 1; fi
+    if [ -z "$have" ]; then echo 'lmnr.evals: this image has no glibc (Alpine?). clickhouse-migrations comes from node:24-trixie-slim. Use a Debian or Ubuntu base with a newer glibc, or pass migrator="clickhouse-client".' >&2; exit 1; fi && \
+    if [ "$(printf '%s\n%s\n' "$need" "$have" | sort -V | head -n1)" != "$need" ]; then echo "lmnr.evals: this image has glibc $have, but $need or newer is needed." 'clickhouse-migrations comes from node:24-trixie-slim. Use a Debian or Ubuntu base with a newer glibc, or pass migrator="clickhouse-client".' >&2; exit 1; fi
 COPY ["clickhouse/config.xml", "/etc/clickhouse-server/config.d/config.xml"]
 COPY ["clickhouse/users.xml", "/etc/clickhouse-server/users.d/users.xml"]
 

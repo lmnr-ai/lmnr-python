@@ -3,7 +3,7 @@
 
 It is the in-container runtime for the mock server and for the runner's
 helpers (`relay.py http` / `wait` / `rows`, `lmnr.evals.relay`), independent of
-the app's language and Python. A stage `FROM debian:bookworm-slim` installs a
+the app's language and Python. A stage `FROM debian:trixie-slim` installs a
 standalone Python with uv, a venv with `lmnr` (plus the runner's
 `mock_dependencies`) and the `relay.py` launcher; the final image copies
 `/opt/lmnr`. Nothing in it depends on the app, so it stays cached across app
@@ -23,7 +23,12 @@ from lmnr.evals.image import UV_IMAGE, PathMap
 LAYER_DIR = "/opt/lmnr"
 LAYER_PYTHON = "3.13"
 LAYER_STAGE = "lmnr-layer"
-STAGE_BASE = "debian:bookworm-slim"
+STAGE_BASE = "debian:trixie-slim"
+# The newest glibc the layer's wheels may need (`uv pip install
+# --python-platform`), whatever the stage's own: the layer goes into every
+# image, so it must run on bookworm (2.36) and Ubuntu 24.04 apps too. The
+# standalone Python itself needs only 2.17.
+WHEEL_GLIBC = "2_36"
 VENV_PYTHON = f"{LAYER_DIR}/venv/bin/python"
 RELAY_FILE = f"{LAYER_DIR}/relay.py"
 # The named build context lmnr-cli passes for a local `lmnr` checkout
@@ -124,7 +129,10 @@ class LaminarLayer:
         else:
             packages = []
         packages += [shlex.quote(r) for r in requirements]
-        lines.append(f"RUN uv pip install --python {VENV_PYTHON} {' '.join(packages)}")
+        lines.append(
+            f"RUN uv pip install --python {VENV_PYTHON} "
+            + f'--python-platform "$(uname -m)-manylinux_{WHEEL_GLIBC}" {" ".join(packages)}'
+        )
         lines += [
             f"COPY <<'EOF' {RELAY_FILE}",
             LAUNCHER.rstrip("\n"),
