@@ -120,7 +120,7 @@ LMNR_{INSTRUMENT}_{OPTION}  # Per-instrumentation options, e.g. LMNR_LANGGRAPH_R
 - `tests/AGENTS.md` - VCR cassettes, spy-test pattern, debug tests, known flakes
 - `src/lmnr/sdk/AGENTS.md` - logging, HTTP error reporting, `json_dumps` / bytes, eval trace type
 - `src/lmnr/sdk/debug/AGENTS.md` - debug mode / replay, TS parity
-- `src/lmnr/sdk/mock/AGENTS.md` - observe-level mocks: key resolution, fail-closed key fetch + backoff, args / return validation, sync vs async clients, span attributes, TS parity, trajectory gap
+- `src/lmnr/sdk/mock/AGENTS.md` - observe-level mocks: key resolution, fail-closed key fetch + backoff, args, best-effort return conversion, sync vs async clients, span attributes, TS parity, trajectory gap
 - `src/lmnr/sdk/trajectory/AGENTS.md` - lmnr-atif spec location, version bumps, schema/doc/fixture sync, harbor validation
 - `src/lmnr/opentelemetry_lib/bridges/AGENTS.md` - `bridges=` option, the `LaminarBridge` contract shared with the TS SDK
 - `src/lmnr/opentelemetry_lib/bridges/langfuse/AGENTS.md` - Langfuse bridge: copy-on-end (never mutate Langfuse's spans), private provider, export-filter mirroring, usage/metadata shapes per langfuse major, version overlays in CI

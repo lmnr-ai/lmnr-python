@@ -26,7 +26,7 @@ from typing_extensions import override
 import lmnr
 from lmnr import MockedError, observe
 from lmnr.evals.mocks.server import MockServer, http_server
-from lmnr.sdk.mock import MOCK_FAILURE, client
+from lmnr.sdk.mock import MOCK_FAILURE, client, intercept
 
 SPEC_DIR = Path(__file__).resolve().parent.parent / "spec" / "lmnr-mock"
 PREFIX = "/_lmnr/v1/" + "t" * 32
@@ -472,22 +472,51 @@ def test_values_are_validated_against_the_return_annotation(server: FakeServer):
     assert optional() is None
 
 
-def test_an_invalid_value_raises(server: FakeServer, span_exporter: InMemorySpanExporter):
-    server.respond("crm.get_customer", {"plan": "pro"})
+@pytest.mark.parametrize(
+    ("annotation", "value"),
+    [
+        ("Customer", {"plan": "pro"}),  # missing a required field
+        ("None", {"id": "cus_1"}),  # wrong: the function returns something
+        ("str", 5),
+    ],
+)
+def test_a_value_that_doesnt_fit_the_annotation_is_returned_as_is_with_a_warning(
+    server: FakeServer,
+    span_exporter: InMemorySpanExporter,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    annotation: str,
+    value: Any,
+):
+    monkeypatch.setattr(intercept.logger, "propagate", True)
+    server.respond("crm.get_customer", value)
 
-    @observe(name="crm.get_customer")
-    def get_customer() -> Customer:
+    def get_customer():
         raise AssertionError
 
-    with pytest.raises(MockedError) as raised:
-        _ = get_customer()
-    assert raised.value.type == MOCK_FAILURE
-    assert raised.value.message.startswith(
-        "crm.get_customer: the mocked value doesn't match the return type Customer:"
+    get_customer.__annotations__ = {"return": annotation}
+    observed = observe(name="crm.get_customer")(get_customer)
+
+    assert observed() == value
+    [record] = [r for r in caplog.records if r.name == intercept.logger.name]
+    assert record.levelname == "WARNING"
+    assert record.getMessage().startswith(
+        "observe, mock 'crm.get_customer': the mocked value doesn't match the return type "
     )
-    assert "id\n  Field required" in raised.value.message
     [span] = span_exporter.get_finished_spans()
-    assert (span.attributes or {})["lmnr.mock.outcome"] == "error"
+    attributes = dict(span.attributes or {})
+    assert attributes["lmnr.mock.outcome"] == "respond"
+    assert json.loads(str(attributes["lmnr.span.output"])) == value
+
+
+def test_an_unresolvable_annotation_returns_the_value_as_is(server: FakeServer):
+    server.respond("crm.get_customer", {"id": "cus_1"})
+
+    @observe(name="crm.get_customer")
+    def get_customer() -> NotDefinedAnywhere:  # noqa: F821  # pyright: ignore[reportUndefinedVariable]
+        raise AssertionError
+
+    assert get_customer() == {"id": "cus_1"}
 
 
 # Async
@@ -547,7 +576,7 @@ def test_async_functions_work_across_event_loops(server: FakeServer):
 
 
 def test_generators_cant_be_mocked(server: FakeServer):
-    server.keys = ["gen", "agen", "iterator", "plain"]
+    server.keys = ["gen", "agen", "iterator"]
 
     @observe(name="gen")
     def gen() -> Generator[int, None, None]:
@@ -557,19 +586,24 @@ def test_generators_cant_be_mocked(server: FakeServer):
     async def agen() -> AsyncGenerator[int, None]:
         yield 1
 
+    # Not a generator function: mocked, and the value goes through the
+    # annotation (pydantic validates an iterable into an iterator).
     @observe(name="iterator")
     def iterator() -> Iterator[int]:
-        return iter([1])
+        raise AssertionError
 
     @observe(name="unmocked")
     def unmocked() -> Generator[int, None, None]:
         yield 1
 
-    for f in (gen, agen, iterator):
+    server.respond("iterator", [1, 2])
+
+    for f in (gen, agen):
         with pytest.raises(MockedError, match="generators can't be mocked yet"):
             _ = f()
     assert list(unmocked()) == [1]
-    assert server.calls() == []
+    assert list(iterator()) == [1, 2]
+    assert [key for key, _ in server.calls()] == ["iterator"]
 
 
 # Public API

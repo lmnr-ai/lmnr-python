@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import inspect
 import typing
-from collections.abc import AsyncGenerator, AsyncIterator, Callable, Generator, Iterator
+from collections.abc import Callable
 from functools import cached_property
 from typing import Any
 
@@ -22,9 +22,6 @@ from .protocol import Outcome, request_body
 
 logger = get_default_logger(__name__)
 
-_STREAMING_ORIGINS = (Generator, Iterator, AsyncGenerator, AsyncIterator)
-_UNRESOLVED = object()
-
 
 class MockTarget:
     """One observed function's mock key, built when `observe` wraps it.
@@ -35,8 +32,6 @@ class MockTarget:
     def __init__(self, key: str, fn: Callable[..., Any]):
         self.key: str = key
         self.fn: Callable[..., Any] = fn
-        self._return_type: Any = _UNRESOLVED
-        self._adapter: pydantic.TypeAdapter[Any] | None = None
 
     @cached_property
     def is_method(self) -> bool:
@@ -44,47 +39,37 @@ class MockTarget:
 
     def check_supported(self) -> None:
         unwrapped = inspect.unwrap(self.fn)
-        generator = inspect.isgeneratorfunction(unwrapped) or inspect.isasyncgenfunction(unwrapped)
-        if generator or typing.get_origin(self.return_type()) in _STREAMING_ORIGINS:
+        if inspect.isgeneratorfunction(unwrapped) or inspect.isasyncgenfunction(unwrapped):
             raise MockedError(MOCK_FAILURE, f"{self.key}: generators can't be mocked yet")
 
-    def return_type(self) -> Any:
-        """The return annotation (the awaited type for `async def`), or `Any`
-        when there is none or it can't be resolved."""
-        if self._return_type is _UNRESOLVED:
-            try:
-                hint = typing.get_type_hints(self.fn).get("return", Any)
-            except Exception:
-                logger.warning(
-                    f"observe, mock {self.key!r}: can't resolve the return annotation, "
-                    + "mocked values are returned without validation",
-                    exc_info=True,
-                )
-                hint = Any
-            self._return_type = hint
-            if hint is not Any:
-                try:
-                    self._adapter = pydantic.TypeAdapter(hint)
-                except Exception:
-                    logger.warning(
-                        f"observe, mock {self.key!r}: pydantic can't validate {hint!r}, "
-                        + "mocked values are returned without validation",
-                        exc_info=True,
-                    )
-        return self._return_type
+    @cached_property
+    def _return_type(self) -> tuple[Any, pydantic.TypeAdapter[Any] | None]:
+        """The return annotation (the awaited type for `async def`) and an
+        adapter for it; no adapter without an annotation, for `Any`, or when
+        the annotation can't be resolved or pydantic can't handle it."""
+        try:
+            hint = typing.get_type_hints(self.fn).get("return", Any)
+            return hint, None if hint is Any else pydantic.TypeAdapter(hint)
+        except Exception:
+            logger.debug(f"observe, mock {self.key!r}: no usable return type", exc_info=True)
+            return Any, None
 
-    def validate(self, value: Any) -> Any:
-        _ = self.return_type()
-        if self._adapter is None:
+    def convert(self, value: Any) -> Any:
+        """The mocked JSON value as the annotated return type when it fits
+        (pydantic models, dataclasses, TypedDicts are built from it), else as
+        is, with a warning: an annotation can be broad or wrong, and the
+        function's callers decide whether the value works."""
+        hint, adapter = self._return_type
+        if adapter is None:
             return value
         try:
-            return self._adapter.validate_python(value)
+            return adapter.validate_python(value)
         except pydantic.ValidationError as e:
-            raise MockedError(
-                MOCK_FAILURE,
-                f"{self.key}: the mocked value doesn't match the return type "
-                + f"{_type_name(self._return_type)}: {e}",
-            ) from None
+            logger.warning(
+                f"observe, mock {self.key!r}: the mocked value doesn't match the return type "
+                + f"{_type_name(hint)}, returning it as is: {e}"
+            )
+            return value
 
 
 def mocks_enabled() -> bool:
@@ -155,13 +140,8 @@ class MockedCall:
         if outcome.error is not None:
             self._mark(span, "raise", mocked=True)
             raise outcome.error
-        try:
-            value = self.target.validate(outcome.value)
-        except MockedError:
-            self._mark(span, "error")
-            raise
         self._mark(span, "respond", mocked=True)
-        return value
+        return self.target.convert(outcome.value)
 
     def _mark(self, span: Span | None, outcome: str, mocked: bool = False) -> None:
         if span is None:

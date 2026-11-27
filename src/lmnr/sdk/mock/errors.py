@@ -3,8 +3,7 @@ from __future__ import annotations
 from typing_extensions import override
 
 #: `MockedError.type` of every failure that isn't a handler's own error: an
-#: unreachable server, a failed call, a value that doesn't match the return
-#: type, a function that can't be mocked.
+#: unreachable server, a failed call, a function that can't be mocked.
 MOCK_FAILURE = "MockFailure"
 
 
