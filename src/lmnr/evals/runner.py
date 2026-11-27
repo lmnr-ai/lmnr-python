@@ -33,16 +33,17 @@ S = TypeVar("S", bound="Service")
 
 @dataclass(frozen=True)
 class Secret:
-    """A reference to one of the runner's `secrets`, by name (see `secret`)."""
+    """A secret in the runner's `env`, by name (see `secret`)."""
 
     name: str
 
 
 def secret(name: str) -> Secret:
-    """Pass a declared secret into the container env: `env = {"KEY": secret("KEY")}`.
+    """Pass a secret into the container env: `env = {"KEY": secret("KEY")}`.
 
-    `name` must be in the runner's `secrets`. lmnr-cli resolves it from the shell,
-    `.env.local` or `.env`; the value never appears in `eval.py`.
+    That declares `name` as a secret (no need to list it in `secrets` too), so
+    `verify` can read it as well (`ctx.secrets[name]`). lmnr-cli resolves it
+    from the shell, `.env.local` or `.env`; the value never appears in `eval.py`.
     """
     return Secret(name)
 
@@ -60,10 +61,11 @@ class EvalRunner:
       of named images (the first is the default; a task picks one with
       `docker_image` in its `task.toml`).
     - `model`: default model; `harbor.yaml` and `--model` override it.
-    - `secrets`: env var names lmnr-cli must resolve. `verify` reads them as
-      `ctx.secrets[name]`; the container only gets the ones `env` passes on.
     - `env`: env for every command in the container; `secret("NAME")` passes
-      a secret.
+      a secret, which lmnr-cli resolves from your shell or `.env` files.
+    - `secrets`: secrets that must NOT reach the container (a judge's key):
+      lmnr-cli resolves them too, and `verify` reads them, like the `env` ones,
+      as `ctx.secrets[name]`.
     - `new_task_toml`: `task.toml` tables lmnr-cli writes into tasks that have
       no `task.toml` yet (`{"agent": {"timeout_sec": 300}}`).
     - `run_command`: a shell command `run` runs in the container, instead of
@@ -185,6 +187,15 @@ class EvalRunner:
         return {name: image for name, image in (cls.image or {}).items()}
 
     @classmethod
+    def secret_names(cls) -> list[str]:
+        """Every secret: `secrets` plus each `secret(...)` in `env`, once each."""
+        names = list(cls.secrets)
+        for value in cls.env.values():
+            if isinstance(value, Secret) and value.name not in names:
+                names.append(value.name)
+        return names
+
+    @classmethod
     def resolved_env(cls, values: dict[str, str]) -> dict[str, str]:
         """`env` with secrets read from `values`. Unset secrets are left out."""
         resolved: dict[str, str] = {}
@@ -261,10 +272,10 @@ class EvalRunner:
             if not isinstance(key, str) or not _ENV_NAME.match(key):
                 raise EvalConfigError(f"{name}.env has an invalid variable name: {key!r}.")
             if isinstance(value, Secret):
-                if value.name not in secrets:
+                if not isinstance(value.name, str) or not _ENV_NAME.match(value.name):
                     raise EvalConfigError(
-                        f"{name}.env[{key!r}] uses secret({value.name!r}), which is not in "
-                        + f"{name}.secrets. Add {value.name!r} to `secrets`."
+                        f"{name}.env[{key!r}]: secret() takes an env var name, "
+                        + f"got {value.name!r}."
                     )
             elif not isinstance(value, str):
                 raise EvalConfigError(

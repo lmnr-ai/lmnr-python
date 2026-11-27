@@ -107,9 +107,9 @@ class BillingEval(EvalRunner):
     mocks = {"incidents.list_recent": list_incidents}
 
     model = "anthropic/claude-sonnet-5-5"
-    # Names only: lmnr-cli reads the values from your shell, .env.local or .env.
-    secrets = ["ANTHROPIC_API_KEY"]
     env = {
+        # A secret: lmnr-cli reads its value from your shell, .env.local or
+        # .env. verify() reads it too, for the judge (ctx.secrets).
         "ANTHROPIC_API_KEY": secret("ANTHROPIC_API_KEY"),
         "SLACK_BOT_TOKEN": "xoxb-eval",  # any xoxb- token: the simulator acts as the bot
         "SLACK_CHANNEL_ID": CHANNEL,

@@ -154,7 +154,8 @@ class Case(FixtureReader):
 
 
 class Secrets(Mapping[str, str]):
-    """The runner's declared `secrets`, read from the Harbor process env."""
+    """The runner's secrets (`secrets` and the `secret(...)`s in `env`), read
+    from the Harbor process env."""
 
     def __init__(self, declared: list[str], values: Mapping[str, str]):
         self._declared: list[str] = list(declared)
@@ -166,8 +167,9 @@ class Secrets(Mapping[str, str]):
     def __getitem__(self, key: str) -> str:
         if key not in self._declared:
             raise KeyError(
-                f"{key!r} is not in the runner's `secrets`. Add it there, and lmnr-cli "
-                + "reads it from the shell, .env.local or .env."
+                f"{key!r} is not one of the runner's secrets. Pass it to the agent with "
+                + f"`env = {{{key!r}: secret({key!r})}}`, or list it in `secrets` to keep it "
+                + "out of the container; lmnr-cli reads it from the shell, .env.local or .env."
             )
         if key not in self._values:
             raise KeyError(

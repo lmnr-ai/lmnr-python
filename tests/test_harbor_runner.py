@@ -51,7 +51,7 @@ from lmnr.evals import Artifact, EvalRunner, Image, secret
 class SupportEval(EvalRunner):
     image = Image.from_registry("python:3.13")
     model = "anthropic/claude-haiku-4-5"
-    secrets = ["APP_KEY", "JUDGE_KEY"]
+    secrets = ["JUDGE_KEY"]
     env = {"APP_KEY": secret("APP_KEY"), "TONE": "formal"}
     artifacts = [Artifact("/srv/app/state", destination="state")]
 
@@ -72,6 +72,8 @@ class SupportEval(EvalRunner):
             raise KeyError("reply")
         await ctx.container.sh("check-db")
         ctx.logger.info(f"judge key: {ctx.secrets['JUDGE_KEY']}")
+        # A secret() in env is a secret too.
+        ctx.logger.info(f"app key: {ctx.secrets['APP_KEY']}")
         if ctx.artifacts.exists("/srv/app/state/db.txt"):
             ctx.logger.info(f"state: {ctx.artifacts.read_text('/srv/app/state/db.txt')}")
         return {"replied": ctx.result().get("reply") == "hi", "model_ok": ctx.model == "openai/gpt-5"}
@@ -272,6 +274,7 @@ async def test_verifier_grades_in_the_harbor_process(dataset: Path):
     log = trial_paths.test_stdout_path.read_text()
     assert "graded by SupportEval.verify() in agent/eval.py:SupportEval" in log
     assert "judge key: judge-secret" in log
+    assert "app key: app-secret" in log
     assert "state: refunded" in log
     assert 'rewards: {"replied": 1, "model_ok": 1}' in log
 

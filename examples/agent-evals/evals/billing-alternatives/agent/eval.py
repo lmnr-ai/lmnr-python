@@ -57,7 +57,6 @@ class BillingAlternativesEval(EvalRunner):
     ]
     mocks = {STATUS_API: mock.http(status_api, base_url_env="INCIDENTS_API_URL")}
 
-    secrets = ["ANTHROPIC_API_KEY"]
     env = {"ANTHROPIC_API_KEY": secret("ANTHROPIC_API_KEY"), "LMNR_LOG_LEVEL": "warn"}
 
     # One command instead of run(). It gets no ctx, so the app uses its

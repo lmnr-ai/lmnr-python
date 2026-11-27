@@ -165,7 +165,9 @@ SUPPORT_EVAL = """
     class SupportEval(EvalRunner):
         image = Image.from_dockerfile("Dockerfile", context="../..")
         model = "anthropic/claude-sonnet-5-5"
-        secrets = ["ANTHROPIC_API_KEY", "JUDGE_API_KEY"]
+        # A judge's key, kept out of the container; ANTHROPIC_API_KEY is a
+        # secret through `env`.
+        secrets = ["JUDGE_API_KEY"]
         env = {"ANTHROPIC_API_KEY": secret("ANTHROPIC_API_KEY"), "SUPPORT_TONE": "formal"}
         new_task_toml = {"agent": {"timeout_sec": 300}}
         artifacts = ["/srv/app/out/", Artifact("/var/lib/app/state.db", destination="app.db")]
@@ -208,7 +210,7 @@ def test_valid_runner_has_no_warnings():
         ({"verify": EvalRunner.verify}, "must define `async def verify"),
         ({"grade_with_test_sh": True}, "keep one"),
         ({"grade_with_test_sh": "yes"}, "must be True or False"),
-        ({"env": {"KEY": secret("KEY")}}, "not in MyEval.secrets"),
+        ({"env": {"KEY": secret("KEY=value")}}, "secret\\(\\) takes an env var name"),
         ({"secrets": ["KEY=value"]}, "env var names"),
         ({"env": {"KEY": 1}}, "must be a string or secret"),
         ({"services": ["postgres"]}, "services must be a list of services"),
@@ -245,10 +247,17 @@ def test_run_command_replaces_run_and_test_sh_replaces_verify():
 
 
 def test_resolved_env_reads_secrets_and_skips_unset_ones():
-    runner = runner_class(
-        secrets=["A", "B"], env={"A_KEY": secret("A"), "B_KEY": secret("B"), "TONE": "formal"}
-    )
+    runner = runner_class(env={"A_KEY": secret("A"), "B_KEY": secret("B"), "TONE": "formal"})
     assert runner.resolved_env({"A": "a-value"}) == {"A_KEY": "a-value", "TONE": "formal"}
+
+
+def test_a_secret_in_env_declares_the_secret():
+    runner = runner_class(
+        secrets=["JUDGE"], env={"APP_KEY": secret("APP"), "AGAIN": secret("APP"), "TONE": "x"}
+    )
+    assert runner.validate() == []
+    # `secrets` (kept out of the container) first, then env's, once each.
+    assert runner.secret_names() == ["JUDGE", "APP"]
 
 
 def test_describe_outputs_json_for_lmnr_cli(tmp_path: Path):
@@ -271,7 +280,7 @@ def test_describe_outputs_json_for_lmnr_cli(tmp_path: Path):
         "default_image": "support-evals",
         "model": "anthropic/claude-sonnet-5-5",
         "env": {"ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}", "SUPPORT_TONE": "formal"},
-        "secrets": ["ANTHROPIC_API_KEY", "JUDGE_API_KEY"],
+        "secrets": ["JUDGE_API_KEY", "ANTHROPIC_API_KEY"],
         "new_task_toml": {"agent": {"timeout_sec": 300}},
         "grade_with_test_sh": False,
         "warnings": [],
@@ -524,7 +533,7 @@ def test_secrets_only_expose_declared_names():
     secrets = Secrets(["JUDGE"], {"JUDGE": "j", "OTHER": "o"})
     assert secrets["JUDGE"] == "j"
     assert dict(secrets) == {"JUDGE": "j"}
-    with pytest.raises(KeyError, match="not in the runner's `secrets`"):
+    with pytest.raises(KeyError, match="not one of the runner's secrets"):
         _ = secrets["OTHER"]
     with pytest.raises(KeyError, match="not set"):
         _ = Secrets(["MISSING"], {})["MISSING"]

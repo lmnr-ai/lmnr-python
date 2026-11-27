@@ -70,7 +70,7 @@ def describe(path: Path | str, layer_lmnr: str | None = None) -> dict[str, Any]:
             key: f"${{{value.name}}}" if isinstance(value, Secret) else value
             for key, value in runner.env.items()
         },
-        "secrets": list(runner.secrets),
+        "secrets": runner.secret_names(),
         "new_task_toml": runner.new_task_toml,
         "grade_with_test_sh": runner.grade_with_test_sh,
         "warnings": warnings,
