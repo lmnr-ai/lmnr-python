@@ -25,6 +25,10 @@ SPAN_LANGUAGE_VERSION = "lmnr.span.language_version"
 SPAN_RELEASE = "lmnr.span.release"
 SPAN_BRIDGE_NAME = "lmnr.span.bridge.name"
 SPAN_BRIDGE_VERSION = "lmnr.span.bridge.version"
+# An observed call the eval's mock server answered (`lmnr.sdk.mock`)
+SPAN_MOCKED = "lmnr.span.mocked"
+MOCK_KEY = "lmnr.mock.key"
+MOCK_OUTCOME = "lmnr.mock.outcome"
 
 ASSOCIATION_PROPERTIES = "lmnr.association.properties"
 SESSION_ID = "session_id"

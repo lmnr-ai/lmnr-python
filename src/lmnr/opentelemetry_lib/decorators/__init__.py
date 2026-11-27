@@ -23,6 +23,7 @@ from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
 from lmnr.opentelemetry_lib.tracing.utils import set_association_props_in_context
 from lmnr.opentelemetry_lib.tracing.wrapper import is_tracing_initialized
 from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.mock import MockTarget, alookup, lookup, mocks_enabled
 from lmnr.sdk.utils import (
     get_input_from_func_args,
     is_method,
@@ -178,12 +179,19 @@ def observe_base(
     input_formatter: Callable[..., str] | None = None,
     output_formatter: Callable[..., str] | None = None,
     preserve_global_context: bool = False,
+    mock_key: str | None = None,
 ) -> Callable[[F], F]:
+    """`mock_key`: the key a trial's mock server may answer this function's
+    calls under (`lmnr.sdk.mock`); `None` never consults it."""
+
     def decorate(fn: F) -> F:
+        mock_target = MockTarget(mock_key, fn) if mock_key is not None else None
+
         @wraps(fn)
         def wrap(*args: Any, **kwargs: Any):
+            mocked = lookup(mock_target)
             if not is_tracing_initialized():
-                return fn(*args, **kwargs)
+                return fn(*args, **kwargs) if mocked is None else mocked.run(None, args, kwargs)
 
             span_name = name or getattr(fn, "__name__", "unknown")
 
@@ -196,7 +204,7 @@ def observe_base(
             )
 
             if span is None:
-                return fn(*args, **kwargs)
+                return fn(*args, **kwargs) if mocked is None else mocked.run(None, args, kwargs)
 
             # Set association props in context before push_span_context
             # so child spans inherit them
@@ -227,7 +235,7 @@ def observe_base(
             _process_input(span, fn, args, kwargs, ignore_input, ignore_inputs, input_formatter)
 
             try:
-                res = fn(*args, **kwargs)
+                res = fn(*args, **kwargs) if mocked is None else mocked.run(span, args, kwargs)
             except Exception as e:
                 _process_exception(span, e)
                 _cleanup_span(span, did_push_context)
@@ -302,11 +310,23 @@ def async_observe_base(
     input_formatter: Callable[..., str] | None = None,
     output_formatter: Callable[..., str] | None = None,
     preserve_global_context: bool = False,
+    mock_key: str | None = None,
 ) -> Callable[[F], F]:
+    """`mock_key`: the key a trial's mock server may answer this function's
+    calls under (`lmnr.sdk.mock`); `None` never consults it."""
+
     def decorate(fn: F) -> F:
+        mock_target = MockTarget(mock_key, fn) if mock_key is not None else None
+
         @wraps(fn)
         async def wrap(*args: Any, **kwargs: Any):
+            # Checked before awaiting so an app without mocks creates no coroutine.
+            mocked = None
+            if mock_target is not None and mocks_enabled():
+                mocked = await alookup(mock_target)
             if not is_tracing_initialized():
+                if mocked is not None:
+                    return await mocked.arun(None, args, kwargs)
                 return await fn(*args, **kwargs)
 
             span_name = name or getattr(fn, "__name__", "unknown")
@@ -320,6 +340,8 @@ def async_observe_base(
             )
 
             if span is None:
+                if mocked is not None:
+                    return await mocked.arun(None, args, kwargs)
                 return await fn(*args, **kwargs)
 
             # Set association props in context before push_span_context
@@ -351,7 +373,10 @@ def async_observe_base(
             _process_input(span, fn, args, kwargs, ignore_input, ignore_inputs, input_formatter)
 
             try:
-                res = await fn(*args, **kwargs)
+                if mocked is None:
+                    res = await fn(*args, **kwargs)
+                else:
+                    res = await mocked.arun(span, args, kwargs)
             except Exception as e:
                 _process_exception(span, e)
                 _cleanup_span(span, did_push_context)

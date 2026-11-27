@@ -52,6 +52,7 @@ lmnr datasets pull <id>       # Pull dataset
 - `client/` - HTTP clients (`LaminarClient`, `AsyncLaminarClient`) for API interactions
 - `debug/` - debug mode / replay (cross-language parity surface with the TS SDK)
 - `trajectory/` - lmnr-atif, Laminar's extension to Harbor's ATIF trajectory format (spec in `spec/lmnr-atif/`)
+- `mock/` - observe-level mocks: `@observe`d calls answered by an eval trial's mock server (`LMNR_MOCK_URL`, protocol in `spec/lmnr-mock/`); TS parity surface
 
 ### OpenTelemetry Layer (`src/lmnr/opentelemetry_lib/`)
 - `tracing/instruments.py` - `Instruments` enum listing all auto-instrumentable providers
@@ -109,6 +110,8 @@ LMNR_BASE_URL         # API base URL (default: https://api.lmnr.ai)
 LMNR_RELEASE          # Release (git SHA) stamped on spans; auto-detected if unset
 LMNR_TRAJECTORY_PATH  # Write the run as an lmnr-atif (ATIF) file; local-only, no key needed. May contain {trace_id}, {pid}
 LMNR_TRAJECTORY_FORCE_EXPORT  # With LMNR_TRAJECTORY_PATH: also export spans to Laminar
+LMNR_MOCK_URL         # Set by eval trials with mocks: observed calls with a mocked key are answered by the mock server
+LMNR_MOCK_TIMEOUT_MS  # Per-call timeout for those (default 30000)
 LMNR_{INSTRUMENT}_{OPTION}  # Per-instrumentation options, e.g. LMNR_LANGGRAPH_RECORD_GRAPH=false; see tracing/AGENTS.md
 ```
 
@@ -117,6 +120,7 @@ LMNR_{INSTRUMENT}_{OPTION}  # Per-instrumentation options, e.g. LMNR_LANGGRAPH_R
 - `tests/AGENTS.md` - VCR cassettes, spy-test pattern, debug tests, known flakes
 - `src/lmnr/sdk/AGENTS.md` - logging, HTTP error reporting, `json_dumps` / bytes, eval trace type
 - `src/lmnr/sdk/debug/AGENTS.md` - debug mode / replay, TS parity
+- `src/lmnr/sdk/mock/AGENTS.md` - observe-level mocks: key resolution, fail-closed key fetch + backoff, args / return validation, sync vs async clients, span attributes, TS parity, trajectory gap
 - `src/lmnr/sdk/trajectory/AGENTS.md` - lmnr-atif spec location, version bumps, schema/doc/fixture sync, harbor validation
 - `src/lmnr/opentelemetry_lib/bridges/AGENTS.md` - `bridges=` option, the `LaminarBridge` contract shared with the TS SDK
 - `src/lmnr/opentelemetry_lib/bridges/langfuse/AGENTS.md` - Langfuse bridge: copy-on-end (never mutate Langfuse's spans), private provider, export-filter mirroring, usage/metadata shapes per langfuse major, version overlays in CI

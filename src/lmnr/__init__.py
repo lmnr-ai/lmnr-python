@@ -14,6 +14,7 @@ from .sdk.datasets import EvaluationDataset, LaminarDataset
 from .sdk.decorators import observe
 from .sdk.evaluations import evaluate
 from .sdk.laminar import Laminar
+from .sdk.mock import MockedError
 from .sdk.types import (
     InstrumentOptions,
     LaminarSpanContext,
@@ -40,6 +41,7 @@ __all__ = [
     "LaminarSpanContext",
     "LaminarSpanProcessor",
     "MaskInputOptions",
+    "MockedError",
     "SessionRecordingOptions",
     "evaluate",
     "get_laminar_tracer_provider",

@@ -50,8 +50,10 @@ async def judge(reply: str, criteria: str, api_key: str) -> Verdict:
 # every trial. ctx.fixture_json reads this case's tests/fixtures/, which the
 # agent never sees as files.
 def get_customer(call, ctx):
-    """Replaces the app's observed `crm.get_customer`, once the app's Laminar
-    SDK supports function mocks. Until then the app calls CRM_API_URL."""
+    """Answers the app's observed `crm.get_customer` instead of running it
+    (function mocks need lmnr >= 0.9.3 in the app; an older SDK runs the real
+    function, which calls CRM_API_URL). `call.args` are the function's
+    arguments by name; a `mock.Error` raises `lmnr.MockedError` in the app."""
     customer = ctx.fixture_json("crm.json").get(call.args["email"])
     if customer is None:
         raise mock.Error("CustomerNotFound", f"no customer {call.args['email']}")
