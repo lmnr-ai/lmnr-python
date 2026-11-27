@@ -84,7 +84,7 @@ class LaminarLayer:
     """An `ImageContributor`: the stage and the final image's `COPY`.
 
     `lmnr` is the requirement to install (`lmnr==<the version describe runs
-    as>`, or a VCS URL), or None to install the wheel lmnr-cli built from a
+    as>`, or a git URL), or None to install the wheel lmnr-cli built from a
     local checkout, passed as the `lmnr-dev` build context.
     """
 
@@ -118,7 +118,7 @@ class LaminarLayer:
         ]
         requirements = [r for r in (self.lmnr, *self.mock_dependencies) if r is not None]
         if any("git+" in r for r in requirements):
-            # A VCS requirement (lmnr's or a mock dependency's): the stage has no git.
+            # A git requirement (lmnr's or a mock dependency's): the stage has no git.
             lines.append(
                 "RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y "
                 + "--no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*"
