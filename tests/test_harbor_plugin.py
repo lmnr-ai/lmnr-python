@@ -24,12 +24,14 @@ from opentelemetry.trace import SpanContext, StatusCode
 from lmnr import Laminar
 from lmnr.integrations.harbor import LaminarPlugin
 from lmnr.integrations.harbor.plugin import AGENT_TRAJECTORY_PATH, _request_agent_trajectories
+from lmnr.integrations.harbor.spans import LAMINAR_AGENT_IMPORT_PATH, verifier_spans
 from lmnr.integrations.harbor.trajectory import (
     ORDER_GAP_NS,
     content_to_text,
     parse_timestamp_ns,
     split_model_name,
 )
+from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 from lmnr.sdk.evaluations.models import EvaluationResultDatapoint, PartialEvaluationDatapoint
 from lmnr.sdk.evaluations.utils import get_evaluation_url
 
@@ -329,6 +331,28 @@ async def test_remote_run_links_evaluation_and_trials_to_uploaded_folder(
     }
     # Tasks Harbor fetched from elsewhere aren't in the uploaded folder.
     assert task_paths == {"refund__a": "support/tasks/refund", "fetched__b": None}
+
+
+@pytest.mark.asyncio
+async def test_remote_run_records_the_runner_shared_modules(
+    client: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    root = tmp_path / "evals"
+    suite_dir = root / "refunds"
+    suite_dir.mkdir(parents=True)
+    monkeypatch.setenv("LMNR_EVALS_ROOT", str(root))
+    monkeypatch.setenv("LMNR_EVAL_UPLOAD_ID", "upload-1")
+    monkeypatch.chdir(suite_dir)
+    # As lmnr-cli passes it: --pk runner_modules=<JSON list>.
+    modules = '["_shared/support.py", "refunds/agent/eval.py", "../escape.py", "/abs.py"]'
+    plugin = LaminarPlugin(project_api_key="test_key", runner_modules=modules)
+    await plugin.on_job_start(FakeJob(tmp_path / "job"))
+    # The dataset's agent/ is shown anyway; paths leaving the root are dropped.
+    assert client.evals.init.call_args.kwargs["hosted_metadata"] == {
+        "uploadId": "upload-1",
+        "suitePath": "refunds",
+        "runnerModules": ["_shared/support.py"],
+    }
 
 
 @pytest.mark.asyncio
@@ -1568,7 +1592,150 @@ async def test_initialize_does_not_take_over_global_tracer_provider(client, tmp_
         await plugin.on_job_start(FakeJob(tmp_path / "job"))
     assert initialize.call_args.kwargs["set_global_tracer_provider"] is False
     assert initialize.call_args.kwargs["instruments"] == set()
+    assert "disabled_instruments" not in initialize.call_args.kwargs
     await plugin.on_job_end(SimpleNamespace())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("import_paths", "eval_runners_only"),
+    [
+        ([LAMINAR_AGENT_IMPORT_PATH], True),
+        ([LAMINAR_AGENT_IMPORT_PATH, LAMINAR_AGENT_IMPORT_PATH], True),
+        ([LAMINAR_AGENT_IMPORT_PATH, None], False),  # e.g. terminus-2 next to it
+    ],
+)
+async def test_eval_runner_jobs_instrument_verify(
+    client, tmp_path: Path, import_paths: list[str | None], eval_runners_only: bool
+):
+    # verify() runs in the Harbor process under the verifier span, so its LLM
+    # calls (judges) are instrumented, but only when no Harbor-process agent
+    # would produce orphan traces. Our Daytona instrumentor stays off.
+    job = FakeJob(tmp_path / "job")
+    job.config.agents = [
+        SimpleNamespace(name=None, import_path=p, model_name="m", env={}) for p in import_paths
+    ]
+    plugin = LaminarPlugin(project_api_key="test_key")
+    with (
+        patch.object(Laminar, "is_initialized", return_value=False),
+        patch.object(Laminar, "initialize") as initialize,
+    ):
+        await plugin.on_job_start(job)
+    kwargs = initialize.call_args.kwargs
+    assert kwargs["set_global_tracer_provider"] is False
+    if eval_runners_only:
+        assert kwargs["disabled_instruments"] == {Instruments.DAYTONA_SDK}
+        assert "instruments" not in kwargs
+    else:
+        assert kwargs["instruments"] == set()
+    await plugin.on_job_end(SimpleNamespace())
+
+
+@pytest.mark.asyncio
+async def test_verifier_span_is_open_during_verification(
+    span_exporter: InMemorySpanExporter, client: MagicMock, tmp_path: Path
+):
+    job = FakeJob(tmp_path / "job")
+    task_dir = make_task_dir(tmp_path, "t")
+    plugin = LaminarPlugin(project_api_key="test_key")
+    await plugin.on_job_start(job)
+    event = make_event(job, task_dir, "t1", rewards={"reward": 1})
+    await job.emit("start", event)
+    await job.emit("agent_start", event)
+    await job.emit("verification_start", _at(event, ts(19)))
+
+    # What LaminarVerifier does while Harbor runs the verifier.
+    parent = verifier_spans["t1"]
+    with Laminar.start_as_current_span("verify", parent_span_context=parent):
+        Laminar.start_span("judge").end()
+    assert "verifier" not in spans_by_name(span_exporter)  # still open
+
+    verifier_dir = job.job_dir / "t1" / "verifier"
+    verifier_dir.mkdir(parents=True)
+    _ = (verifier_dir / "test-stdout.txt").write_text("rewards: {}")
+    await job.emit("end", event)
+    await plugin.on_job_end(SimpleNamespace())
+
+    assert "t1" not in verifier_spans
+    spans = spans_by_name(span_exporter)
+    (root,) = spans["t1"]
+    (verifier,) = spans["verifier"]
+    (verify,) = spans["verify"]
+    (judge,) = spans["judge"]
+    assert verifier.parent.span_id == root.context.span_id
+    assert verify.parent.span_id == verifier.context.span_id
+    assert judge.parent.span_id == verify.context.span_id
+    assert {_ctx(s).trace_id for s in (verifier, verify, judge)} == {root.context.trace_id}
+    assert verifier.attributes["lmnr.span.type"] == "EVALUATOR"
+    assert verifier.start_time == parse_timestamp_ns(ts(19))
+    assert verifier.end_time == parse_timestamp_ns(ts(29))
+    assert json.loads(verifier.attributes["lmnr.span.output"]) == {
+        "rewards": {"reward": 1},
+        "test_output": "rewards: {}",
+    }
+
+
+@pytest.mark.asyncio
+async def test_open_verifier_span_gets_the_verifier_exception(
+    span_exporter: InMemorySpanExporter, client: MagicMock, tmp_path: Path
+):
+    job = FakeJob(tmp_path / "job")
+    task_dir = make_task_dir(tmp_path, "t")
+    plugin = LaminarPlugin(project_api_key="test_key")
+    await plugin.on_job_start(job)
+    event = make_event(job, task_dir, "t1")
+    await job.emit("start", event)
+    await job.emit("verification_start", event)
+    event.result.exception_info = SimpleNamespace(
+        exception_type="KeyError",
+        exception_message="'reply'",
+        exception_traceback="Traceback ...",
+        occurred_at=ts(28),
+    )
+    await job.emit("end", event)
+    await plugin.on_job_end(SimpleNamespace())
+
+    spans = spans_by_name(span_exporter)
+    (verifier,) = spans["verifier"]
+    assert verifier.status.status_code == StatusCode.ERROR
+    assert verifier.events[0].attributes["exception.type"] == "KeyError"
+    (root,) = spans["t1"]
+    assert not root.events
+
+
+@pytest.mark.asyncio
+async def test_retry_closes_the_previous_verifier_span(
+    span_exporter: InMemorySpanExporter, client: MagicMock, tmp_path: Path
+):
+    job = FakeJob(tmp_path / "job")
+    task_dir = make_task_dir(tmp_path, "t")
+    plugin = LaminarPlugin(project_api_key="test_key")
+    await plugin.on_job_start(job)
+    event = make_event(job, task_dir, "t1", rewards={"reward": 1})
+    await job.emit("start", event)
+    await job.emit("verification_start", event)
+    first = verifier_spans["t1"]
+    # The attempt never ended (e.g. the process lost it); Harbor retries.
+    await job.emit("start", event)
+    assert "t1" not in verifier_spans
+    await job.emit("verification_start", event)
+    assert verifier_spans["t1"].span_id != first.span_id
+    await job.emit("end", event)
+    await plugin.on_job_end(SimpleNamespace())
+
+    verifiers = spans_by_name(span_exporter)["verifier"]
+    assert [v.status.status_code for v in verifiers] == [StatusCode.ERROR, StatusCode.UNSET]
+    # Laminar marks errors by the exception event, not the status.
+    assert [e.name for e in verifiers[0].events] == ["exception"]
+    assert verifiers[0].events[0].attributes["exception.message"] == (
+        "Verification did not finish: the trial was retried"
+    )
+    assert verifiers[1].events == ()
+    assert "t1" not in verifier_spans
+
+
+def _at(event: Any, timestamp: datetime.datetime) -> Any:
+    return SimpleNamespace(**{**vars(event), "timestamp": timestamp})
 
 
 @pytest.mark.asyncio

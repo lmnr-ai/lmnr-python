@@ -8,9 +8,8 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-install-project
 ENV PATH="/srv/app/.venv/bin:$PATH"
 
-# Only what runs in the container: never the tasks (their tests/ hold the
-# reference answers).
-COPY evals/support/agent/seed.py evals/support/agent/run.py evals/support/agent/verify.py /opt/agent/
+# Only the app: eval.py uploads seed.py when it runs it, and the tasks'
+# tests/ (the reference answers) never enter the image.
 COPY app/ ./app/
 
 WORKDIR /case

@@ -2,11 +2,8 @@
 name = "refund-agent/duplicate-charge"
 
 [environment]
-docker_image = "refund-agent-evals"
+docker_image = "support-evals"
 workdir = "/case"
 
 [agent]
 timeout_sec = 300
-
-[verifier.env]
-ANTHROPIC_API_KEY = "${ANTHROPIC_API_KEY}"

@@ -23,11 +23,13 @@ from typing import TYPE_CHECKING, Any, NamedTuple, cast
 from opentelemetry.context import Context
 from opentelemetry.trace import Status, StatusCode
 
+from lmnr.integrations.harbor.spans import LAMINAR_AGENT_IMPORT_PATH, verifier_spans
 from lmnr.integrations.harbor.trajectory import (
     emit_trajectory_spans,
     final_agent_message,
     parse_timestamp_ns,
 )
+from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.sdk.evaluations.models import EvaluationResultDatapoint, PartialEvaluationDatapoint
@@ -90,6 +92,9 @@ class _TrialState:
     setup_emitted: bool = False
     agent_span: Any = None
     agent_exception: Any = None
+    # Opened at VERIFICATION_START so `LaminarVerifier` can trace `verify()`
+    # under it; ended at trial end.
+    verifier_span: Any = None
     # The trial's latest upload. Every upload waits for it, since saves upsert
     # by datapoint id and a retry must not be overwritten by an earlier attempt.
     last_upload: asyncio.Task[Any] | None = None
@@ -120,6 +125,12 @@ class LaminarPlugin:
       `[task] name` and content hash (`{"refund": {"name": "acme/refund",
       "hash": ...}}`); a trial of a listed task records both as its task
       version. Both are passed by `lmnr-cli eval run`.
+    - `runner_modules`: JSON list of the `EvalRunner`'s module files,
+      relative to the evals root (`["_shared/support.py",
+      "refunds/agent/eval.py"]`, from `lmnr.evals.describe`). A remote run's
+      evaluation records the ones outside the dataset's `agent/`, so Laminar's
+      Files view can show the shared code a trial ran. Passed by
+      `lmnr-cli eval run` for `agent/eval.py` datasets.
     - `trajectory_spans`: convert agent ATIF trajectories into LLM and tool
       spans. Defaults to true.
     - `fail_fast`: raise on Laminar errors instead of logging a warning and
@@ -138,6 +149,7 @@ class LaminarPlugin:
         group_name: str | None = None,
         dataset: str | None = None,
         task_hashes_file: str | None = None,
+        runner_modules: str | list[str] | None = None,
         trajectory_spans: bool | str | None = None,
         fail_fast: bool | str | None = None,
     ):
@@ -154,6 +166,7 @@ class LaminarPlugin:
         self.dataset: str | None = str(dataset) if dataset else None
         self.task_hashes_file: str | None = str(task_hashes_file) if task_hashes_file else None
         self._task_hashes: dict[str, TaskVersion] = {}
+        self.runner_modules: list[str] = _parse_modules(runner_modules)
         self.trajectory_spans: bool = (
             True if trajectory_spans is None else _parse_bool(trajectory_spans)
         )
@@ -194,7 +207,8 @@ class LaminarPlugin:
             return
         try:
             # Trials interrupted before END never got their root span closed.
-            for state in self._trials.values():
+            for trial_name, state in self._trials.items():
+                _end_open_verifier_span(trial_name, state, "the job ended first")
                 if state.root_span is not None:
                     state.root_span.set_status(Status(StatusCode.ERROR, "unfinished"))
                     state.root_span.end()
@@ -252,19 +266,28 @@ class LaminarPlugin:
             # Harbor-process agents (e.g. terminus-2) call LLMs through LiteLLM
             # outside of any span we own, so auto-instrumentation would only
             # produce orphan traces. Their calls are recovered from the
-            # trajectory instead. For the same reason we don't take over the
-            # global tracer provider: OTel-instrumented libraries in the Harbor
-            # process (e.g. the Daytona SDK) would export a trace per call.
-            # LMNR_TRAJECTORY_PATH (in the env or a .env) is meant for the
-            # agent: here it would make the plugin's own spans local-only.
+            # trajectory instead. When every agent is an `EvalRunner`, the only
+            # LLM calls in this process are `verify()`'s (users' judges), which run
+            # under the trial's verifier span, so they are instrumented; only
+            # our Daytona instrumentor stays off (a trace per sandbox API call).
+            # For the same reason we don't take over the global tracer
+            # provider: OTel-instrumented libraries in the Harbor process would
+            # export a trace per call. LMNR_TRAJECTORY_PATH (in the env or a
+            # .env) is meant for the agent: here it would make the plugin's own
+            # spans local-only.
+            instrument_kwargs: dict[str, Any] = (
+                {"disabled_instruments": {Instruments.DAYTONA_SDK}}
+                if _all_agents_are_eval_runners(job)
+                else {"instruments": set()}
+            )
             Laminar.initialize(
                 project_api_key=self.project_api_key,
                 base_url=self.base_url,
                 http_port=self.http_port,
                 grpc_port=self.grpc_port,
-                instruments=set(),
                 set_global_tracer_provider=False,
                 write_trajectory=False,
+                **instrument_kwargs,
             )
             client_url, client_port = self.base_url, self.http_port
         self._client = AsyncLaminarClient(
@@ -299,7 +322,7 @@ class LaminarPlugin:
         self._project_id = str(evaluation.get("projectId"))
         logger.info(f"Laminar evaluation: {self.evaluation_url}")
 
-    def _hosted_metadata(self) -> dict[str, str] | None:
+    def _hosted_metadata(self) -> dict[str, Any] | None:
         """Links the evaluation to the evals folder of a remote run
         (`lmnr-cli eval run --remote`), whose orchestrator sets both variables
         and runs Harbor from the suite dir."""
@@ -313,7 +336,13 @@ class LaminarPlugin:
             return None
         # Trials get task paths only when the evaluation is linked to the upload.
         self._evals_root = evals_root
-        return {"uploadId": upload_id, "suitePath": suite_path}
+        metadata: dict[str, Any] = {"uploadId": upload_id, "suitePath": suite_path}
+        # The Files view shows the dataset's agent/ already.
+        agent_dir = f"{suite_path}/agent/" if suite_path not in ("", ".") else "agent/"
+        shared = [m for m in self.runner_modules if not m.startswith(agent_dir)]
+        if shared:
+            metadata["runnerModules"] = shared
+        return metadata
 
     def _task_path(self, event: "TrialHookEvent") -> str | None:
         """The task dir relative to a remote run's evals root. Tasks Harbor
@@ -344,12 +373,17 @@ class LaminarPlugin:
 
     async def _on_verification_started(self, event: "TrialHookEvent") -> None:
         # The agent is done and its logs and trajectory are synced by now.
+        state = self._trials.get(event.trial_name)
+        if state is None or state.root_span is None:
+            return
         try:
-            state = self._trials.get(event.trial_name)
-            if state is not None and state.root_span is not None:
-                self._emit_agent_once(state, event)
+            self._emit_agent_once(state, event)
         except Exception as e:
             self._handle_error(f"Failed to report {event.trial_name} agent run", e)
+        try:
+            self._start_verifier_span(state, event)
+        except Exception as e:
+            self._handle_error(f"Failed to start {event.trial_name} verifier span", e)
 
     async def _on_trial_cancelled(self, event: "TrialHookEvent") -> None:
         state = self._trials.get(event.trial_name)
@@ -394,6 +428,7 @@ class LaminarPlugin:
             self._trials[event.trial_name] = state
         else:
             # A retry: close the previous attempt's trace if it never ended.
+            _end_open_verifier_span(event.trial_name, state, "the trial was retried")
             if state.root_span is not None:
                 state.root_span.end()
             state.cancelled = False
@@ -458,15 +493,30 @@ class LaminarPlugin:
         test_output = _read_text(_trial_dir(event), "verifier", "test-stdout.txt")
         if test_output and test_output.strip():
             verifier_output["test_output"] = test_output
-        verifier_span = _emit_phase(
-            root.get_laminar_span_context(),
-            "verifier",
-            result.verifier,
-            span_type="EVALUATOR",
-            input=_test_script(event),
-            output=verifier_output,
-            exception=unrecorded,
-        )
+        if state.verifier_span is not None and result.verifier is None:
+            # Opened, but Harbor never got to run the verifier.
+            _end_open_verifier_span(event.trial_name, state, "Harbor never ran the verifier")
+            verifier_span = None
+        elif state.verifier_span is not None:
+            verifier_span = state.verifier_span
+            state.verifier_span = None
+            _ = verifier_spans.pop(event.trial_name, None)
+            _finish_span(
+                verifier_span,
+                output=verifier_output,
+                exception=unrecorded,
+                end_time=result.verifier.finished_at or result.finished_at,
+            )
+        else:
+            verifier_span = _emit_phase(
+                root.get_laminar_span_context(),
+                "verifier",
+                result.verifier,
+                span_type="EVALUATOR",
+                input=_test_script(event),
+                output=verifier_output,
+                exception=unrecorded,
+            )
 
         output: dict[str, Any] = {"rewards": rewards}
         if exception is not None:
@@ -514,6 +564,20 @@ class LaminarPlugin:
         if state.agent_span is not None:
             state.agent_exception = exception
 
+    def _start_verifier_span(self, state: _TrialState, event: "TrialHookEvent") -> None:
+        """Open the verifier span before Harbor runs the verifier (it awaits this
+        hook), so `LaminarVerifier` can nest `verify()` under it."""
+        if state.verifier_span is not None:
+            return
+        state.verifier_span = Laminar.start_span(
+            "verifier",
+            input=_test_script(event),
+            span_type="EVALUATOR",
+            parent_span_context=state.root_span.get_laminar_span_context(),
+            start_time=parse_timestamp_ns(event.timestamp),
+        )
+        verifier_spans[event.trial_name] = state.verifier_span.get_laminar_span_context()
+
     def _end_trial(self, event: "TrialHookEvent") -> None:
         state = self._trials.get(event.trial_name)
         if state is None or state.root_span is None:
@@ -524,6 +588,7 @@ class LaminarPlugin:
             agent_span = self._emit_trial_spans(root, state, result, event)
         except Exception:
             # Don't leave the root open with a historical start time.
+            _end_open_verifier_span(event.trial_name, state, "failed to report the trial")
             root.set_status(Status(StatusCode.ERROR, "failed to report trial"))
             root.end()
             raise
@@ -705,6 +770,26 @@ def _default_group_name(job: "Job") -> str | None:
     return None
 
 
+def _parse_modules(value: str | list[str] | None) -> list[str]:
+    """`runner_modules` (a JSON list from `--pk`) as relative POSIX paths; a
+    malformed value only warns."""
+    if not value:
+        return []
+    try:
+        raw = json.loads(value) if isinstance(value, str) else value
+    except ValueError as e:
+        logger.warning(f"Can't parse runner_modules {value!r}: {e}")
+        return []
+    if not isinstance(raw, list):
+        logger.warning(f"runner_modules is not a JSON list: {value!r}")
+        return []
+    return [
+        m
+        for m in cast(list[Any], raw)
+        if isinstance(m, str) and m and not m.startswith("/") and ".." not in m.split("/")
+    ]
+
+
 class TaskVersion(NamedTuple):
     """A task's `[task] name` and content hash, from `task_hashes_file`."""
 
@@ -884,6 +969,44 @@ def _record_exception(span: Any, exception: Any) -> None:
     )
 
 
+def _all_agents_are_eval_runners(job: "Job") -> bool:
+    agents = getattr(job.config, "agents", None) or []
+    return bool(agents) and all(
+        getattr(agent, "import_path", None) == LAMINAR_AGENT_IMPORT_PATH for agent in agents
+    )
+
+
+def _end_open_verifier_span(trial_name: str, state: _TrialState, reason: str) -> None:
+    """End a verifier span left open by an attempt that never reached its end.
+
+    Laminar marks a span as an error by its `exception` event (the OTel status
+    isn't ingested), so the span gets one saying why it didn't finish.
+    """
+    _ = verifier_spans.pop(trial_name, None)
+    if state.verifier_span is not None:
+        message = f"Verification did not finish: {reason}"
+        state.verifier_span.add_event(
+            "exception",
+            attributes={
+                "exception.type": "VerificationUnfinished",
+                "exception.message": message,
+                "exception.escaped": True,
+            },
+        )
+        state.verifier_span.set_status(Status(StatusCode.ERROR, message))
+        state.verifier_span.end()
+        state.verifier_span = None
+
+
+def _finish_span(span: Any, output: Any, exception: Any, end_time: Any) -> None:
+    if output is not None:
+        span.set_output(output)
+    if exception is not None:
+        _record_exception(span, exception)
+        span.set_status(Status(StatusCode.ERROR, exception.exception_message))
+    span.end(end_time=parse_timestamp_ns(end_time) if end_time is not None else None)
+
+
 def _emit_phase(
     parent: Any,
     name: str,
@@ -905,10 +1028,5 @@ def _emit_phase(
             start_time=parse_timestamp_ns(timing.started_at),
         ),
     )
-    if output is not None:
-        span.set_output(output)
-    if exception is not None:
-        _record_exception(span, exception)
-        span.set_status(Status(StatusCode.ERROR, exception.exception_message))
-    span.end(end_time=parse_timestamp_ns(timing.finished_at))
+    _finish_span(span, output=output, exception=exception, end_time=timing.finished_at)
     return span
