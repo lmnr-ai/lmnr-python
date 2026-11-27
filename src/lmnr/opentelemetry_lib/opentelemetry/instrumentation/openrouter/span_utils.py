@@ -223,6 +223,7 @@ class _AggregatedMessage(TypedDict):
     role: str
     content: str
     tool_calls: NotRequired[list[_AggregatedToolCall]]  # only when tools were called
+    reasoning: NotRequired[str]  # only when the model streamed reasoning
 
 
 class _AggregatedChoice(TypedDict):
@@ -269,6 +270,10 @@ def aggregate_chat_chunks(chunks: list[dict[str, Any]]) -> dict[str, Any]:
                 accumulated["message"]["role"] = delta["role"]
             if delta.get("content"):
                 accumulated["message"]["content"] += delta["content"]
+            if delta.get("reasoning"):
+                accumulated["message"]["reasoning"] = (
+                    accumulated["message"].get("reasoning", "") + delta["reasoning"]
+                )
             for call in cast(list[dict[str, Any]], delta.get("tool_calls") or []):
                 slot = tool_calls.setdefault(index, {}).setdefault(
                     call.get("index") or 0,
