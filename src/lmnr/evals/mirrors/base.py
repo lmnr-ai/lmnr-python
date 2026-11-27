@@ -12,15 +12,16 @@ from urllib.parse import urlencode
 
 from typing_extensions import override
 
-from lmnr.evals.context import relay_http
+from lmnr.evals.context import VerifyContext, relay_http
 from lmnr.evals.errors import OUTPUT_TAIL_CHARS, EvalConfigError
 from lmnr.evals.fixtures import SeedSpec, resolve_seed
-from lmnr.evals.services.base import HOST, STATE_DIR, Service
+from lmnr.evals.services.base import HOST, Service
 
 if TYPE_CHECKING:
     from lmnr.evals.context import AgentContext, Context
 
-STATE_FILE = "state.json"
+# The snapshot file `read_state` goes to (`ctx.state(<mirror>, "state")`).
+STATE = "state"
 # Default ports are picked from the name in this range, so a runner's mirrors
 # rarely collide; `port=` settles it when they do.
 DEFAULT_PORT_BASE = 18000
@@ -37,10 +38,11 @@ class Mirror(Service):
     `load_seed` and `read_state`.
 
     `snapshot=True` saves the state in `collect`, so `state(ctx)` also works in
-    a separate verifier container.
+    a separate verifier container; `ctx.state(<name>, "state")` reads that file.
     """
 
     display_name: ClassVar[str] = "Mirror"
+    snapshot_option: ClassVar[str | None] = "snapshot=True"
 
     def __init__(
         self,
@@ -94,17 +96,17 @@ class Mirror(Service):
     async def snapshot(self, ctx: AgentContext, out_dir: str) -> None:
         if not self.snapshot_state:
             return
-        files = {STATE_FILE: await self.read_state(ctx), **await self.snapshot_extras(ctx)}
+        files = {STATE: await self.read_state(ctx), **await self.snapshot_extras(ctx)}
         quoted = shlex.quote(out_dir)
         _ = await ctx.container.sh(f"rm -rf {quoted} && mkdir -p {quoted}", user="root")
         for name, content in files.items():
-            await ctx.container.write_file(f"{out_dir}/{name}", json.dumps(content))
+            await ctx.container.write_file(f"{out_dir}/{name}.json", json.dumps(content))
         # After every file: the upload's mode depends on the environment.
         _ = await ctx.container.sh(f"chmod -R a+rX {quoted}", user="root")
 
     async def snapshot_extras(self, ctx: AgentContext) -> dict[str, Any]:
-        """More JSON files for the snapshot, by name, next to `state.json`
-        (read back with `saved(ctx, name)`)."""
+        """More JSON files for the snapshot, by name without `.json`, next to
+        `state.json` (read back with `ctx.state(<mirror>, name)`)."""
         del ctx
         return {}
 
@@ -114,22 +116,19 @@ class Mirror(Service):
         """The mirror's state: live in the agent phase and a shared verifier;
         in a separate verifier, what `collect` saved (needs `snapshot=True`)."""
         if getattr(ctx, "verifier_mode", None) == "separate":
-            return self.saved(ctx, STATE_FILE)
+            return self._saved(ctx, STATE)
         return await self.read_state(ctx)
 
-    def saved(self, ctx: Context, file: str) -> Any:
-        """A file `snapshot` saved under `/logs/artifacts/state/<name>/`, read
-        on the host through `ctx.artifacts` (verify only)."""
+    def _saved(self, ctx: Context, name: str) -> Any:
+        """`ctx.state(<this mirror>, name)`: a file `snapshot` saved (verify only)."""
         if not self.snapshot_state:
             raise EvalConfigError(
                 f"{self.name} isn't running in separate verifier mode: declare "
                 + "snapshot=True on it to grade from its saved state."
             )
-        artifacts = getattr(ctx, "artifacts", None)
-        read_json = getattr(artifacts, "read_json", None)
-        if read_json is None:
+        if not isinstance(ctx, VerifyContext):
             raise EvalConfigError(f"{self.name}: saved state is read in verify().")
-        return read_json(f"{STATE_DIR}/{self.name}/{file}")
+        return ctx.state(self.name, name)
 
     async def get(self, ctx: Context, path: str, **params: Any) -> Any:
         """GET `path` (with query `params`) from the running mirror; JSON is

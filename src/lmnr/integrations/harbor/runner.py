@@ -198,6 +198,7 @@ class LaminarVerifier(BaseVerifier):  # pyright: ignore[reportUntypedBaseClass]
             artifacts=list(runner_cls.artifacts),
             verifier_mode=verifier_mode,
             mock_keys=list(runner_cls.mocks),
+            snapshot_options={s.name: s.snapshot_option for s in runner_cls.services},
         )
 
         try:

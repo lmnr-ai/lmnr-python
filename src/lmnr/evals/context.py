@@ -791,6 +791,7 @@ class VerifyContext(Context):
         artifacts: list[str | Artifact] | None = None,
         verifier_mode: VerifierMode = "shared",
         mock_keys: list[str] | None = None,
+        snapshot_options: Mapping[str, str | None] | None = None,
         **kwargs: Any,
     ):
         super().__init__(logs_dir=VERIFIER_LOGS_DIR, **kwargs)
@@ -804,23 +805,53 @@ class VerifyContext(Context):
         )
         # The runner's mock call log (`ctx.mocks.calls("payments.refund")`).
         self.mocks: MockCalls = MockCalls(self.artifacts, mock_keys or [])
+        # Each declared service's `Service.snapshot_option`, by name, so a
+        # missing `ctx.state` file says what to declare.
+        self._snapshot_options: dict[str, str | None] | None = (
+            dict(snapshot_options) if snapshot_options is not None else None
+        )
 
     def result(self) -> dict[str, Any]:
         """What the agent phase recorded with `ctx.set_result(...)` (`{}` if
         nothing)."""
         return _read_json_object(self.host_agent_dir / RESULT_FILE)
 
-    def state(self, service: str, table: str) -> Any:
-        """A table a service saved in `collect` (`snapshot=[...]`): the rows of
-        `/logs/artifacts/state/<service>/<table>.json`. Read on the host, so it
-        works in both verifier modes."""
-        path = f"{ARTIFACTS_DIR}/state/{service}/{table}.json"
+    def state(self, service: str, name: str) -> Any:
+        """What a service saved in `collect`: `/logs/artifacts/state/<service>/
+        <name>.json`, read on the host, so it works in both verifier modes.
+
+        A database's table (`snapshot=["refunds"]`): `ctx.state("postgres",
+        "refunds")`, the rows. A mirror's snapshot (`snapshot=True`):
+        `ctx.state("slack", "state")`, plus the provider's files (Rystic's
+        `"calls"`).
+        """
+        path = f"{ARTIFACTS_DIR}/state/{service}/{name}.json"
         if not self.artifacts.exists(path):
             raise FileNotFoundError(
-                f"No saved state for {service!r} / {table!r} ({path}): add {table!r} to the "
-                + "service's snapshot=[...] so collect saves it."
+                f"No saved state for {service!r} / {name!r} ({path}): "
+                + self._missing_state_hint(service, name)
             )
         return self.artifacts.read_json(path)
+
+    def _missing_state_hint(self, service: str, name: str) -> str:
+        options = self._snapshot_options
+        if options is None:
+            return (
+                f"add {name!r} to a database service's snapshot=[...], or declare "
+                + "snapshot=True on a mirror, so collect saves it."
+            )
+        if service not in options:
+            names = ", ".join(repr(n) for n in options) or "none"
+            return f"the runner declares no service {service!r} (services: {names})."
+        option = options[service]
+        if option is None:
+            return f"service {service!r} saves no state."
+        if option == "snapshot=[...]":
+            return f"add {name!r} to the service's snapshot=[...] so collect saves it."
+        return (
+            f"declare {option} on {service!r} so collect saves its state (`state`, plus the "
+            + "provider's files, such as Rystic's `calls`)."
+        )
 
 
 def normalize_rewards(value: Any) -> dict[str, float | int]:

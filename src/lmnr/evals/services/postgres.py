@@ -81,6 +81,7 @@ class Postgres(Service):
     """
 
     display_name: ClassVar[str] = "Postgres"
+    snapshot_option: ClassVar[str | None] = "snapshot=[...]"
 
     def __init__(
         self,

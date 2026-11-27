@@ -59,6 +59,9 @@ class Service:
     display_name: ClassVar[str] = "Service"
     # Seconds `start` waits for `ready()`.
     start_timeout: ClassVar[float] = 120
+    # The argument that makes `collect` save state for `ctx.state(...)`
+    # (`"snapshot=[...]"`), for errors; None when the service saves none.
+    snapshot_option: ClassVar[str | None] = None
 
     def __init__(
         self,

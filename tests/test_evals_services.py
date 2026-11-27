@@ -414,8 +414,32 @@ def test_live_helpers_fail_clearly_in_separate_verifier_mode(tmp_path: Path):
     )
     with pytest.raises(EvalConfigError, match=r"declare snapshot=\[\.\.\.\]"):
         asyncio.run(pg.sql(ctx, "select 1"))
+    # Without the declared services, the hint names both kinds.
+    with pytest.raises(
+        FileNotFoundError, match=r"database service's snapshot=\[\.\.\.\].*snapshot=True"
+    ):
+        _ = ctx.state("postgres", "refunds")
+
+
+def test_missing_state_says_what_to_declare(tmp_path: Path):
+    services = [Postgres("16"), Rystic("slack", version="1.4"), Valkey("8")]
+    ctx = VerifyContext(
+        environment=RecordingEnvironment(),
+        case=make_case(tmp_path),
+        runner_dir=tmp_path,
+        host_agent_dir=tmp_path / "agent",
+        secrets=Secrets([], {}),
+        verifier_mode="separate",
+        snapshot_options={s.name: s.snapshot_option for s in services},
+    )
     with pytest.raises(FileNotFoundError, match="add 'refunds' to the service's snapshot"):
         _ = ctx.state("postgres", "refunds")
+    with pytest.raises(FileNotFoundError, match="declare snapshot=True on 'slack'"):
+        _ = ctx.state("slack", "calls")
+    with pytest.raises(FileNotFoundError, match="service 'valkey' saves no state"):
+        _ = ctx.state("valkey", "keys")
+    with pytest.raises(FileNotFoundError, match="declares no service 'stripe'"):
+        _ = ctx.state("stripe", "state")
 
 
 def test_case_fixture_paths_are_checked():
@@ -578,6 +602,11 @@ def test_rystic_against_a_fake_simulator(tmp_path: Path, monkeypatch: pytest.Mon
     assert asyncio.run(slack.calls(verify_ctx)) == [
         {"path": "/api/conversations.history", "ok": True}
     ]
+    # The same files through ctx.state.
+    assert verify_ctx.state("slack", "state")["messages"] == [{"text": "refund please"}]
+    assert verify_ctx.state("slack", "calls") == [
+        {"path": "/api/conversations.history", "ok": True}
+    ]
     with pytest.raises(EvalConfigError, match="isn't running in separate verifier mode"):
         asyncio.run(slack.get(verify_ctx, "/api/x"))
 
@@ -631,7 +660,7 @@ def test_mirror_snapshot_chmods_after_every_file(tmp_path: Path):
 
         @override
         async def snapshot_extras(self, ctx: AgentContext) -> dict[str, Any]:
-            return {"calls.json": []}
+            return {"calls": []}
 
     env = RecordingEnvironment()
     ctx = AgentContext(

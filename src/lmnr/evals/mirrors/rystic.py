@@ -73,7 +73,8 @@ SEED_PATH = "/_rystic/seed"
 STATE_PATH = "/_rystic/inspect"
 CALLS_PATH = "/_rystic/calls"
 SETTLE_PATH = "/_rystic/settle"
-CALLS_FILE = "calls.json"
+# The snapshot file `calls()` goes to (`ctx.state(<mirror>, "calls")`).
+CALLS = "calls"
 # `settle` long-polls; Rystic answers unsettled after its own 30 s default.
 SETTLE_TIMEOUT_SEC = 90
 # `rystic pull` downloads the twin.
@@ -103,7 +104,8 @@ class Rystic(Mirror):
     self.mirror("slack").state(ctx)` (`/_rystic/inspect`), `.calls(ctx)`
     (`/_rystic/calls`) or `.get(ctx, "/api/conversations.history",
     channel="C1")`. With `snapshot=True`, `collect` saves the state and the
-    calls, so both also work in a separate verifier.
+    calls, so both also work in a separate verifier (also as
+    `ctx.state("slack", "state")` / `ctx.state("slack", "calls")`).
     """
 
     display_name: ClassVar[str] = "Rystic"
@@ -211,7 +213,7 @@ class Rystic(Mirror):
 
     @override
     async def snapshot_extras(self, ctx: AgentContext) -> dict[str, Any]:
-        return {CALLS_FILE: await self._live_calls(ctx)}
+        return {CALLS: await self._live_calls(ctx)}
 
     # Grading
 
@@ -221,7 +223,7 @@ class Rystic(Mirror):
         or deleted); in a separate verifier, what `collect` saved
         (`snapshot=True`)."""
         if getattr(ctx, "verifier_mode", None) == "separate":
-            return self.saved(ctx, CALLS_FILE)
+            return self._saved(ctx, CALLS)
         return await self._live_calls(ctx)
 
     async def _live_calls(self, ctx: Context) -> Any:
