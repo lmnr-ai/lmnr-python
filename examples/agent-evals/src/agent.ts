@@ -147,8 +147,8 @@ const answerSlack = async () => {
   const channel = process.env.SLACK_CHANNEL_ID ?? "";
   const question = await newestUnanswered(channel);
   if (!question) {
-    console.error(`No unanswered message in ${channel}`);
-    return;
+    // Exit non-zero: an eval must not grade a run that answered nothing.
+    throw new Error(`No unanswered message in ${channel}`);
   }
   const reply = await observe(
     { name: "handle_ticket" },
