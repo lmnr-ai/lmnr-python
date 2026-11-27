@@ -94,11 +94,13 @@ class Postgres(Service):
         extensions: Sequence[str] = (),
         init_sql: Sequence[str] = (),
         seed: SeedSpec = None,
-        env: EnvSpec = {"DATABASE_URL": "{url}"},
+        env: EnvSpec = None,
         snapshot: Sequence[str] = (),
         source: str | None = None,
         name: str = "postgres",
     ):
+        if env is None:
+            env = {"DATABASE_URL": "{url}"}
         super().__init__(name, version, env=env, source=source)
         self.database: str = database
         self.user: str = user

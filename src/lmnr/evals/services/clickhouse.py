@@ -118,11 +118,13 @@ class ClickHouse(Service):
         config: str | None = None,
         users: str | None = None,
         seed: SeedSpec = None,
-        env: EnvSpec = {"CLICKHOUSE_URL": "{url}"},
+        env: EnvSpec = None,
         snapshot: Sequence[str] = (),
         source: str | None = None,
         name: str = "clickhouse",
     ):
+        if env is None:
+            env = {"CLICKHOUSE_URL": "{url}"}
         super().__init__(name, version, env=env, source=source)
         self.database: str = database
         self.http_port: int = http_port

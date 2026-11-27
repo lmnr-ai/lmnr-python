@@ -46,10 +46,12 @@ class Valkey(Service):
         version: str,
         *,
         port: int = 6379,
-        env: EnvSpec = {"REDIS_URL": "{url}"},
+        env: EnvSpec = None,
         source: str | None = None,
         name: str = "valkey",
     ):
+        if env is None:
+            env = {"REDIS_URL": "{url}"}
         super().__init__(name, version, env=env, source=source)
         self.port: int = port
 
