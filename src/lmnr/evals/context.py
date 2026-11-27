@@ -507,7 +507,7 @@ class Container:
         """`command` straight through the environment's `exec`: how stdout and
         stderr come back and what a timeout does depend on the environment.
         For the runner's own plumbing (the relay itself, mkdir / chmod / rm
-        around uploads, `service`'s background start)."""
+        around uploads, `spawn`'s background start)."""
         merged = {**self._exec_env, **(env or {})} if base_env else dict(env or {})
         result = await _exec_raw(
             self.environment, command, env=merged, cwd=cwd, user=user, timeout=timeout
