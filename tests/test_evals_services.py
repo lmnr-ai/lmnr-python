@@ -614,7 +614,7 @@ def test_rystic_against_a_fake_simulator(tmp_path: Path, monkeypatch: pytest.Mon
 def test_rystic_without_a_token_fails_before_the_pull(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """No RYSTIC_TOKEN (a local run without --env RYSTIC_TOKEN): fail before
+    """No RYSTIC_TOKEN (a local run without the user's key): fail before
     the pull, saying how to give the trial access."""
     monkeypatch.delenv("RYSTIC_TOKEN", raising=False)
     binary = tmp_path / "rystic"
@@ -627,7 +627,7 @@ def test_rystic_without_a_token_fails_before_the_pull(
         runner_dir=tmp_path,
         host_logs_dir=tmp_path / "agent",
     )
-    with pytest.raises(RuntimeError, match="Pass your Rystic API key with `--env RYSTIC_TOKEN`"):
+    with pytest.raises(RuntimeError, match="Set RYSTIC_TOKEN to your Rystic API key"):
         asyncio.run(Rystic("slack", version="1.4").start(ctx))
 
 

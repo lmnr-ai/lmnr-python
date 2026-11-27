@@ -90,14 +90,14 @@ You need [Docker](https://docs.docker.com/get-docker/), [uv](https://docs.astral
 4. Run the datasets:
 
    ```bash
-   npx lmnr-cli@latest eval run --env RYSTIC_TOKEN
+   npx lmnr-cli@latest eval run
    ```
 
-   `--env RYSTIC_TOKEN` passes your key into each trial, where the simulator starts. Remote runs (`eval run --remote`) don't need it: Laminar gives each trial its own Rystic access. To run one dataset, name it: `eval run billing-alternatives`.
+   lmnr-cli passes `RYSTIC_TOKEN` into each trial, where the simulator starts. Remote runs (`eval run --remote`) don't need it: Laminar gives each trial its own Rystic access. To run one dataset, name it: `eval run billing-alternatives`.
 
 Each trial shows up in Laminar as a datapoint with its scores (`credit`, `reply` and `in_thread` for `billing`), next to the trace of the agent's model and tool calls. The mocked `incidents.list_recent` call is marked as mocked. The first run pulls the Postgres, ClickHouse and Node images; later runs reuse the cached layers, and a change to `src/` rebuilds only the last one. Each trial's folder in `evals/<dataset>/jobs/` keeps the services' logs (`agent/`) and what was collected for grading (`artifacts/`, including `mocks.jsonl`, every call the mocks answered).
 
-To add a case to `billing`, create a folder in `evals/billing/tasks/` with its `tests/expected.json` and `tests/fixtures/`. The next `eval run` writes the rest (`task.toml` with the case's name, `instruction.md`, and the stub `tests/test.sh`), or create them first with `npx lmnr-cli@latest eval task new evals/billing/tasks/<name>`.
+To add a case to `billing`, create a folder in `evals/billing/tasks/` with its `tests/expected.json` and `tests/fixtures/`. The next `eval run` writes the rest (`task.toml` with the case's name, `instruction.md`, and the stub `tests/test.sh`), or create them first with `npx lmnr-cli@latest eval task new billing <name>`.
 
 ## Store the cases in Laminar
 
