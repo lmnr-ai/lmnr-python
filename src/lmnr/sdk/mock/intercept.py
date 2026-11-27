@@ -70,7 +70,7 @@ class MockTarget:
         if hint is Any:
             return hint, None, None
         origin = typing.get_origin(hint) or hint
-        wrap = iter if origin in _ITERATORS else _aiter if origin in _ASYNC_ITERATORS else None
+        wrap = _iter if origin in _ITERATORS else _aiter if origin in _ASYNC_ITERATORS else None
         target = hint if wrap is None else list[(typing.get_args(hint) or (Any,))[0]]
         try:
             return hint, pydantic.TypeAdapter(target), wrap
@@ -88,17 +88,18 @@ class MockTarget:
         be broad or wrong, and the function's callers decide whether the
         value works."""
         hint, adapter, wrap = self._return_type
+        converted = value
         if adapter is not None:
             try:
-                value = adapter.validate_python(value)
+                converted = adapter.validate_python(value)
             except pydantic.ValidationError as e:
                 logger.warning(
                     f"observe, mock {self.key!r}: the mocked value doesn't match the return type "
                     + f"{_type_name(hint)}, returning it as is: {e}"
                 )
-        if wrap is not None and isinstance(value, list):
-            return wrap(cast("list[Any]", value))
-        return value
+        if wrap is not None and isinstance(converted, list):
+            return wrap(cast("list[Any]", converted))
+        return converted
 
 
 def mocks_enabled() -> bool:
@@ -186,6 +187,12 @@ class MockedCall:
 
 def _type_name(tp: Any) -> str:
     return tp.__name__ if isinstance(tp, type) else repr(tp)
+
+
+# Generators, not `iter()`: `observe` records a generator's items as the
+# span output (`_handle_generator`), and anything else as returned.
+def _iter(items: list[Any]) -> Iterator[Any]:
+    yield from items
 
 
 async def _aiter(items: list[Any]) -> AsyncIterator[Any]:

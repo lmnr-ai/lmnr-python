@@ -602,12 +602,15 @@ def test_generators_cant_be_mocked(server: FakeServer):
 
 
 @pytest.mark.asyncio
-async def test_a_function_returning_an_iterator_gets_one(server: FakeServer):
+async def test_a_function_returning_an_iterator_gets_one(
+    server: FakeServer, span_exporter: InMemorySpanExporter
+):
     # Not generator functions: mocked like any other, and the list becomes
     # the annotated iterator (pydantic has no schema for these).
     server.keys = ["quotes", "skus", "aquotes", "async_def"]
+    payload = [{"sku": "A", "price": 1}, {"sku": "B", "price": 2}]
     for key in server.keys:
-        server.respond(key, [{"sku": "A", "price": 1}, {"sku": "B", "price": 2}])
+        server.respond(key, payload)
 
     @observe(name="quotes")
     def quotes() -> Iterator[Quote]:
@@ -632,6 +635,12 @@ async def test_a_function_returning_an_iterator_gets_one(server: FakeServer):
     assert [s["sku"] for s in skus()] == ["A", "B"]
     assert [q async for q in aquotes()] == expected
     assert [q async for q in await async_def()] == expected
+    # The span output is the items, as for a generator, not the iterator.
+    outputs = {
+        span.name: json.loads(str((span.attributes or {})["lmnr.span.output"]))
+        for span in span_exporter.get_finished_spans()
+    }
+    assert outputs == dict.fromkeys(server.keys, payload)
 
 
 def test_an_annotation_pydantic_cant_handle_returns_the_value_as_is_with_a_warning(
