@@ -20,12 +20,15 @@ show in `ps` (the runner feeds it from a temp file it deletes first):
   JSON objects one per line (ClickHouse's JSONEachRow), and writes them to
   `out` as one JSON array. Fails when a command exits non-zero, so a failed
   query never saves `[]`.
-- `exec`: `{cmd, timeout}` -> runs `cmd` with `bash -c` (`sh -c` without
-  bash) in its own process group, with the relay's env, cwd and user, and
+- `exec`: `{cmd, timeout}` -> runs `cmd` with `bash -c` (found on the
+  command's `PATH`, else in the usual places; `sh -c` without bash) in its own
+  process group, with the relay's env, cwd and user, and
   prints one framed result (`format_result`): `{stdout, stderr, return_code,
   timed_out, stdin_unlinked}`, the streams captured apart and decoded as UTF-8
-  (`errors="replace"`). On timeout the whole group is killed and the result
-  has what it printed so far, `timed_out: true` and exit code 124. Exits 0
+  (`errors="replace"`), every `@` escaped as `\\u0040` so the command's own
+  output can never contain the frame's marker. On timeout the whole group is
+  killed and the result has what it printed so far, `timed_out: true` and
+  exit code 124. Exits 0
   whenever it printed a result. Nothing else goes to stdout or stderr, and
   the host finds the frame even in an environment that merges the two.
 - `serve <config>`: the mock server (`lmnr.evals.mocks.server`).
@@ -64,6 +67,9 @@ EXITED = 2
 # `exec`: the line that holds its result, and the exit code of a command it
 # killed (GNU `timeout`'s).
 RESULT_MARKER = "@@lmnr-relay-result@@ "
+# Where `exec` looks for bash when the command's PATH has none (a runner or
+# per-command PATH without /usr/bin must not silently switch it to sh).
+BASH_PATHS = ("/bin/bash", "/usr/bin/bash", "/usr/local/bin/bash")
 TIMEOUT_EXIT_CODE = 124
 # After killing a timed-out command, how long to wait for its pipes to close
 # (a process that left the group may still hold them).
@@ -227,7 +233,7 @@ def execute(request: dict[str, Any], stdin_unlinked: bool = False) -> dict[str, 
     command = str(request["cmd"])
     timeout = request.get("timeout")
     deadline = None if timeout is None else time.monotonic() + float(timeout)
-    shell = shutil.which("bash") or "/bin/sh"
+    shell = _bash() or "/bin/sh"
     process = subprocess.Popen(
         [shell, "-c", command],
         stdin=subprocess.DEVNULL,
@@ -276,6 +282,13 @@ def execute(request: dict[str, Any], stdin_unlinked: bool = False) -> dict[str, 
     }
 
 
+def _bash() -> str | None:
+    found = shutil.which("bash")
+    if found:
+        return found
+    return next((path for path in BASH_PATHS if os.access(path, os.X_OK)), None)
+
+
 def _drain(stream: Any, sink: bytearray) -> None:
     fd = stream.fileno()
     try:
@@ -308,17 +321,22 @@ def _stdin_unlinked() -> bool:
 def format_result(result: dict[str, Any]) -> str:
     """`exec`'s output: one line, after a newline so it starts one even when
     something else (a shell warning, in an environment that merges stderr into
-    stdout) printed a partial line before it."""
-    return "\n" + RESULT_MARKER + json.dumps(result) + "\n"
+    stdout) printed a partial line before it. `@` is escaped (`\\u0040`, still
+    valid JSON) so the marker appears only once: a command that prints it
+    can't put a frame of its own inside the result."""
+    body = json.dumps(result).replace("@", "\\u0040")
+    return "\n" + RESULT_MARKER + body + "\n"
 
 
 def parse_result(output: str) -> dict[str, Any] | None:
-    """The result `format_result` printed in `output` (the last one), or None."""
+    """The result `format_result` printed in `output` (the last marker; the
+    whole rest of its line must be the JSON), or None."""
     start = output.rfind(RESULT_MARKER)
     if start < 0:
         return None
+    line = output[start + len(RESULT_MARKER) :].split("\n", 1)[0]
     try:
-        result: Any = json.JSONDecoder().raw_decode(output, start + len(RESULT_MARKER))[0]
+        result: Any = json.loads(line)
     except ValueError:
         return None
     return cast("dict[str, Any]", result) if isinstance(result, dict) else None
