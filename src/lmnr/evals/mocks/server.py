@@ -405,12 +405,17 @@ for _method in ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"):
     setattr(_Handler, f"do_{_method}", _Handler.dispatch)
 
 
+class _HTTPServer(ThreadingHTTPServer):
+    daemon_threads = True
+    # The default listen backlog (5) resets connections when the app makes
+    # many mocked calls at once.
+    request_queue_size = 128
+
+
 def http_server(server: MockServer) -> ThreadingHTTPServer:
     """`server` behind HTTP on 127.0.0.1, on a free port (not serving yet)."""
     handler = type("Handler", (_Handler,), {"mock_server": server})
-    httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    httpd.daemon_threads = True
-    return httpd
+    return _HTTPServer(("127.0.0.1", 0), handler)
 
 
 def serve(config_path: str) -> int:

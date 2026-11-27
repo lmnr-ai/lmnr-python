@@ -56,7 +56,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         _ = self.wfile.write(reply)
 
-    def log_message(self, *args: object) -> None:
+    def log_message(self, format: str, *args: object) -> None:
         pass
 
 
