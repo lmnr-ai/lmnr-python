@@ -72,19 +72,20 @@ class BillingEval(EvalRunner):
 
     # Started in every trial before setup(), each loaded with this case's
     # tests/fixtures/ (data the agent never sees as files), and reachable by
-    # the app through the env vars they set.
+    # the app through the env vars they set. Migrations are read in every
+    # trial, so they live in evals/, the folder `eval run --remote` uploads.
     services = [
         Postgres(
             "17",
             database="billing",
-            migrations="../../../db/migrations",  # *.sql in natural order
+            migrations="../../migrations/postgres",  # *.sql in natural order
             seed=case_fixture("accounts.sql", required=True),
         ),  # DATABASE_URL
         ClickHouse(
             "25.8",
             database="usage",
             # Applied with the clickhouse-migrations CLI, like production does.
-            migrations="../../../clickhouse/migrations",
+            migrations="../../migrations/clickhouse",
             # Production's settings, merged over the defaults.
             config="../../../clickhouse/config.xml",
             users="../../../clickhouse/users.xml",

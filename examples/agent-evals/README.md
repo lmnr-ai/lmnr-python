@@ -16,12 +16,13 @@ src/
   agent.ts                    # the agent: Anthropic tool loop, instrumented with Laminar
   slack.ts                    # reads the customer's message, replies in its thread
   incidents.ts                # observed call to the status service (mocked in evals)
-db/migrations/                # Postgres schema, applied in natural order
 clickhouse/
-  migrations/1_usage_events.sql   # applied with clickhouse-migrations
-  config.xml, users.xml           # production's server and user settings
+  config.xml, users.xml       # production's server and user settings
 evals/
   pyproject.toml              # what eval.py imports (the judge's Anthropic SDK), installed next to Harbor and the mock server
+  migrations/                 # the app's schemas, applied in every trial
+    postgres/                 # *.sql, applied in natural order
+    clickhouse/1_usage_events.sql  # applied with clickhouse-migrations
   billing/                    # the recommended dataset
     agent/
       eval.py                 # the dataset in one file: image, services, mocks, run / verify
@@ -53,6 +54,7 @@ evals/
 - **`image`**, without a Dockerfile: Node 24, the app's dependencies with `pnpm_install` (pnpm at the version in `package.json`'s `packageManager`, from `pnpm-lock.yaml`), then the code. `lmnr-cli` compiles and builds it.
 - **`services`**: in every trial, before anything else runs, the runner starts each one, runs its migrations and loads the case's seed from `tests/fixtures/` (`seed=case_fixture(...)`), and gives the app its URL.
   - `Postgres` and `ClickHouse` are the app's own databases. ClickHouse is migrated with the [`clickhouse-migrations`](https://www.npmjs.com/package/clickhouse-migrations) CLI (the default), and `config=` / `users=` merge production's settings over the defaults.
+  - The migrations are in `evals/migrations/`: they are read in every trial, and `eval run --remote` uploads only `evals/`, so a folder outside it wouldn't be there in Laminar's sandboxes. What goes into the image (`src/`, `package.json`, `clickhouse/config.xml`) can live anywhere: `lmnr-cli` builds the image on your machine.
   - `Rystic("slack", ...)` is a [Rystic](https://www.rystic.ai) Slack simulator. The case's `slack.json` seeds the workspace with the customer's message, and the app talks to it with the official Slack SDK through `SLACK_API_URL`.
 - **`mocks`**: `list_incidents` answers the app's observed `incidents.list_recent` (`src/incidents.ts`) from the case's `incidents.json`, so the status service doesn't have to run. The handler runs in the container, in a mock server, and the app's Laminar SDK asks that server before running the function. Function mocks need `@lmnr-ai/lmnr` 0.9.8 or later in the app; with an older SDK the real function runs and the tool reports an error.
 - **`run`** runs the agent (`node src/agent.ts slack`).
