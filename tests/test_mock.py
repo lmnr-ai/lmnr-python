@@ -18,6 +18,7 @@ from typing import Any, TypedDict
 from unittest.mock import patch
 from urllib.parse import unquote
 
+import httpx
 import pydantic
 import pytest
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
@@ -318,6 +319,39 @@ def test_mockable_false_never_consults_the_server(server: FakeServer):
 
     assert get_customer() == "real"
     assert server.requests == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure",
+    [httpx.ConnectError("refused"), httpx.Response(503, text="busy")],
+    ids=["transport", "status"],
+)
+async def test_an_async_key_fetch_failing_after_another_succeeded_returns_the_keys(
+    monkeypatch: pytest.MonkeyPatch, failure: Exception | httpx.Response
+):
+    mock = client.MockClient("http://127.0.0.1:1" + PREFIX, 1.0)
+    release = asyncio.Event()
+
+    class FirstFailsLate:
+        calls: int = 0
+
+        async def get(self, url: str, timeout: float) -> httpx.Response:
+            self.calls += 1
+            if self.calls > 1:
+                return httpx.Response(200, json={"keys": ["k"]})
+            _ = await release.wait()
+            if isinstance(failure, Exception):
+                raise failure
+            return failure
+
+    fake = FirstFailsLate()
+    monkeypatch.setattr(mock, "_aclient", lambda: fake)
+    first = asyncio.create_task(mock.amocked_keys())
+    await asyncio.sleep(0)  # the first fetch is in flight
+    assert await mock.amocked_keys() == frozenset({"k"})
+    release.set()
+    assert await first == frozenset({"k"})
 
 
 def test_unreachable_server_fails_closed_then_retries_after_a_backoff(mock_env: Any):

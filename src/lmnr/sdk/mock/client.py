@@ -61,13 +61,19 @@ class MockClient:
     async def amocked_keys(self) -> frozenset[str]:
         if self._keys is not None:
             return self._keys
-        # No lock: two concurrent first fetches are harmless.
+        # No lock: concurrent first fetches are harmless, as long as one that
+        # fails after another has succeeded doesn't fail its call.
         self._check_backoff()
         try:
-            response = await self._aclient().get(f"{self.url}/keys", timeout=KEYS_TIMEOUT_S)
-        except httpx.HTTPError as e:
-            raise self._unreachable(f"{type(e).__name__}: {e}") from None
-        self._keys = self._parse_keys(response)
+            try:
+                response = await self._aclient().get(f"{self.url}/keys", timeout=KEYS_TIMEOUT_S)
+            except httpx.HTTPError as e:
+                raise self._unreachable(f"{type(e).__name__}: {e}") from None
+            self._keys = self._parse_keys(response)
+        except MockedError:
+            if self._keys is not None:
+                return self._keys
+            raise
         return self._keys
 
     def _parse_keys(self, response: httpx.Response) -> frozenset[str]:
