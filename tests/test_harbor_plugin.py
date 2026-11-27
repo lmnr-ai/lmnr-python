@@ -34,6 +34,7 @@ from lmnr.integrations.harbor.trajectory import (
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 from lmnr.sdk.evaluations.models import EvaluationResultDatapoint, PartialEvaluationDatapoint
 from lmnr.sdk.evaluations.utils import get_evaluation_url
+from lmnr.sdk.trajectory.spec import SPEC_VERSION
 
 T0 = datetime.datetime(2026, 1, 1, 12, 0, 0, tzinfo=datetime.UTC)
 
@@ -794,9 +795,15 @@ async def test_lmnr_atif_trajectory_uses_exact_timings_and_call_details(
     assert tool.start_time == parse_timestamp_ns(tool_lmnr["start_time"])
     assert tool.end_time == parse_timestamp_ns(tool_lmnr["end_time"])
     assert (tool.attributes or {})["lmnr.trajectory.source_span_id"] == tool_lmnr["span_id"]
+    # An eval mock answered it (`tool_call.extra.lmnr.mocked`); nothing else was mocked.
+    assert (tool.attributes or {})["lmnr.span.mocked"] is True
+    mocked = [
+        s for s in span_exporter.get_finished_spans() if "lmnr.span.mocked" in (s.attributes or {})
+    ]
+    assert mocked == [tool]
 
     agent = (spans["agent"][0].attributes) or {}
-    assert agent["lmnr.trajectory.spec_version"] == "0.1.0"
+    assert agent["lmnr.trajectory.spec_version"] == SPEC_VERSION
     assert tuple(agent["lmnr.trajectory.trace_ids"]) == tuple(
         trajectory["extra"]["lmnr"]["trace_ids"]
     )

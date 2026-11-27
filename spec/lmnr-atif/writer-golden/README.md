@@ -42,10 +42,10 @@ cut down to the ones a collector keeps).
 
 | Case | Covers |
 |---|---|
-| `anthropic-tool-loop` | Anthropic content blocks, thinking, `tool_result` splitting, usage and cost, request params, tool span matching |
+| `anthropic-tool-loop` | Anthropic content blocks, thinking, `tool_result` splitting, usage and cost, request params, tool span matching, a mocked tool (`mocked`) |
 | `openai-chat-overrides` | OpenAI chat, `developer` role, per-call system prompt and tools overrides, malformed tool arguments, compaction (`input_messages`) and the call after it, session id |
 | `responses-and-gemini` | OpenAI Responses items and `instructions`, built-in tools, Gemini parts, generated Gemini call ids, two conversations in one agent, `defs` dedup |
-| `errors-dispatch-multitrace` | Failed LLM and tool calls, `is_error` tool results, injected text in a user message, a tool span no LLM call issued, two traces in one file |
+| `errors-dispatch-multitrace` | Failed LLM and tool calls, `is_error` tool results, injected text in a user message, a mocked tool span no LLM call issued, two traces in one file |
 | `subagents` | Agent markers, nested LLM spans, same-name markers, implicit subagents, a subagent no tool spawned |
 | `root-agent-collapse` | A lone top-level agent is the root agent |
 | `aisdk-v7-agent` | Vercel AI SDK v7 (TypeScript): `tool-call` / `tool-result` parts, `json` and `error-text` tool outputs, reasoning, TOOL spans matched by `ai.toolCall.id`, a tool spawning a nested agent, a failed tool and a failed LLM call |

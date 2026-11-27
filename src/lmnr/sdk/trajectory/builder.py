@@ -64,6 +64,8 @@ _LEGACY_ATTRIBUTES = {
     "gen_ai.usage.reasoning.output_tokens": "gen_ai.usage.reasoning_tokens",
 }
 _SYSTEM_ROLES = ("system", "developer")
+# Set by `lmnr.sdk.mock` on an observed call an evaluation's mock server answered.
+_MOCKED = "lmnr.span.mocked"
 
 
 @dataclass
@@ -208,6 +210,11 @@ class _Span:
         self.children: list[_Span] = []
         self.is_llm: bool = record.span_type == "LLM"
         self.is_tool: bool = record.span_type == "TOOL"
+
+    @property
+    def mocked(self) -> bool:
+        """Answered by an evaluation's mock server (`lmnr.sdk.mock`)."""
+        return self.attrs.get(_MOCKED) is True
 
     @property
     def agent_marker(self) -> str | None:
@@ -720,6 +727,8 @@ class _Builder:
                 lmnr["span_id"] = tool_span.id
                 lmnr["start_time"] = format_time(tool_span.start)
                 lmnr["end_time"] = format_time(tool_span.end)
+                if tool_span.mocked:
+                    lmnr["mocked"] = True
             if lmnr:
                 entry["extra"] = {"lmnr": lmnr}
             tool_calls.append(entry)
@@ -832,6 +841,8 @@ class _Builder:
                 "end_time": format_time(span.end),
             }
         )
+        if span.mocked:
+            call["extra"]["lmnr"]["mocked"] = True
         result: dict[str, Any] = {"source_call_id": call_id, "content": self._tool_output(span)}
         if children:
             result["subagent_trajectory_ref"] = self._refs(children, sub_trajectories)

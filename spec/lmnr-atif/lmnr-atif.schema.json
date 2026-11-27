@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:lmnr-atif:0.1.0",
+  "$id": "urn:lmnr-atif:0.1.1",
   "title": "lmnr-atif 0.1.0",
   "description": "Laminar's extension to ATIF (see lmnr-atif.md). Constrains only the extra.lmnr objects and the ATIF structure needed to reach them; ATIF itself is validated by Harbor's validator. Strict on purpose: it checks what a 0.1.0 writer emits. Readers must not use it to reject files (unknown keys are ignored when reading).",
   "$ref": "#/$defs/rootTrajectory",
@@ -160,7 +160,8 @@
         "start_time": { "$ref": "#/$defs/timestamp" },
         "end_time": { "$ref": "#/$defs/timestamp" },
         "raw_arguments": { "type": "string" },
-        "synthetic_id": { "const": true }
+        "synthetic_id": { "const": true },
+        "mocked": { "const": true }
       },
       "additionalProperties": false
     },

@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Literal
 
 # Version of `spec/lmnr-atif/lmnr-atif.md` this package implements.
-SPEC_VERSION = "0.1.0"
+SPEC_VERSION = "0.1.1"
 
 # Every Laminar field lives under `extra[NAMESPACE]`.
 NAMESPACE = "lmnr"
