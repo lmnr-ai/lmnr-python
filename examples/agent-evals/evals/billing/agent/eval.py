@@ -133,8 +133,7 @@ class BillingEval(EvalRunner):
         if r.return_code == 0:
             ctx.set_result(outcome="completed")
         else:
-            # Local runs return stderr inside stdout; remote runs keep them apart.
-            ctx.set_result(outcome="failed", error=(r.stdout + r.stderr)[-2000:])
+            ctx.set_result(outcome="failed", error=r.stderr[-2000:])
 
     async def verify(self, ctx):
         expected = ctx.case.expected()  # tests/expected.json, never in the container

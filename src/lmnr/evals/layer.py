@@ -2,7 +2,7 @@
 `eval.py` runner.
 
 It is the in-container runtime for the mock server and for the runner's
-helpers (`relay.py http` / `wait` / `rows`, `lmnr.evals.relay`), independent of
+helpers (`relay.py http` / `wait` / `rows` / `exec`, `lmnr.evals.relay`), independent of
 the app's language and Python. A stage `FROM debian:trixie-slim` installs a
 standalone Python with uv, a venv with `lmnr` (plus the runner's
 `mock_dependencies`) and the `relay.py` launcher; the final image copies

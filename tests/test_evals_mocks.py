@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -573,14 +574,22 @@ def test_describe_cli_takes_the_layer_requirement(evals_root: Path):
 # The lifecycle, on the host
 
 
+# How `ctx.container.sh` runs a command: `relay.py exec` reading its payload file.
+RELAY_EXEC = re.compile(r"^\{ rm -f (\S+) 2>/dev/null; .+ exec; \} < \S+$")
+
+
 class LocalEnvironment:
-    """Runs commands on the host with bash (users are ignored)."""
+    """Runs commands on the host with bash (users are ignored). `commands`
+    has a `relay.py exec` as the command it runs."""
 
     def __init__(self):
         self.commands: list[str] = []
 
     async def exec(self, command: str, cwd=None, env=None, timeout_sec=None, user=None) -> Any:
-        self.commands.append(command)
+        relayed = RELAY_EXEC.match(command)
+        self.commands.append(
+            json.loads(Path(relayed[1]).read_text())["cmd"] if relayed else command
+        )
         proc = await asyncio.create_subprocess_exec(
             "bash",
             "-c",

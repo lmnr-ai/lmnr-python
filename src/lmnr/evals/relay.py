@@ -20,6 +20,14 @@ show in `ps` (the runner feeds it from a temp file it deletes first):
   JSON objects one per line (ClickHouse's JSONEachRow), and writes them to
   `out` as one JSON array. Fails when a command exits non-zero, so a failed
   query never saves `[]`.
+- `exec`: `{cmd, timeout}` -> runs `cmd` with `bash -c` (`sh -c` without
+  bash) in its own process group, with the relay's env, cwd and user, and
+  prints one framed result (`format_result`): `{stdout, stderr, return_code,
+  timed_out, stdin_unlinked}`, the streams captured apart and decoded as UTF-8
+  (`errors="replace"`). On timeout the whole group is killed and the result
+  has what it printed so far, `timed_out: true` and exit code 124. Exits 0
+  whenever it printed a result. Nothing else goes to stdout or stderr, and
+  the host finds the frame even in an environment that merges the two.
 - `serve <config>`: the mock server (`lmnr.evals.mocks.server`).
 
 No command line or process name may contain `mock`, `eval`, `test` or
@@ -32,13 +40,16 @@ import base64
 import ctypes
 import json
 import os
+import shutil
+import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
-from typing import Any
+from typing import Any, cast
 
 PROCESS_NAME = b"relay"
 POLL_INTERVAL_SEC = 0.25
@@ -49,6 +60,15 @@ DEFAULT_HTTP_TIMEOUT_SEC = 60.0
 READY = 0
 TIMED_OUT = 1
 EXITED = 2
+
+# `exec`: the line that holds its result, and the exit code of a command it
+# killed (GNU `timeout`'s).
+RESULT_MARKER = "@@lmnr-relay-result@@ "
+TIMEOUT_EXIT_CODE = 124
+# After killing a timed-out command, how long to wait for its pipes to close
+# (a process that left the group may still hold them).
+KILL_GRACE_SEC = 2.0
+_READ_CHUNK = 65536
 
 _PR_SET_NAME = 15
 
@@ -196,6 +216,114 @@ def rows(jobs: list[dict[str, Any]]) -> None:
             _ = f.write("[" + ",\n".join(lines) + "]\n")
 
 
+# exec
+
+
+def execute(request: dict[str, Any], stdin_unlinked: bool = False) -> dict[str, Any]:
+    """Run `request["cmd"]`; see the module docstring. `stdin_unlinked` is
+    passed through to the result: whether the payload file was deleted before
+    the relay started (only root can delete root's file in sticky /tmp, so the
+    host removes it otherwise)."""
+    command = str(request["cmd"])
+    timeout = request.get("timeout")
+    deadline = None if timeout is None else time.monotonic() + float(timeout)
+    shell = shutil.which("bash") or "/bin/sh"
+    process = subprocess.Popen(
+        [shell, "-c", command],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,  # its own process group, killed as a whole
+    )
+    outputs = (bytearray(), bytearray())
+    readers = [
+        threading.Thread(target=_drain, args=(stream, sink), daemon=True)
+        for stream, sink in zip((process.stdout, process.stderr), outputs)
+    ]
+    for reader in readers:
+        reader.start()
+    # Done when the command exited and its pipes closed (a background child
+    # still holding them keeps it running, as `docker exec` does).
+    timed_out = False
+    for reader in readers:
+        reader.join(_remaining(deadline))
+        timed_out = timed_out or reader.is_alive()
+    if not timed_out:
+        try:
+            _ = process.wait(_remaining(deadline))
+        except subprocess.TimeoutExpired:
+            timed_out = True
+    if timed_out:
+        _kill_group(process.pid)
+        try:
+            _ = process.wait(KILL_GRACE_SEC)
+        except subprocess.TimeoutExpired:
+            pass
+        for reader in readers:
+            reader.join(KILL_GRACE_SEC)
+    code = process.returncode
+    if timed_out:
+        code = TIMEOUT_EXIT_CODE
+    elif code is not None and code < 0:
+        code = 128 - code  # killed by a signal, as a shell reports it
+    stdout, stderr = (bytes(sink).decode(errors="replace") for sink in outputs)
+    return {
+        "stdout": stdout,
+        "stderr": stderr,
+        "return_code": code if code is not None else TIMEOUT_EXIT_CODE,
+        "timed_out": timed_out,
+        "stdin_unlinked": stdin_unlinked,
+    }
+
+
+def _drain(stream: Any, sink: bytearray) -> None:
+    fd = stream.fileno()
+    try:
+        while chunk := os.read(fd, _READ_CHUNK):
+            sink += chunk
+    except OSError:
+        pass
+
+
+def _remaining(deadline: float | None) -> float | None:
+    return None if deadline is None else max(deadline - time.monotonic(), 0.0)
+
+
+def _kill_group(pgid: int) -> None:
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
+def _stdin_unlinked() -> bool:
+    """Whether the file on stdin was deleted (the runner's shell `rm`s the
+    payload before starting the relay; that fails for another user's file)."""
+    try:
+        return os.fstat(sys.stdin.fileno()).st_nlink == 0
+    except (OSError, ValueError):
+        return False
+
+
+def format_result(result: dict[str, Any]) -> str:
+    """`exec`'s output: one line, after a newline so it starts one even when
+    something else (a shell warning, in an environment that merges stderr into
+    stdout) printed a partial line before it."""
+    return "\n" + RESULT_MARKER + json.dumps(result) + "\n"
+
+
+def parse_result(output: str) -> dict[str, Any] | None:
+    """The result `format_result` printed in `output` (the last one), or None."""
+    start = output.rfind(RESULT_MARKER)
+    if start < 0:
+        return None
+    try:
+        result: Any = json.JSONDecoder().raw_decode(output, start + len(RESULT_MARKER))[0]
+    except ValueError:
+        return None
+    return cast("dict[str, Any]", result) if isinstance(result, dict) else None
+
+
 # Entry point
 
 
@@ -209,7 +337,11 @@ def main(argv: list[str] | None = None) -> int:
 
         return serve(args[1])
     try:
-        payload: Any = json.load(sys.stdin) if command in ("http", "wait", "rows") else None
+        payload: Any = json.load(sys.stdin) if command in ("http", "wait", "rows", "exec") else None
+        if command == "exec":
+            result = execute(payload, stdin_unlinked=_stdin_unlinked())
+            print(format_result(result), end="", flush=True)
+            return 0
         if command == "http":
             print(json.dumps(http(payload)))
             return 0
@@ -222,7 +354,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"relay {command}: {type(e).__name__}: {e}", file=sys.stderr)
         return 1
     print(
-        "usage: relay.py http|wait|rows < request.json, or relay.py serve <config>", file=sys.stderr
+        "usage: relay.py http|wait|rows|exec < request.json, or relay.py serve <config>",
+        file=sys.stderr,
     )
     return 64
 

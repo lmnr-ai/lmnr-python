@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import textwrap
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,6 +18,7 @@ from typing import Any
 
 import pytest
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from typing_extensions import override
 
 pytest.importorskip("harbor")
 
@@ -34,6 +36,7 @@ from harbor.models.trial.paths import TrialPaths  # pyright: ignore[reportMissin
 from harbor.verifier.factory import VerifierFactory  # pyright: ignore[reportMissingImports]
 
 from lmnr import Laminar
+from lmnr.evals import relay
 from lmnr.integrations.harbor import runner as runner_module
 from lmnr.integrations.harbor.runner import LaminarAgent, LaminarVerifier
 from lmnr.integrations.harbor.spans import (
@@ -75,7 +78,14 @@ class SupportEval(EvalRunner):
 """
 
 
+# How `ctx.container.sh` runs a command: `relay.py exec` reading its payload file.
+RELAY_EXEC = re.compile(r"^\{ rm -f (\S+) 2>/dev/null; .+ exec; \} < \S+$")
+
+
 class FakeEnvironment:
+    """Records commands; a `relay.py exec` is answered as the relay would and
+    recorded as the command it runs."""
+
     os: TaskOS = TaskOS.LINUX
 
     def __init__(self) -> None:
@@ -83,10 +93,22 @@ class FakeEnvironment:
         self.uploads: dict[str, str] = {}
 
     async def exec(self, command: str, cwd=None, env=None, timeout_sec=None, user=None) -> Any:
+        relayed = RELAY_EXEC.match(command)
+        if relayed:
+            command = json.loads(self.uploads[relayed[1]])["cmd"]
+        stdout = await self.run(command)
         self.execs.append({"command": command, "env": env, "user": user})
+        if not relayed:
+            return SimpleNamespace(stdout=stdout, stderr="", return_code=0)
+        result = {"stdout": stdout, "stderr": "", "return_code": 0, "timed_out": False}
         return SimpleNamespace(
-            stdout="hi" if command == "python -m app" else "", stderr="", return_code=0
+            stdout=relay.format_result({**result, "stdin_unlinked": True}),
+            stderr="",
+            return_code=0,
         )
+
+    async def run(self, command: str) -> str:
+        return "hi" if command == "python -m app" else ""
 
     async def upload_file(self, source_path: Path | str, target_path: str) -> None:
         self.uploads[target_path] = Path(source_path).read_text()
@@ -210,10 +232,11 @@ async def test_collect_runs_when_run_fails(dataset: Path):
 
 
 class HangingCollectEnvironment(FakeEnvironment):
-    async def exec(self, command: str, cwd=None, env=None, timeout_sec=None, user=None) -> Any:
+    @override
+    async def run(self, command: str) -> str:
         if command == "collect-state":
             await asyncio.Event().wait()
-        return await super().exec(command, cwd, env, timeout_sec, user)
+        return await super().run(command)
 
 
 @pytest.mark.asyncio
