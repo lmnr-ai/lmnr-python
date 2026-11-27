@@ -184,6 +184,15 @@ def _set_completions(
     set_span_attribute(span, "gen_ai.output.messages", json_dumps(choices))
 
 
+def _record_stream_error(span: Span, error: BaseException):
+    """End the span as failed after the stream raised; the caller re-raises."""
+    if span.is_recording():
+        span.set_attribute(ERROR_TYPE, error.__class__.__name__)
+        span.record_exception(error, attributes=get_event_attributes_from_context())
+        span.set_status(Status(StatusCode.ERROR, str(error)))
+    span.end()
+
+
 @dont_throw
 def _build_from_streaming_response(
     span: Span,
@@ -191,9 +200,13 @@ def _build_from_streaming_response(
     response: Any,
 ) -> Generator[Any]:
     complete_response: CompletionStreamResponse = {"choices": [], "model": "", "id": ""}
-    for item in response:
-        yield item
-        _accumultated_response = _accumulate_streaming_response(complete_response, item)
+    try:
+        for item in response:
+            yield item
+            _accumultated_response = _accumulate_streaming_response(complete_response, item)
+    except Exception as e:
+        _record_stream_error(span, e)
+        raise
 
     set_response_attributes(span, cast(Any, complete_response))
 
@@ -211,9 +224,13 @@ async def _abuild_from_streaming_response(
     response: Any,
 ) -> AsyncGenerator[Any]:
     complete_response: CompletionStreamResponse = {"choices": [], "model": "", "id": ""}
-    async for item in response:
-        yield item
-        _accumulated_response = _accumulate_streaming_response(complete_response, item)
+    try:
+        async for item in response:
+            yield item
+            _accumulated_response = _accumulate_streaming_response(complete_response, item)
+    except Exception as e:
+        _record_stream_error(span, e)
+        raise
 
     set_response_attributes(span, cast(Any, complete_response))
 

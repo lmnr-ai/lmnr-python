@@ -361,6 +361,7 @@ class ChatStream(_ChatStreamBase):
     _record_raw_response: bool = False
     _complete_response: ChatStreamResponse
     _cleanup_completed: bool = False
+    _errored: bool = False
 
     @override
     def __init__(
@@ -449,10 +450,10 @@ class ChatStream(_ChatStreamBase):
             if isinstance(e, StopIteration):
                 self._process_complete_response()
             else:
-                # Handle cleanup for other exceptions during stream iteration
+                # Record the error before cleanup: cleanup ends the span, and
+                # an ended span ignores further status changes.
+                self._record_stream_error(e)
                 self._ensure_cleanup()
-                if self._span and self._span.is_recording():
-                    self._span.set_status(Status(StatusCode.ERROR, str(e)))
             raise
         else:
             self._process_item(chunk)
@@ -465,10 +466,10 @@ class ChatStream(_ChatStreamBase):
             if isinstance(e, StopAsyncIteration):
                 self._process_complete_response()
             else:
-                # Handle cleanup for other exceptions during stream iteration
+                # Record the error before cleanup: cleanup ends the span, and
+                # an ended span ignores further status changes.
+                self._record_stream_error(e)
                 self._ensure_cleanup()
-                if self._span and self._span.is_recording():
-                    self._span.set_status(Status(StatusCode.ERROR, str(e)))
             raise
         else:
             self._process_item(chunk)
@@ -506,6 +507,16 @@ class ChatStream(_ChatStreamBase):
         self._cleanup_completed = True
 
     @dont_throw
+    def _record_stream_error(self, error: BaseException):
+        with self._cleanup_lock:
+            if self._cleanup_completed or not self._span.is_recording():
+                return
+            self._span.set_attribute(ERROR_TYPE, error.__class__.__name__)
+            self._span.record_exception(error, attributes=get_event_attributes_from_context())
+            self._span.set_status(Status(StatusCode.ERROR, str(error)))
+            self._errored = True
+
+    @dont_throw
     def _ensure_cleanup(self):
         """Thread-safe cleanup method that handles different cleanup scenarios"""
         with self._cleanup_lock:
@@ -518,7 +529,8 @@ class ChatStream(_ChatStreamBase):
 
                 # Set span status and close it
                 if self._span and self._span.is_recording():
-                    self._span.set_status(Status(StatusCode.OK))
+                    if not self._errored:
+                        self._span.set_status(Status(StatusCode.OK))
                     self._span.end()
                     logger.debug("ChatStream span closed successfully")
 
@@ -543,6 +555,15 @@ class ChatStream(_ChatStreamBase):
 # Backward compatibility with OpenAI v0
 
 
+def _record_stream_error(span: Span, error: BaseException):
+    """End the span as failed after the stream raised; the caller re-raises."""
+    if span.is_recording():
+        span.set_attribute(ERROR_TYPE, error.__class__.__name__)
+        span.record_exception(error, attributes=get_event_attributes_from_context())
+        span.set_status(Status(StatusCode.ERROR, str(error)))
+    span.end()
+
+
 @dont_throw
 def _build_from_streaming_response(
     span: Span,
@@ -555,14 +576,18 @@ def _build_from_streaming_response(
         "service_tier": None,
     }
 
-    for item in response:
-        span.add_event(name="llm.content.completion.chunk")
+    try:
+        for item in response:
+            span.add_event(name="llm.content.completion.chunk")
 
-        item_to_yield = item
+            item_to_yield = item
 
-        _accumulate_stream_items(item, complete_response)
+            _accumulate_stream_items(item, complete_response)
 
-        yield item_to_yield
+            yield item_to_yield
+    except Exception as e:
+        _record_stream_error(span, e)
+        raise
 
     set_response_attributes(span, cast(Any, complete_response))
     if should_send_prompts():
@@ -584,14 +609,18 @@ async def _abuild_from_streaming_response(
         "service_tier": None,
     }
 
-    async for item in response:
-        span.add_event(name="llm.content.completion.chunk")
+    try:
+        async for item in response:
+            span.add_event(name="llm.content.completion.chunk")
 
-        item_to_yield = item
+            item_to_yield = item
 
-        _accumulate_stream_items(item, complete_response)
+            _accumulate_stream_items(item, complete_response)
 
-        yield item_to_yield
+            yield item_to_yield
+    except Exception as e:
+        _record_stream_error(span, e)
+        raise
 
     set_response_attributes(span, cast(Any, complete_response))
     if should_send_prompts():
