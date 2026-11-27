@@ -35,7 +35,7 @@ from lmnr.evals.errors import (
 )
 from lmnr.evals.layer import LAYER_DIR, relay_command
 from lmnr.evals.mocks.calls import MockCalls
-from lmnr.evals.mocks.mock import FixtureReader, missing_fixture
+from lmnr.evals.mocks.mock import FixtureReader, fixture_key, missing_fixture
 from lmnr.evals.paths import caller_dir
 from lmnr.evals.readiness import Readiness
 from lmnr.evals.readiness import cmd as cmd_ready
@@ -128,13 +128,13 @@ class Case(FixtureReader):
         """A file under the case's `tests/fixtures/` (data the agent must not
         see), on the host. A mock handler's `ctx.case` has no paths, only the
         readers."""
-        return self.dir / "tests" / "fixtures" / path
+        return self.dir / "tests" / "fixtures" / fixture_key(path)
 
     @override
     def fixture_bytes(self, path: str) -> bytes:
         file = self.fixture_path(path)
         if not file.is_file():
-            raise missing_fixture(self.name, path)
+            raise missing_fixture(self.name, fixture_key(path))
         return file.read_bytes()
 
     def expected(self) -> Any:

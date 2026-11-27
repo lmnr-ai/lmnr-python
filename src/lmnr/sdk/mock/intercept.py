@@ -156,7 +156,9 @@ class MockedCall:
     def _body(self, span: Span | None, args: tuple[Any, ...], kwargs: dict[str, Any]) -> bytes:
         # Every argument: `ignore_input(s)` and `input_formatter` shape the
         # span, not what the handler sees.
-        call_args, call_kwargs = bind_call(self.target.fn, self.target.is_method, args, kwargs)
+        call_args, call_kwargs = _mock_call_args(
+            self.target.fn, self.target.is_method, args, kwargs
+        )
         trace_id = span_id = None
         if span is not None:
             context = span.get_span_context()
@@ -183,7 +185,7 @@ class MockedCall:
             logger.debug("Failed to set mock attributes", exc_info=True)
 
 
-def bind_call(
+def _mock_call_args(
     fn: Callable[..., Any], is_method: bool, args: tuple[Any, ...], kwargs: dict[str, Any]
 ) -> tuple[list[Any], dict[str, Any]]:
     """The call as the protocol's `args` / `kwargs`, bound to the signature
@@ -196,10 +198,9 @@ def bind_call(
         signature = inspect.signature(fn)
         bound = signature.bind(*args, **kwargs)
     except (TypeError, ValueError):
-        if is_method:
-            args = args[1:]
-            kwargs = {k: v for k, v in kwargs.items() if k not in ("self", "cls")}
-        return list(args), dict(kwargs)
+        if not is_method:
+            return list(args), dict(kwargs)
+        return list(args[1:]), {k: v for k, v in kwargs.items() if k not in ("self", "cls")}
     bound.apply_defaults()
     positional: list[Any] = []
     named: dict[str, Any] = {}

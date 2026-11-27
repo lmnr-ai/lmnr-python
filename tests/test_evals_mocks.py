@@ -431,6 +431,15 @@ def test_host_and_handler_read_fixtures_the_same_way(evals_root: Path, tmp_path:
             FileNotFoundError, match=r"^The case 'acme/refund-1' has no tests/fixtures/x\.json\.$"
         ):
             _ = reader.fixture_json("x.json")
+        # One key on both sides: a leading `/` or `./` reads the same file,
+        # and nothing outside tests/fixtures/ is reachable.
+        assert reader.fixture_bytes("/nested/./a.txt") == b"nested"
+        with pytest.raises(FileNotFoundError, match=r"has no tests/fixtures/y\.json\.$"):
+            _ = reader.fixture_bytes("/y.json")
+        for escape in ("../task.toml", "nested/../../task.toml", "/..", ""):
+            with pytest.raises(ValueError, match="isn't a file under the case's tests/fixtures/"):
+                _ = reader.fixture_bytes(escape)
+    assert case.fixture_path("/crm.json") == case.dir / "tests" / "fixtures" / "crm.json"
     assert case.fixture_path("crm.json") == case.dir / "tests" / "fixtures" / "crm.json"
     assert not hasattr(handler_case, "fixture_path")
 

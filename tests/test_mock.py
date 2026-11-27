@@ -467,13 +467,16 @@ def test_args_are_bound_to_the_signature(
     kwargs: dict[str, Any],
     expected: tuple[list[Any], dict[str, Any]],
 ):
-    assert intercept.bind_call(fn, False, args, kwargs) == expected
+    assert intercept._mock_call_args(fn, False, args, kwargs) == expected
 
 
 def test_a_method_call_that_doesnt_bind_drops_self():
     def get(self: Any, email: str) -> None: ...
 
-    assert intercept.bind_call(get, True, ("self", "a", "b"), {"x": 1}) == (["a", "b"], {"x": 1})
+    assert intercept._mock_call_args(get, True, ("self", "a", "b"), {"x": 1}) == (
+        ["a", "b"],
+        {"x": 1},
+    )
 
 
 def test_a_call_that_doesnt_bind_is_sent_as_passed(server: FakeServer):

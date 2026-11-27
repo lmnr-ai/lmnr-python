@@ -26,6 +26,7 @@ The mock server imports this module in the container, next to the handlers.
 from __future__ import annotations
 
 import json as jsonlib
+import posixpath
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -171,8 +172,19 @@ class Request:
         return jsonlib.loads(self.body) if self.body else None
 
 
-def missing_fixture(case_name: str, path: str) -> FileNotFoundError:
-    return FileNotFoundError(f"The case {case_name!r} has no tests/fixtures/{path}.")
+def fixture_key(path: str) -> str:
+    """`path` as one key under the case's `tests/fixtures/`, the same on the
+    host and in a handler: `/`-separated, normalized, without a leading `/`
+    (`"/a/./b.json"` -> `"a/b.json"`). A path that leaves the folder raises
+    `ValueError`."""
+    key = posixpath.normpath(path.replace("\\", "/")).lstrip("/")
+    if key in ("", ".", "..") or key.startswith("../"):
+        raise ValueError(f"{path!r} isn't a file under the case's tests/fixtures/.")
+    return key
+
+
+def missing_fixture(case_name: str, key: str) -> FileNotFoundError:
+    return FileNotFoundError(f"The case {case_name!r} has no tests/fixtures/{key}.")
 
 
 class FixtureReader(ABC):
@@ -203,7 +215,7 @@ class CaseInfo(FixtureReader):
 
     @override
     def fixture_bytes(self, path: str) -> bytes:
-        key = path.strip("/")
+        key = fixture_key(path)
         if key not in self.fixtures:
             raise missing_fixture(self.name, key)
         return self.fixtures[key]
