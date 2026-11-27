@@ -18,6 +18,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from typing_extensions import override
 
 from lmnr.evals import (
     AgentContext,
@@ -33,7 +34,7 @@ from lmnr.evals import (
     case_fixture,
     cmd,
 )
-from lmnr.evals.context import Secrets
+from lmnr.evals.context import Context, Secrets
 from lmnr.evals.image import compile_image
 from lmnr.evals.mirrors import Mirror, Rystic
 from lmnr.evals.mirrors import rystic as rystic_module
@@ -601,6 +602,31 @@ def test_rystic_build_and_start_assumptions():
     assert "FROM curlimages/curl:8.17.0 AS svc-slack" in stages
     assert "RYSTIC_VERSION=0.0.93" in stages
     assert slack.image_title(None).startswith("service: Rystic slack-twin 1.4, CLI 0.0.93 (")
+
+
+def test_mirror_snapshot_chmods_after_every_file(tmp_path: Path):
+    class Twin(Mirror):
+        @override
+        async def read_state(self, ctx: Context) -> Any:
+            return {"channels": []}
+
+        @override
+        async def snapshot_extras(self, ctx: AgentContext) -> dict[str, Any]:
+            return {"calls.json": []}
+
+    env = RecordingEnvironment()
+    ctx = AgentContext(
+        environment=env, case=make_case(tmp_path), runner_dir=tmp_path, host_logs_dir=tmp_path / "a"
+    )
+    asyncio.run(Twin("twin", "1", snapshot=True).snapshot(ctx, "/logs/artifacts/state/twin"))
+    commands = [c for c, _ in env.commands]
+    uploads = [i for i, c in enumerate(commands) if c.startswith("upload ")]
+    targets = [commands[i].rsplit(" -> ", 1)[1] for i in uploads]
+    assert targets == [
+        "/logs/artifacts/state/twin/state.json",
+        "/logs/artifacts/state/twin/calls.json",
+    ]
+    assert commands[-1] == "chmod -R a+rX /logs/artifacts/state/twin"
 
 
 def test_custom_service(tmp_path: Path):

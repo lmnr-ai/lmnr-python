@@ -29,7 +29,6 @@ Checked against rystic CLI 0.0.93 and lmnr's hosted-evals proxy (LAM-2592):
 
 from __future__ import annotations
 
-import json
 import shlex
 from collections.abc import Mapping
 from pathlib import Path
@@ -204,11 +203,8 @@ class Rystic(Mirror):
         return await self.request(ctx, "GET", STATE_PATH)
 
     @override
-    async def snapshot(self, ctx: AgentContext, out_dir: str) -> None:
-        await super().snapshot(ctx, out_dir)
-        if self.snapshot_state:
-            calls = await self._live_calls(ctx)
-            await ctx.container.write_file(f"{out_dir}/{CALLS_FILE}", json.dumps(calls))
+    async def snapshot_extras(self, ctx: AgentContext) -> dict[str, Any]:
+        return {CALLS_FILE: await self._live_calls(ctx)}
 
     # Grading
 

@@ -130,11 +130,19 @@ class Mirror(Service):
     async def snapshot(self, ctx: AgentContext, out_dir: str) -> None:
         if not self.snapshot_state:
             return
-        state = await self.read_state(ctx)
+        files = {STATE_FILE: await self.read_state(ctx), **await self.snapshot_extras(ctx)}
         quoted = shlex.quote(out_dir)
         _ = await ctx.container.sh(f"rm -rf {quoted} && mkdir -p {quoted}", user="root")
-        await ctx.container.write_file(f"{out_dir}/{STATE_FILE}", json.dumps(state))
+        for name, content in files.items():
+            await ctx.container.write_file(f"{out_dir}/{name}", json.dumps(content))
+        # After every file: the upload's mode depends on the environment.
         _ = await ctx.container.sh(f"chmod -R a+rX {quoted}", user="root")
+
+    async def snapshot_extras(self, ctx: AgentContext) -> dict[str, Any]:
+        """More JSON files for the snapshot, by name, next to `state.json`
+        (read back with `saved(ctx, name)`)."""
+        del ctx
+        return {}
 
     # Grading
 
