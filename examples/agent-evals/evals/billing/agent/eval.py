@@ -102,10 +102,9 @@ class BillingEval(EvalRunner):
         ),
     ]
 
+    # The mock server imports this file in the container, so it gets the
+    # packages in evals/pyproject.toml there too (anthropic, for the judge).
     mocks = {"incidents.list_recent": list_incidents}
-    # The mock server imports this file in the container, and the file
-    # imports anthropic (for the judge): install it there too.
-    mock_dependencies = ["anthropic>=2.4.0"]
 
     model = "anthropic/claude-sonnet-5-5"
     # Names only: lmnr-cli reads the values from your shell, .env.local or .env.

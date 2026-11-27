@@ -21,7 +21,7 @@ clickhouse/
   migrations/1_usage_events.sql   # applied with clickhouse-migrations
   config.xml, users.xml           # production's server and user settings
 evals/
-  pyproject.toml              # what eval.py imports (the judge's Anthropic SDK), installed next to Harbor
+  pyproject.toml              # what eval.py imports (the judge's Anthropic SDK), installed next to Harbor and the mock server
   billing/                    # the recommended dataset
     agent/
       eval.py                 # the dataset in one file: image, services, mocks, run / verify

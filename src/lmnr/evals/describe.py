@@ -16,9 +16,10 @@ from pathlib import Path
 from typing import Any
 
 from lmnr.evals.artifacts import describe_artifacts
+from lmnr.evals.dependencies import resolve_mock_dependencies
 from lmnr.evals.errors import EvalConfigError
 from lmnr.evals.image import compile_image
-from lmnr.evals.layer import LAYER_PYTHON, LaminarLayer, validate_mock_dependencies
+from lmnr.evals.layer import LAYER_PYTHON, LaminarLayer
 from lmnr.evals.paths import evals_root, loaded_modules
 from lmnr.evals.runner import EvalRunner, Secret, default_image_name, find_runner, load_module
 
@@ -44,9 +45,12 @@ def describe(path: Path | str, layer_lmnr: str | None = None) -> dict[str, Any]:
     root = evals_root(path)
     if layer_lmnr is None:
         layer_lmnr = f"lmnr=={importlib.metadata.version('lmnr')}"
+    mock_dependencies, dependency_warnings = resolve_mock_dependencies(
+        runner.__name__, runner.mock_dependencies, path, has_mocks=bool(runner.mocks)
+    )
+    warnings += dependency_warnings
     layer = LaminarLayer(
-        lmnr=None if layer_lmnr == WHEEL else layer_lmnr,
-        mock_dependencies=validate_mock_dependencies(runner.__name__, runner.mock_dependencies),
+        lmnr=None if layer_lmnr == WHEEL else layer_lmnr, mock_dependencies=mock_dependencies
     )
     # The layer goes into every image: the runner's helpers run on it.
     contributors = [*runner.services, layer]

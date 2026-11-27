@@ -29,7 +29,7 @@ import json as jsonlib
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Final
 
 from typing_extensions import override
 
@@ -47,6 +47,20 @@ PASSTHROUGH: Any = _Passthrough()
 it means unmatched (501): there is no egress proxy yet."""
 
 _UNSET: Any = object()
+
+
+class ProjectDependencies:
+    """The type of `mock.PROJECT_DEPENDENCIES`."""
+
+    @override
+    def __repr__(self) -> str:
+        return "mock.PROJECT_DEPENDENCIES"
+
+
+PROJECT_DEPENDENCIES: Final = ProjectDependencies()
+"""In `EvalRunner.mock_dependencies`, the evals project's dependencies (what
+the default installs), so a list can extend them:
+`mock_dependencies = [mock.PROJECT_DEPENDENCIES, "extra>=1"]`."""
 
 
 class Error(Exception):

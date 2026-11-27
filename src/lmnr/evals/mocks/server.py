@@ -470,7 +470,8 @@ def _load_runner(path: Path) -> None:
         raise StartupError(
             f"importing {path.name} failed: {e}. Handlers run inside the container, so what "
             + "eval.py and its shared modules import at the top level must be installed "
-            + "there too: add it to the runner's mock_dependencies."
+            + "there too: list it in the evals project's dependencies (pyproject.toml or "
+            + "eval.py's # /// script block) or in the runner's mock_dependencies."
         ) from e
 
 

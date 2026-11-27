@@ -6,6 +6,7 @@ handler references describe validates, the lifecycle `LaminarAgent` drives
 from __future__ import annotations
 
 import asyncio
+import importlib.metadata
 import json
 import os
 import re
@@ -582,6 +583,177 @@ def test_base_url_env_cannot_shadow_other_env(tmp_path: Path):
         """,
     )
     with pytest.raises(EvalConfigError, match="API_URL is also set by E.env"):
+        _ = describe(path)
+
+
+# mock_dependencies: the evals project's dependencies by default
+
+PYPROJECT = """\
+[project]
+name = "evals"
+version = "0"
+dependencies = [
+    "anthropic>=2.4.0",
+    "lmnr[all]>=0.8",
+    "pydantic",
+    "shared-lib",
+    "local-pkg @ file:///srv/local-pkg",
+]
+
+[tool.uv.sources]
+shared-lib = { path = "../shared-lib", editable = true }
+"""
+
+SCRIPT = """\
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#   "httpx>=0.27",
+#   "anthropic>=2.4.0",
+#   "./vendor/thing",
+# ]
+# ///
+"""
+
+
+def dependencies_runner(
+    root: Path,
+    *,
+    pyproject: str | None = None,
+    script: str = "",
+    mocks: bool = True,
+    deps: str | None = None,
+) -> Path:
+    if pyproject is not None:
+        root.mkdir(parents=True, exist_ok=True)
+        _ = (root / "pyproject.toml").write_text(pyproject)
+    lines = [
+        script,
+        "from lmnr.evals import EvalRunner, Image, mock",
+        "",
+        "def h(call, ctx):",
+        "    return None",
+        "",
+        "class E(EvalRunner):",
+        '    image = Image.from_registry("python:3.13-slim")',
+        '    run_command = "true"',
+        "    grade_with_test_sh = True",
+    ]
+    if mocks:
+        lines.append('    mocks = {"crm.get": h}')
+    if deps is not None:
+        lines.append(f"    mock_dependencies = {deps}")
+    return write_runner(root, "\n".join(lines) + "\n")
+
+
+def layer_install_line(result: dict[str, Any]) -> str:
+    text = result["images"]["support-evals"]["dockerfile_text"]
+    return next(line for line in text.splitlines() if line.startswith("RUN uv pip install"))
+
+
+def test_mock_dependencies_default_to_the_pyproject(tmp_path: Path):
+    path = dependencies_runner(tmp_path / "evals", pyproject=PYPROJECT)
+    result = describe(path)
+    # lmnr is dropped silently: the layer pins it.
+    assert result["mock_dependencies"] == ["anthropic>=2.4.0", "pydantic"]
+    assert layer_install_line(result).endswith(" 'anthropic>=2.4.0' pydantic")
+    [uv_source, local_path] = result["warnings"]
+    assert "'shared-lib' from pyproject.toml" in uv_source
+    assert "[tool.uv.sources]" in uv_source
+    assert (
+        'add an installable spec to mock_dependencies: [mock.PROJECT_DEPENDENCIES, "shared-lib'
+        in (uv_source)
+    )
+    assert "'local-pkg @ file:///srv/local-pkg' from pyproject.toml" in local_path
+    assert "a local path" in local_path
+
+
+def test_mock_dependencies_default_to_the_pep_723_block(tmp_path: Path):
+    path = dependencies_runner(tmp_path / "evals", script=SCRIPT)
+    result = describe(path)
+    assert result["mock_dependencies"] == ["httpx>=0.27", "anthropic>=2.4.0"]
+    [warning] = result["warnings"]
+    assert "'./vendor/thing' from eval.py's # /// script block" in warning
+
+
+def test_mock_dependencies_default_to_both_without_duplicates(tmp_path: Path):
+    path = dependencies_runner(tmp_path / "evals", pyproject=PYPROJECT, script=SCRIPT)
+    result = describe(path)
+    assert result["mock_dependencies"] == ["anthropic>=2.4.0", "pydantic", "httpx>=0.27"]
+    assert len(result["warnings"]) == 3
+
+
+def test_project_dependencies_marker_expands_in_place(tmp_path: Path):
+    path = dependencies_runner(
+        tmp_path / "evals",
+        pyproject=PYPROJECT,
+        deps='["extra>=1", mock.PROJECT_DEPENDENCIES, "lmnr==0.1", "shared-lib>=1"]',
+    )
+    result = describe(path)
+    assert result["mock_dependencies"] == [
+        "extra>=1",
+        "anthropic>=2.4.0",
+        "pydantic",
+        "shared-lib>=1",
+    ]
+    # shared-lib has an installable spec now; local-pkg still warns.
+    [warning] = result["warnings"]
+    assert "local-pkg" in warning
+
+
+def test_a_mock_dependencies_list_replaces_the_default(tmp_path: Path):
+    path = dependencies_runner(
+        tmp_path / "evals", pyproject=PYPROJECT, script=SCRIPT, deps='["httpx"]'
+    )
+    result = describe(path)
+    assert (result["mock_dependencies"], result["warnings"]) == (["httpx"], [])
+    path = dependencies_runner(tmp_path / "empty", pyproject=PYPROJECT, deps="[]")
+    assert describe(path)["mock_dependencies"] == []
+
+
+@pytest.mark.parametrize(
+    "pyproject",
+    [None, "[tool.ruff]\nline-length = 100\n", '[project]\nname = "evals"\nversion = "0"\n'],
+)
+def test_no_project_dependencies(tmp_path: Path, pyproject: str | None):
+    path = dependencies_runner(tmp_path / "evals", pyproject=pyproject)
+    result = describe(path)
+    assert (result["mock_dependencies"], result["warnings"]) == ([], [])
+    assert layer_install_line(result).endswith(f"lmnr=={importlib.metadata.version('lmnr')}")
+
+
+def test_runners_without_mocks_install_no_dependencies(tmp_path: Path):
+    path = dependencies_runner(tmp_path / "evals", pyproject=PYPROJECT, mocks=False)
+    result = describe(path)
+    assert (result["mock_dependencies"], result["warnings"]) == ([], [])
+    assert layer_install_line(result).endswith(f"lmnr=={importlib.metadata.version('lmnr')}")
+    path = dependencies_runner(tmp_path / "explicit", mocks=False, deps='["httpx"]')
+    result = describe(path)
+    assert result["mock_dependencies"] == []
+    assert result["warnings"] == [
+        "E.mock_dependencies is ignored: the runner has no mocks, so nothing imports eval.py "
+        + "in the container."
+    ]
+
+
+@pytest.mark.parametrize(
+    ("pyproject", "script", "deps", "message"),
+    [
+        (None, "", '"httpx"', "must be a list of pip requirements"),
+        (None, "", "[1]", "must be a list of pip requirements"),
+        (None, "", '[""]', "must be a list of pip requirements"),
+        (None, "", "[mock.PROJECT_DEPENDENCIES, None]", "must be a list of pip requirements"),
+        ("[project\n", "", None, "pyproject.toml is not valid TOML"),
+        ('[project]\ndependencies = "x"\n', "", None, "must be a list of requirement strings"),
+        (None, SCRIPT + "\n" + SCRIPT, None, "more than one `# /// script` block"),
+        (None, "# /// script\n# dependencies = [\n# ///\n", None, "is not valid TOML"),
+    ],
+)
+def test_invalid_mock_dependencies_fail_describe(
+    tmp_path: Path, pyproject: str | None, script: str, deps: str | None, message: str
+):
+    path = dependencies_runner(tmp_path / "evals", pyproject=pyproject, script=script, deps=deps)
+    with pytest.raises(EvalConfigError, match=re.escape(message)):
         _ = describe(path)
 
 
