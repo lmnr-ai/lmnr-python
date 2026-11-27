@@ -109,6 +109,18 @@ def test_http_reads_chunked_responses_and_does_not_follow_redirects(server: str)
     assert relay.http({"url": f"{server}/redirect"})["status"] == 302
 
 
+def test_http_ignores_proxy_variables(server: str, monkeypatch: pytest.MonkeyPatch):
+    """The trial's env may set a proxy; the relay only talks to this container."""
+    with reserved_port() as sock:
+        dead = f"http://127.0.0.1:{sock.getsockname()[1]}"
+        for name in ("http_proxy", "HTTP_PROXY", "https_proxy", "HTTPS_PROXY"):
+            monkeypatch.setenv(name, dead)
+        monkeypatch.delenv("no_proxy", raising=False)
+        monkeypatch.delenv("NO_PROXY", raising=False)
+        assert relay.http({"url": f"{server}/status/200"})["status"] == 200
+        assert relay.wait({"ready": {"kind": "http", "url": f"{server}/status/200"}}) == relay.READY
+
+
 def test_http_transport_errors_and_timeouts_raise(server: str):
     with reserved_port() as sock, pytest.raises(OSError):
         _ = relay.http({"url": f"http://127.0.0.1:{sock.getsockname()[1]}/"})

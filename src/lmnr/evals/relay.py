@@ -75,7 +75,12 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 def http(request: dict[str, Any]) -> dict[str, Any]:
     """One HTTP request; any status is a result. Raises `OSError` on transport
-    errors (connection refused, timeout, TLS)."""
+    errors (connection refused, timeout, TLS).
+
+    Proxy variables are ignored: every request goes to a process in this
+    container (the mock server, a mirror, a readiness URL), and urllib on
+    Linux would send even 127.0.0.1 to `http_proxy` unless `no_proxy` lists
+    it."""
     body_b64 = request.get("body_b64")
     data = base64.b64decode(body_b64) if body_b64 else None
     req = urllib.request.Request(
@@ -85,7 +90,7 @@ def http(request: dict[str, Any]) -> dict[str, Any]:
         headers={str(k): str(v) for k, v in (request.get("headers") or {}).items()},
     )
     timeout = float(request.get("timeout") or DEFAULT_HTTP_TIMEOUT_SEC)
-    opener = urllib.request.build_opener(_NoRedirect)
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect)
     try:
         with opener.open(req, timeout=timeout) as response:
             status, headers, body = response.status, response.headers, response.read()
