@@ -141,13 +141,16 @@ TOOL_CALL = {
 }
 
 
-def tool_loop(h: Harness, root: str = "agent", fail_tool: bool = False) -> None:
+def tool_loop(
+    h: Harness, root: str = "agent", fail_tool: bool = False, mocked: bool = False
+) -> None:
     ask = {"role": "user", "content": "Look up x"}
     with h.span(root):
         llm_call(h, [ask], [TOOL_CALL])
         with h.span(
             "lookup",
             **{"lmnr.span.type": "TOOL", "lmnr.span.input": '{"q":"x"}'},
+            **({"lmnr.span.mocked": True} if mocked else {}),
         ) as tool:
             if fail_tool:
                 tool.record_exception(RuntimeError("no x"))
@@ -195,6 +198,19 @@ def test_tool_errors_come_from_exception_events(harness: Harness):
     assert result["extra"]["lmnr"]["status"] == "error"
     assert result["extra"]["lmnr"]["error"]["type"] == "RuntimeError"
     assert result["extra"]["lmnr"]["error"]["message"] == "no x"
+
+
+def test_a_mocked_tool_call_is_marked(harness: Harness):
+    tool_loop(harness, mocked=True)
+    _ = harness.processor.force_flush()
+    trajectory = harness.read()
+    assert_valid(trajectory)
+    assert trajectory["steps"][1]["tool_calls"][0]["extra"]["lmnr"]["mocked"] is True
+
+    tool_loop(harness)
+    _ = harness.processor.force_flush()
+    calls = [c for s in harness.read()["steps"] for c in s.get("tool_calls", [])]
+    assert [c["extra"]["lmnr"].get("mocked") for c in calls] == [True, None]
 
 
 def test_snapshot_while_spans_are_open_is_incomplete(harness: Harness):

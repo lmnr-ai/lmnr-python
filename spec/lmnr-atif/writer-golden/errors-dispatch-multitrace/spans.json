@@ -69,7 +69,8 @@
       "end_time": "2026-10-28T09:01:02.600000Z",
       "attributes": {
         "lmnr.span.input": "{\"channel\": \"#ci\"}",
-        "lmnr.span.output": "\"ok\""
+        "lmnr.span.output": "\"ok\"",
+        "lmnr.span.mocked": true
       }
     },
     {

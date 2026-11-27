@@ -242,7 +242,7 @@
   },
   "extra": {
     "lmnr": {
-      "spec_version": "0.1.0",
+      "spec_version": "0.1.1",
       "producer": {
         "name": "lmnr-python",
         "version": "0.8.4"
@@ -389,7 +389,7 @@
       },
       "extra": {
         "lmnr": {
-          "spec_version": "0.1.0",
+          "spec_version": "0.1.1",
           "agent_span_id": "00000000-0000-0000-0000-000000000043"
         }
       }
@@ -435,7 +435,7 @@
       ],
       "extra": {
         "lmnr": {
-          "spec_version": "0.1.0",
+          "spec_version": "0.1.1",
           "agent_span_id": "00000000-0000-0000-0000-000000000044",
           "implicit_subagent": true
         }
@@ -482,7 +482,7 @@
       ],
       "extra": {
         "lmnr": {
-          "spec_version": "0.1.0",
+          "spec_version": "0.1.1",
           "agent_span_id": "00000000-0000-0000-0000-000000000050"
         }
       }

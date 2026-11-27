@@ -1,6 +1,6 @@
 # lmnr-atif: Laminar's extension to ATIF
 
-- **Spec version:** 0.1.0
+- **Spec version:** 0.1.1
 - **Base format:** [ATIF](https://github.com/harbor-framework/harbor/blob/main/rfcs/0001-trajectory-format.md) v1.7 or later. Writers emit `ATIF-v1.8`.
 - **Machine-readable schema:** [`lmnr-atif.schema.json`](./lmnr-atif.schema.json)
 - **Examples / conformance fixtures:** [`fixtures/`](./fixtures)
@@ -165,6 +165,7 @@ All fields are OPTIONAL unless marked REQUIRED.
 | `start_time`, `end_time` | `Timestamp` | When the tool ran |
 | `raw_arguments` | string | The arguments exactly as the model produced them, when they were not a JSON object. `tool_call.arguments` is then `{}` (ATIF requires an object) |
 | `synthetic_id` | `true` | The writer generated `tool_call.tool_call_id` because the source had none |
+| `mocked` | `true` | The tool's span was answered by an evaluation's mock server instead of running (`lmnr.span.mocked` on the span). Its result is the mock's |
 
 ### 4.6 `observation_result.extra.lmnr`
 
@@ -399,6 +400,10 @@ spans of a run, and the exact trajectory a writer must produce from them. Its
 README defines the span input format.
 
 ## Changelog
+
+### 0.1.1
+
+- `tool_call.extra.lmnr.mocked` (§4.5).
 
 ### 0.1.0
 

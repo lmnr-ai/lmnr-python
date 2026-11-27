@@ -52,7 +52,8 @@
       "end_time": "2026-10-28T09:00:02.350000Z",
       "attributes": {
         "lmnr.span.input": "{\"order_id\": \"A-1042\"}",
-        "lmnr.span.output": "{\"order_id\": \"A-1042\", \"status\": \"shipped\"}"
+        "lmnr.span.output": "{\"order_id\": \"A-1042\", \"status\": \"shipped\"}",
+        "lmnr.span.mocked": true
       }
     },
     {

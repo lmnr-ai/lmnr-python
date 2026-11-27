@@ -86,7 +86,8 @@
             "lmnr": {
               "span_id": "00000000-0000-0000-0000-000000000003",
               "start_time": "2026-10-28T09:00:02.000000Z",
-              "end_time": "2026-10-28T09:00:02.350000Z"
+              "end_time": "2026-10-28T09:00:02.350000Z",
+              "mocked": true
             }
           }
         }
@@ -181,7 +182,7 @@
   },
   "extra": {
     "lmnr": {
-      "spec_version": "0.1.0",
+      "spec_version": "0.1.1",
       "producer": {
         "name": "lmnr-golden",
         "version": "0"

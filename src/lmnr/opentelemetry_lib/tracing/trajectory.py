@@ -24,7 +24,12 @@ from typing import Any, cast
 
 from opentelemetry.sdk.trace import ReadableSpan, Span
 
-from lmnr.opentelemetry_lib.tracing.attributes import SPAN_INPUT, SPAN_OUTPUT, SPAN_TYPE
+from lmnr.opentelemetry_lib.tracing.attributes import (
+    SPAN_INPUT,
+    SPAN_MOCKED,
+    SPAN_OUTPUT,
+    SPAN_TYPE,
+)
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.trajectory.builder import BuildOptions, SpanRecord, format_time
 from lmnr.sdk.trajectory.writer import TRACE_ID, write_trajectories
@@ -115,7 +120,7 @@ def _keep(key: str, attributes: Mapping[str, Any], kind: str) -> bool:
         return not (kind == "LLM" and "gen_ai.input.messages" in attributes)
     if key == SPAN_OUTPUT:
         return not (kind == "LLM" and "gen_ai.output.messages" in attributes)
-    return key in (_SESSION_ID, _RELEASE, SPAN_TYPE, *_AI_SDK_TOOL_CALL)
+    return key in (_SESSION_ID, _RELEASE, SPAN_TYPE, SPAN_MOCKED, *_AI_SDK_TOOL_CALL)
 
 
 def _value(value: Any) -> Any:

@@ -48,6 +48,8 @@ def observe(
     metadata: dict[str, Any] | None = None,
     tags: list[str] | None = None,
     preserve_global_context: bool = False,
+    mock_key: str | None = None,
+    mockable: bool = True,
 ) -> _ObserveDecorator:
     """The main decorator entrypoint for Laminar. This is used to wrap
     functions and methods to create spans.
@@ -89,7 +91,15 @@ def observe(
         preserve_global_context (bool, optional): Whether to preserve the global\
             OpenTelemetry context. If set to True, Laminar spans will continue\
             traces started in the global context. Defaults to False.
+        mock_key (str | None, optional): The key an eval's mocks use for this\
+            function. In an eval run with mocks (`LMNR_MOCK_URL` set), a call\
+            whose key is mocked is answered by the trial's mock server instead\
+            of running. Defaults to the span name.
+        mockable (bool, optional): Set to False so this function always runs,\
+            even when its key is mocked. Defaults to True.
     Raises:
+        MockedError: in an eval run with mocks, when the mock handler raises\
+            `mock.Error`, or when a mocked call fails (`type == "MockFailure"`).
         Exception: re-raises the exception if the wrapped function raises an\
             exception
 
@@ -101,6 +111,7 @@ def observe(
         func: Callable[P, R] | Callable[P, Coroutine[Any, Any, R]],
     ) -> Callable[P, R] | Callable[P, Coroutine[Any, Any, R]]:
         func_name = getattr(func, "__name__", "unknown")
+        resolved_mock_key = (mock_key or name or func_name) if mockable else None
 
         association_properties: dict[str, Any] = {}
         if session_id is not None:
@@ -150,6 +161,7 @@ def observe(
                 output_formatter=output_formatter,
                 association_properties=association_properties,
                 preserve_global_context=preserve_global_context,
+                mock_key=resolved_mock_key,
             )(func)
         else:
             wrapped_func = observe_base(
@@ -163,6 +175,7 @@ def observe(
                 output_formatter=output_formatter,
                 association_properties=association_properties,
                 preserve_global_context=preserve_global_context,
+                mock_key=resolved_mock_key,
             )(func)
 
         return wrapped_func

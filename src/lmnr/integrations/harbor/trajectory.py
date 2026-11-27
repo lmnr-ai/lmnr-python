@@ -23,7 +23,7 @@ from typing import Any, cast
 from opentelemetry.trace import Status, StatusCode
 
 from lmnr import LaminarSpan
-from lmnr.opentelemetry_lib.tracing.attributes import Attributes
+from lmnr.opentelemetry_lib.tracing.attributes import SPAN_MOCKED, Attributes
 from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.trajectory import reader
@@ -473,6 +473,8 @@ class TrajectoryConverter:
             attributes: dict[str, Any] = {}
             if isinstance(lmnr.get("span_id"), str):
                 attributes[SOURCE_SPAN_ID] = lmnr["span_id"]
+            if lmnr.get("mocked") is True:
+                attributes[SPAN_MOCKED] = True
             span = cast(
                 LaminarSpan,
                 Laminar.start_span(
