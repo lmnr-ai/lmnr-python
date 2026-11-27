@@ -1,7 +1,0 @@
-# What eval.py imports. It runs on your machine, in the process that runs
-# Harbor (not in the container), so lmnr-cli installs these there. The app's
-# own dependencies are in ../package.json and go into the image.
-[project]
-name = "usage-billing-evals"
-version = "0.1.0"
-dependencies = ["anthropic>=2.4.0"]
