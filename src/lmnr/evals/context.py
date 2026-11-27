@@ -147,7 +147,10 @@ class Secrets(Mapping[str, str]):
                 + "reads it from the shell, .env.local or .env."
             )
         if key not in self._values:
-            raise KeyError(f"Secret {key!r} is not set in the environment `harbor run` runs in.")
+            raise KeyError(
+                f"Secret {key!r} is not set in the environment `harbor run` runs in. "
+                + "Set it in your shell, .env.local or .env (lmnr-cli reads them)."
+            )
         return self._values[key]
 
     @override
@@ -176,8 +179,13 @@ class EvalLogger(logging.LoggerAdapter[logging.Logger]):
         self.lines: list[str] = []
 
     @override
+    def log(self, level: int, msg: object, *args: object, **kwargs: Any) -> None:
+        # Kept whatever the logger's level, with its arguments applied.
+        self.lines.append(str(msg) % args if args else str(msg))
+        super().log(level, msg, *args, **kwargs)
+
+    @override
     def process(self, msg: Any, kwargs: MutableMapping[str, Any]) -> tuple[Any, Any]:
-        self.lines.append(str(msg))
         return f"[{self.case_name}] {msg}", kwargs
 
 
@@ -291,8 +299,10 @@ class Container:
     ) -> BackgroundProcess:
         """Start a background process and wait until it is ready.
 
-        Output goes to `/logs/agent/<name>.log`. `ready` is `port(5432)`,
-        `http(url)` or `cmd("...")` (a plain string is a command); it runs with
+        Output goes to `<logs dir>/<name>.log` (`/logs/agent`, or
+        `/logs/verifier` in `verify`). `ready` is `port(5432)`, `http(url)`,
+        `cmd("...")` (a plain string is a command) or
+        `lmnr.evals.readiness.file(path)`; it runs with
         the same `env` as `cmd`. If the process
         exits or isn't ready within `timeout` seconds, the error has the end of
         its log.

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import json
+import logging
 import subprocess
 import sys
 import textwrap
@@ -30,7 +31,7 @@ from lmnr.evals import (
     port,
     secret,
 )
-from lmnr.evals.context import Secrets, normalize_rewards
+from lmnr.evals.context import EvalLogger, Secrets, normalize_rewards
 from lmnr.evals.describe import describe
 from lmnr.evals.runner import find_runner, load_module, load_runner
 
@@ -764,3 +765,15 @@ def test_lmnr_evals_never_imports_harbor():
         "assert not any(m == 'harbor' or m.startswith('harbor.') for m in sys.modules)"
     )
     _ = subprocess.run([sys.executable, "-c", code], check=True)
+
+
+def test_logger_keeps_lines_with_args_at_any_level():
+    log = EvalLogger("case-1")
+    level = log.logger.level
+    log.logger.setLevel(logging.WARNING)
+    try:
+        log.info("credits: %s cents", 8000)
+        log.warning("plain")
+    finally:
+        log.logger.setLevel(level)
+    assert log.lines == ["credits: 8000 cents", "plain"]
