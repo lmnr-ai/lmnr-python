@@ -1,0 +1,4 @@
+<!-- Server settings production uses, merged over the defaults. -->
+<clickhouse>
+    <timezone>UTC</timezone>
+</clickhouse>

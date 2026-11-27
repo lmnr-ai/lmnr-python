@@ -67,12 +67,18 @@ def stage(source: str, name: str, script: str) -> list[str]:
     return [f"FROM {source} AS {name}", "RUN <<'EOF'", _PRELUDE, *used, script.strip("\n"), "EOF"]
 
 
-def install_check(name: str, display: str, source: str, users: list[tuple[str, str]]) -> str:
-    """The final image's `RUN` after `COPY --from`: glibc is new enough,
-    `runuser` exists, and the service's OS users exist (`(user, home)`)."""
+def install_check(
+    name: str,
+    display: str,
+    source: str,
+    users: list[tuple[str, str]],
+    alternative: str = "pass source= an image built on an older distribution",
+) -> str:
+    """The final image's `RUN` after `COPY --from`: glibc is new enough, and
+    with `users` (`(user, home)`), `runuser` exists and they do."""
     hint = (
         f"{display} comes from {source}. Use a Debian or Ubuntu base with a newer glibc, "
-        + "or pass source= an image built on an older distribution."
+        + f"or {alternative}."
     )
     lines = [
         f"need=$(cat {GLIBC_MARKER}{name}) && rm -f {GLIBC_MARKER}{name}",
@@ -84,10 +90,13 @@ def install_check(name: str, display: str, source: str, users: list[tuple[str, s
         + 'echo "lmnr.evals: this image has glibc $have, but $need or newer is needed." '
         + shlex.quote(hint)
         + " >&2; exit 1; fi",
-        "command -v runuser >/dev/null 2>&1 || { echo "
-        + shlex.quote(f"lmnr.evals: {display} needs runuser (util-linux).")
-        + " >&2; exit 1; }",
     ]
+    if users:
+        lines.append(
+            "command -v runuser >/dev/null 2>&1 || { echo "
+            + shlex.quote(f"lmnr.evals: {display} needs runuser (util-linux).")
+            + " >&2; exit 1; }"
+        )
     for user, home in users:
         lines.append(
             f"(id -u {user} >/dev/null 2>&1 || useradd --system --user-group --no-create-home "

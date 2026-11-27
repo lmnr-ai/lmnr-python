@@ -24,12 +24,16 @@ from lmnr.evals.paths import CallSite, caller_site
 
 # Copied in before the first uv step when the base doesn't have uv.
 UV_IMAGE = "ghcr.io/astral-sh/uv:0.13.10"
+# Installed with npm for `pnpm_install` when package.json has no
+# `"packageManager": "pnpm@<version>"`.
+PNPM_VERSION = "12.23.0"
 # Matches the `[environment] workdir` new tasks get; `.workdir()` replaces it.
 DEFAULT_WORKDIR = "/case"
 # The stage name given to a user Dockerfile's last stage when it has none.
 APP_STAGE = "lmnr-app"
 
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_PNPM_VERSION = re.compile(r"^[0-9][0-9A-Za-z.+-]*$")
 # Lines Docker reads before anything else; they must stay at the top.
 _PARSER_DIRECTIVE = re.compile(r"^#\s*(syntax|escape|check)\s*=", re.IGNORECASE)
 _FROM = re.compile(
@@ -208,6 +212,20 @@ class Image:
         there. Add the code to `dst` with `add_dir` after it."""
         site = caller_site()
         return self._add(Step("npm_ci", paths=(_host(dir, site),), dst=_abs(dst)), site=site)
+
+    def pnpm_install(self, dir: str, dst: str, version: str | None = None) -> Image:
+        """Copy `package.json` and `pnpm-lock.yaml` (and `pnpm-workspace.yaml`,
+        which holds settings such as `onlyBuiltDependencies`) from `dir` to
+        `dst`, then `pnpm install --frozen-lockfile` there, with `dir`'s
+        `.npmrc` mounted for the build (never left in the image). pnpm is
+        installed with npm, so the base needs Node (`Image.node`), at
+        `version`, else package.json's `packageManager`, else `PNPM_VERSION`.
+        Add the code to `dst` with `add_dir` after it."""
+        site = caller_site()
+        args = () if version is None else _strings("pnpm_install", (version,))
+        return self._add(
+            Step("pnpm_install", args=args, paths=(_host(dir, site),), dst=_abs(dst)), site=site
+        )
 
     # Files
 
@@ -508,6 +526,8 @@ def _render(step: Step, rel: PathMap) -> list[str]:
             dst = _dir(step.dst)
             sources = [rel(directory / "package.json"), rel(lockfiles[0])]
             return [_copy(sources, dst), f"RUN cd {shlex.quote(dst)} && npm ci"]
+        case "pnpm_install":
+            return _render_pnpm(step, paths[0], rel)
         case "add_file":
             return [_copy([rel(_existing_file(paths[0], step))], _str(step.dst))]
         case "add_dir":
@@ -523,6 +543,55 @@ def _render(step: Step, rel: PathMap) -> list[str]:
             return [f"WORKDIR {step.dst}"]
         case _:
             raise EvalConfigError(f"Unknown image step {step.method!r}.")
+
+
+def _render_pnpm(step: Step, directory: Path, rel: PathMap) -> list[str]:
+    manifest = directory / "package.json"
+    if not manifest.is_file():
+        raise EvalConfigError(f"pnpm_install: {manifest} does not exist.")
+    lock = directory / "pnpm-lock.yaml"
+    if not lock.is_file():
+        raise EvalConfigError(
+            f"pnpm_install: {directory} has no pnpm-lock.yaml; run `pnpm install`."
+        )
+    sources = [rel(manifest), rel(lock)]
+    workspace = directory / "pnpm-workspace.yaml"
+    if workspace.is_file():
+        if re.search(r"^packages\s*:", workspace.read_text(), re.MULTILINE):
+            raise EvalConfigError(
+                f"pnpm_install: {workspace} lists workspace packages, which need every "
+                + "package's package.json before the install; use Image.from_dockerfile "
+                + "with `pnpm fetch` for a workspace."
+            )
+        sources.append(rel(workspace))
+    version = step.args[0] if step.args else _pnpm_version(manifest)
+    if not _PNPM_VERSION.match(version):
+        raise EvalConfigError(f"pnpm_install: {version!r} is not a pnpm version.")
+    dst = _dir(step.dst)
+    npmrc = directory / ".npmrc"
+    mount = f"{_mount(rel(npmrc), f'{dst}.npmrc')} " if npmrc.is_file() else ""
+    return [
+        # Its own layer: kept while the lockfile changes.
+        "RUN npm install -g --no-fund --no-audit --no-update-notifier "
+        + f"pnpm@{version} && rm -rf /root/.npm /tmp/node-compile-cache",
+        _copy(sources, dst),
+        # The store is on the same filesystem, so node_modules hard-links it and
+        # deleting it in the same layer keeps the image to one copy.
+        f"RUN {mount}cd {shlex.quote(dst)} && pnpm install --frozen-lockfile "
+        + "--store-dir /tmp/pnpm-store && rm -rf /tmp/pnpm-store* /tmp/node-compile-cache",
+    ]
+
+
+def _pnpm_version(manifest: Path) -> str:
+    """package.json's `"packageManager": "pnpm@10.12.1+sha512..."` version, or
+    `PNPM_VERSION`."""
+    try:
+        package_manager = json.loads(manifest.read_text()).get("packageManager")
+    except (ValueError, AttributeError):
+        raise EvalConfigError(f"pnpm_install: {manifest} is not a JSON object.") from None
+    if isinstance(package_manager, str) and package_manager.startswith("pnpm@"):
+        return package_manager.removeprefix("pnpm@").split("+", 1)[0]
+    return PNPM_VERSION
 
 
 def _copy(sources: list[str], dst: str) -> str:

@@ -137,7 +137,8 @@ def project(tmp_path: Path) -> tuple[Path, Case]:
     )
     ch = tmp_path / "clickhouse"
     ch.mkdir()
-    _ = (ch / "001.sql").write_text(
+    # clickhouse-migrations (the default migrator) names: version, `_`, anything.
+    _ = (ch / "1_events.sql").write_text(
         "CREATE TABLE events (id UInt64, kind String) ENGINE = MergeTree ORDER BY id;\n"
         + "INSERT INTO events VALUES (1, 'open');\n"
     )
@@ -207,6 +208,9 @@ def test_services_on_base(base: str, tmp_path: Path):
             assert await clickhouse.query(ctx, "SELECT id, kind FROM events") == [
                 {"id": 1, "kind": "open"}
             ]
+            # clickhouse-migrations recorded what it applied.
+            applied = await clickhouse.query(ctx, "SELECT version FROM _migrations")
+            assert applied == [{"version": 1}]
             await clickhouse.insert(ctx, "events", [{"id": 2, "kind": "close"}])
             rows = await clickhouse.query(ctx, "SELECT count() AS n FROM events")
             assert rows == [{"n": 2}]
@@ -310,6 +314,86 @@ def test_dockerfile_composition_with_non_root_user(tmp_path: Path):
         asyncio.run(scenario())
     finally:
         _ = subprocess.run(["docker", "rm", "-f", container], check=False, capture_output=True)
+        _ = subprocess.run(["docker", "rmi", tag], check=False, capture_output=True)
+
+
+def test_clickhouse_client_migrator_and_config_overrides(tmp_path: Path):
+    """migrator="clickhouse-client" applies any *.sql in natural order, and the
+    config / users files are merged over the generated ones."""
+    ch = tmp_path / "clickhouse"
+    ch.mkdir()
+    _ = (ch / "001_events.sql").write_text(
+        "CREATE TABLE events (id UInt64) ENGINE = MergeTree ORDER BY id;\n"
+    )
+    _ = (ch / "2_more.sql").write_text("INSERT INTO events VALUES (2);\n")
+    _ = (ch / "10_last.sql").write_text("INSERT INTO events SELECT max(id) * 5 FROM events;\n")
+    _ = (tmp_path / "prod.xml").write_text(
+        "<clickhouse><max_concurrent_queries>37</max_concurrent_queries></clickhouse>\n"
+    )
+    _ = (tmp_path / "users.yaml").write_text("profiles:\n  default:\n    max_threads: 3\n")
+    clickhouse = ClickHouse(
+        "25.8",
+        migrations=str(ch),
+        migrator="clickhouse-client",
+        config=str(tmp_path / "prod.xml"),
+        users=str(tmp_path / "users.yaml"),
+    )
+    tag = build(Image.python("3.13"), [clickhouse], tmp_path)
+    container = start_container(tag)
+    try:
+        env = DockerEnvironment(container)
+        ctx = agent_ctx(env, Case(name="c", dir=tmp_path), tmp_path)
+
+        async def scenario() -> None:
+            _ = await start_services([clickhouse], ctx)
+            rows = await clickhouse.query(ctx, "SELECT id FROM events ORDER BY id")
+            assert rows == [{"id": 2}, {"id": 10}]
+            assert await clickhouse.query(ctx, "SHOW TABLES") == [{"name": "events"}]
+            setting = await clickhouse.query(
+                ctx,
+                "SELECT value FROM system.server_settings WHERE name = 'max_concurrent_queries'",
+            )
+            assert setting == [{"value": "37"}]
+            threads = await clickhouse.query(ctx, "SELECT getSetting('max_threads') AS n")
+            assert threads == [{"n": 3}]
+
+        asyncio.run(scenario())
+    finally:
+        _ = subprocess.run(["docker", "rm", "-f", container], check=False, capture_output=True)
+        _ = subprocess.run(["docker", "rmi", tag], check=False, capture_output=True)
+
+
+def test_pnpm_install(tmp_path: Path):
+    web = tmp_path / "web"
+    web.mkdir()
+    data = Path(__file__).parent / "data" / "evals_project" / "web-pnpm"
+    for name in ("package.json", "pnpm-lock.yaml", ".npmrc"):
+        _ = (web / name).write_bytes((data / name).read_bytes())
+    _ = (web / "index.js").write_text("console.log(require('ms')('2 days'));\n")
+    image = Image.node("24").pnpm_install(str(web), "/srv/web").add_dir(str(web), "/srv/web")
+    tag = build(image, [], tmp_path)
+    try:
+        out = subprocess.run(
+            [
+                "docker",
+                "run",
+                "--rm",
+                "--platform",
+                "linux/amd64",
+                tag,
+                "sh",
+                "-c",
+                "node /srv/web/index.js && pnpm --version && ls -A /tmp && ls -A /srv/web",
+            ],
+            capture_output=True,
+            check=True,
+        )
+        lines = out.stdout.decode().split()
+        assert lines[:2] == ["172800000", "10.20.0"]  # packageManager's version
+        assert "pnpm-store" not in lines
+        # .npmrc came in with add_dir; the install only mounted it.
+        assert "node_modules" in lines
+    finally:
         _ = subprocess.run(["docker", "rmi", tag], check=False, capture_output=True)
 
 

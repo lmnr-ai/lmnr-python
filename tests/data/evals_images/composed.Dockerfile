@@ -13,7 +13,7 @@ WORKDIR /srv/app
 
 # Added by lmnr.evals. Each step names the code that declared it.
 
-# service: Valkey 8 (_shared/images.py:27)
+# service: Valkey 8 (_shared/images.py:28)
 FROM valkey/valkey:8-bookworm AS svc-valkey
 RUN <<'EOF'
 set -eu
@@ -54,7 +54,7 @@ EOF
 FROM lmnr-app
 USER root
 
-# service: Valkey 8 (_shared/images.py:27)
+# service: Valkey 8 (_shared/images.py:28)
 COPY --from=svc-valkey /bundle/ /
 RUN need=$(cat /usr/local/share/.glibc-required-valkey) && rm -f /usr/local/share/.glibc-required-valkey && \
     have=$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{print $2}' || true) && \
@@ -63,7 +63,7 @@ RUN need=$(cat /usr/local/share/.glibc-required-valkey) && rm -f /usr/local/shar
     command -v runuser >/dev/null 2>&1 || { echo 'lmnr.evals: Valkey needs runuser (util-linux).' >&2; exit 1; } && \
     (id -u valkey >/dev/null 2>&1 || useradd --system --user-group --no-create-home --home-dir /var/lib/valkey --shell /usr/sbin/nologin valkey)
 
-# _shared/images.py:26
+# _shared/images.py:27
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends jq && rm -rf /var/lib/apt/lists/*
 
 USER app

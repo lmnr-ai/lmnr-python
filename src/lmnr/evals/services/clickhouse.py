@@ -8,7 +8,7 @@ import shlex
 import uuid
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from typing_extensions import override
 
@@ -28,6 +28,20 @@ CONFIG_DIR = "/etc/clickhouse-server"
 GLIBC_REQUIRED = "2.17"
 # Numbers come back as JSON numbers, not strings.
 JSON_SETTINGS = "--output_format_json_quote_64bit_integers=0"
+# The default migrator: https://www.npmjs.com/package/clickhouse-migrations, a
+# Node CLI bundled with its own `node` from `MIGRATIONS_NODE_IMAGE`, so the
+# app's image needs no Node.
+MIGRATIONS_TOOL = "clickhouse-migrations"
+MIGRATIONS_TOOL_VERSION = "1.6.0"
+MIGRATIONS_NODE_IMAGE = "node:24-bookworm-slim"
+MIGRATIONS_TOOL_DIR = "/usr/lib/clickhouse-migrations"
+MIGRATIONS_TOOL_BIN = f"{MIGRATIONS_TOOL_DIR}/bin/clickhouse-migrations"
+# Its file names: the version number, `_`, anything (`1_init.sql`).
+_TOOL_FILE = re.compile(r"^0*[1-9][0-9]*_.*\.sql$")
+# Override files ClickHouse merges over the generated config / users.
+_OVERRIDE_SUFFIXES = (".xml", ".yaml", ".yml")
+
+Migrator = Literal["clickhouse-migrations", "clickhouse-client"]
 
 _IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -73,6 +87,17 @@ class ClickHouse(Service):
     - `env`: `"CLICKHOUSE_URL"` (the default) gets `http://127.0.0.1:<http_port>`;
       templates can use `{url}`, `{host}`, `{port}` (HTTP), `{tcp_port}`,
       `{database}`, `{user}`, `{password}`.
+    - `migrator`: `"clickhouse-migrations"` (the default) applies
+      `migrations` with the `clickhouse-migrations` CLI (files named
+      `1_init.sql`, `2_events.sql`, ...; applied versions are recorded in a
+      `_migrations` table), as an app that uses it does in production.
+      `"clickhouse-client"` pipes every `*.sql` file, in natural order, through
+      `clickhouse client --multiquery`, with no bookkeeping.
+    - `config="clickhouse/config.xml"` / `users="clickhouse/users.xml"`: files
+      (`.xml` or `.yaml`) ClickHouse merges over the generated `config.xml` /
+      `users.xml` (`config.d/`, `users.d/`), so what they set wins. Keep the
+      ports in step with `http_port` / `tcp_port`, and the `default` user
+      without a password (the runner connects as it).
     - `snapshot=["events"]`: `collect` saves those tables as JSON for
       `ctx.state("clickhouse", "events")`.
     """
@@ -87,6 +112,9 @@ class ClickHouse(Service):
         http_port: int = 8123,
         tcp_port: int = 9000,
         migrations: str | None = None,
+        migrator: Migrator = "clickhouse-migrations",
+        config: str | None = None,
+        users: str | None = None,
         seed: SeedSpec = None,
         env: EnvSpec = "CLICKHOUSE_URL",
         snapshot: Sequence[str] = (),
@@ -98,6 +126,9 @@ class ClickHouse(Service):
         self.http_port: int = http_port
         self.tcp_port: int = tcp_port
         self.migrations: str | None = migrations
+        self.migrator: Migrator = migrator
+        self.config: str | None = config
+        self.users: str | None = users
         self.seed_spec: SeedSpec = seed
         self.snapshot_tables: list[str] = list(snapshot)
 
@@ -123,16 +154,52 @@ cat > "$out{CONFIG_DIR}/users.xml" <<'XML'
 {_USERS}
 XML
 echo {GLIBC_REQUIRED} > "$out{GLIBC_MARKER}{self.name}\""""
-        return stage(self.source_image(), self.stage_name(), script)
+        stages = stage(self.source_image(), self.stage_name(), script)
+        if self._uses_tool():
+            stages += ["", *self._tool_stage()]
+        return stages
+
+    def _tool_stage(self) -> list[str]:
+        """`clickhouse-migrations` with its own `node` and libraries, run
+        through a wrapper outside PATH, so it never shadows the app's Node."""
+        tool = MIGRATIONS_TOOL_DIR
+        script = f"""npm install --prefix {tool} --omit=dev --no-fund --no-audit --no-update-notifier \\
+  {MIGRATIONS_TOOL}@{MIGRATIONS_TOOL_VERSION}
+mkdir -p "$out{tool}"
+cp -a {tool}/node_modules "$out{tool}/"
+cp -L "$(command -v node)" "$out{tool}/node"
+collect_deps {tool}/libs "$(command -v node)"
+wrap "{tool}/node {tool}/node_modules/{MIGRATIONS_TOOL}/lib/cli.js" {MIGRATIONS_TOOL_BIN} {tool}/libs
+"$out{tool}/node" {tool}/node_modules/{MIGRATIONS_TOOL}/lib/cli.js --help >/dev/null
+record_glibc {self.name}-migrations"""
+        return stage(MIGRATIONS_NODE_IMAGE, self.stage_name("-migrations"), script)
 
     @override
     def install_steps(self, rel: PathMap) -> list[str]:
-        return [
+        steps = [
             f"COPY --from={self.stage_name()} {BUNDLE_DIR}/ /",
             install_check(
                 self.name, self.display_name, self.source_image(), [("clickhouse", DATA_DIR)]
             ),
         ]
+        if self._uses_tool():
+            steps += [
+                f"COPY --from={self.stage_name('-migrations')} {BUNDLE_DIR}/ /",
+                install_check(
+                    f"{self.name}-migrations",
+                    MIGRATIONS_TOOL,
+                    MIGRATIONS_NODE_IMAGE,
+                    [],
+                    alternative='pass migrator="clickhouse-client"',
+                ),
+            ]
+        for path, folder in self._overrides():
+            steps.append(f"COPY {json.dumps([rel(path), f'{CONFIG_DIR}/{folder}/{path.name}'])}")
+        return steps
+
+    @override
+    def host_paths(self) -> list[Path]:
+        return [path for path, _ in self._overrides()]
 
     # Run
 
@@ -165,14 +232,23 @@ echo {GLIBC_REQUIRED} > "$out{GLIBC_MARKER}{self.name}\""""
         migrations = self.migrations_dir()
         assert migrations is not None
         remote = f"/tmp/.{uuid.uuid4().hex[:12]}"
+        if self._uses_tool():
+            command = (
+                f"{MIGRATIONS_TOOL_BIN} migrate --host=http://{HOST}:{self.http_port} "
+                + f"--user=default --password= --db={self.database} --migrations-home={remote}"
+            )
+        else:
+            command = (
+                f"find {remote} -maxdepth 1 -type f -name '*.sql' | sort -V | "
+                + "while IFS= read -r f; do "
+                + f'{self._client(database=True)} --multiquery < "$f" '
+                + '|| { echo "migration failed: ${f##*/}" >&2; exit 1; }; done'
+            )
         try:
             await ctx.container.copy(migrations, remote)
             _ = await run_script(
                 ctx,
-                f"find {remote} -maxdepth 1 -type f -name '*.sql' | sort -V | "
-                + "while IFS= read -r f; do "
-                + f'{self._client(database=True)} --multiquery < "$f" '
-                + '|| { echo "migration failed: ${f##*/}" >&2; exit 1; }; done',
+                command,
                 what=f"Migrations from {migrations} ({self.name})",
                 timeout=600,
             )
@@ -248,6 +324,18 @@ echo {GLIBC_REQUIRED} > "$out{GLIBC_MARKER}{self.name}\""""
             return None
         return ((self.base_dir or Path.cwd()) / self.migrations).resolve()
 
+    def _uses_tool(self) -> bool:
+        return self.migrations is not None and self.migrator == "clickhouse-migrations"
+
+    def _overrides(self) -> list[tuple[Path, str]]:
+        """`(host file, folder under CONFIG_DIR)` for `config` and `users`."""
+        base = self.base_dir or Path.cwd()
+        found: list[tuple[Path, str]] = []
+        for value, folder in ((self.config, "config.d"), (self.users, "users.d")):
+            if value is not None:
+                found.append(((base / value).resolve(), folder))
+        return found
+
     def _client(self, database: bool = False) -> str:
         db = f" --database {shlex.quote(self.database)}" if database else ""
         return f"clickhouse client --host {HOST} --port {self.tcp_port}{db}"
@@ -270,7 +358,32 @@ echo {GLIBC_REQUIRED} > "$out{GLIBC_MARKER}{self.name}\""""
             raise EvalConfigError(
                 f"{where}: database {self.database!r} must be a plain identifier."
             )
+        if self.migrator not in ("clickhouse-migrations", "clickhouse-client"):
+            raise EvalConfigError(
+                f'{where}: migrator must be "clickhouse-migrations" or "clickhouse-client", '
+                + f"got {self.migrator!r}."
+            )
         migrations = self.migrations_dir()
         if migrations is not None and not migrations.is_dir():
             raise EvalConfigError(f"{where}: migrations folder {migrations} does not exist.")
+        if migrations is not None and self._uses_tool():
+            misnamed = sorted(
+                p.name for p in migrations.glob("*.sql") if not _TOOL_FILE.match(p.name)
+            )
+            if misnamed:
+                raise EvalConfigError(
+                    f"{where}: clickhouse-migrations needs file names that start with a version "
+                    + f"number and '_' (1_init.sql); {migrations} has {', '.join(misnamed)}. "
+                    + 'Rename them, or pass migrator="clickhouse-client" to apply every *.sql '
+                    + "in natural order."
+                )
+        for path, folder in self._overrides():
+            what = "config" if folder == "config.d" else "users"
+            if not path.is_file():
+                raise EvalConfigError(f"{where}: {what} file {path} does not exist.")
+            if path.suffix not in _OVERRIDE_SUFFIXES:
+                raise EvalConfigError(
+                    f"{where}: {what} file {path.name} must be .xml or .yaml (ClickHouse "
+                    + "only reads those from config.d / users.d)."
+                )
         return warnings

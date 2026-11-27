@@ -316,6 +316,59 @@ def test_postgres_commands(tmp_path: Path):
     assert all(user == "root" for c, user in env.commands if "psql" in c or "nohup" in c)
 
 
+@pytest.mark.parametrize("migrator", ["clickhouse-migrations", "clickhouse-client"])
+def test_clickhouse_migrators(tmp_path: Path, migrator: str):
+    (tmp_path / "migrations").mkdir()
+    _ = (tmp_path / "migrations" / "1_events.sql").write_text("CREATE TABLE events (id UInt64);")
+    ch = ClickHouse("25.8", migrations=str(tmp_path / "migrations"), migrator=migrator)  # pyright: ignore[reportArgumentType]
+    assert runner(services=[ch]).validate() == []
+    env = RecordingEnvironment()
+    ctx = AgentContext(
+        environment=env, case=make_case(tmp_path), runner_dir=tmp_path, host_logs_dir=tmp_path / "a"
+    )
+    asyncio.run(start_services([ch], ctx))
+    uploads = [c for c, _ in env.commands if c.startswith("upload ")]
+    assert uploads
+    stages = "\n".join(ch.bundle_stages(lambda p: str(p)))
+    if migrator == "clickhouse-migrations":
+        assert "FROM node:24-bookworm-slim AS svc-clickhouse-migrations" in stages
+        assert "clickhouse-migrations@1.6.0" in stages
+    else:
+        assert "node" not in stages
+
+
+def test_clickhouse_validation(tmp_path: Path):
+    (tmp_path / "migrations").mkdir()
+    _ = (tmp_path / "migrations" / "001.sql").write_text("SELECT 1;")
+    _ = (tmp_path / "config.json").write_text("{}")
+    with pytest.raises(
+        EvalConfigError, match=r'has 001.sql. Rename them, or pass migrator="clickhouse-client"'
+    ):
+        _ = runner(
+            services=[ClickHouse("25.8", migrations=str(tmp_path / "migrations"))]
+        ).validate()
+    plain = ClickHouse(
+        "25.8", migrations=str(tmp_path / "migrations"), migrator="clickhouse-client"
+    )
+    assert runner(services=[plain]).validate() == []
+    with pytest.raises(EvalConfigError, match="users file .* does not exist"):
+        _ = runner(services=[ClickHouse("25.8", users=str(tmp_path / "users.xml"))]).validate()
+    with pytest.raises(EvalConfigError, match="must be .xml or .yaml"):
+        _ = runner(services=[ClickHouse("25.8", config=str(tmp_path / "config.json"))]).validate()
+
+
+def test_clickhouse_config_overrides_are_merged_files(tmp_path: Path):
+    _ = (tmp_path / "prod.xml").write_text("<clickhouse/>")
+    _ = (tmp_path / "users.yaml").write_text("profiles: {}")
+    ch = ClickHouse("25.8", config=str(tmp_path / "prod.xml"), users=str(tmp_path / "users.yaml"))
+    assert ch.host_paths() == [tmp_path / "prod.xml", tmp_path / "users.yaml"]
+    steps = ch.install_steps(lambda p: p.name)
+    assert steps[-2:] == [
+        'COPY ["prod.xml", "/etc/clickhouse-server/config.d/prod.xml"]',
+        'COPY ["users.yaml", "/etc/clickhouse-server/users.d/users.yaml"]',
+    ]
+
+
 def test_live_helpers_fail_clearly_in_separate_verifier_mode(tmp_path: Path):
     pg = Postgres("16")
     ctx = VerifyContext(

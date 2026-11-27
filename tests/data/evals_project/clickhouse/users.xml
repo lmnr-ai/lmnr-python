@@ -1,0 +1,3 @@
+<clickhouse>
+  <profiles><default><max_threads>2</max_threads></default></profiles>
+</clickhouse>

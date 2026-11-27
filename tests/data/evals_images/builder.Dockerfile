@@ -24,17 +24,22 @@ COPY ["web/package.json", "web/package-lock.json", "/srv/web/"]
 RUN cd /srv/web/ && npm ci
 
 # _shared/images.py:17
-COPY ["requirements.txt", "/srv/app/requirements.txt"]
+RUN npm install -g --no-fund --no-audit --no-update-notifier pnpm@10.20.0 && rm -rf /root/.npm /tmp/node-compile-cache
+COPY ["web-pnpm/package.json", "web-pnpm/pnpm-lock.yaml", "/srv/web-pnpm/"]
+RUN --mount=type=bind,source=web-pnpm/.npmrc,target=/srv/web-pnpm/.npmrc cd /srv/web-pnpm/ && pnpm install --frozen-lockfile --store-dir /tmp/pnpm-store && rm -rf /tmp/pnpm-store* /tmp/node-compile-cache
 
 # _shared/images.py:18
-COPY ["app/", "/srv/app/app/"]
+COPY ["requirements.txt", "/srv/app/requirements.txt"]
 
 # _shared/images.py:19
+COPY ["app/", "/srv/app/app/"]
+
+# _shared/images.py:20
 RUN echo one
 RUN echo 'two words'
 
-# _shared/images.py:20
+# _shared/images.py:21
 ENV APP_ENV="eval" GREETING="say \"hi\""
 
-# _shared/images.py:21
+# _shared/images.py:22
 WORKDIR /srv/app

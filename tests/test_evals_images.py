@@ -10,6 +10,7 @@ don't move when this file changes.
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import sys
 import textwrap
@@ -19,7 +20,7 @@ from types import ModuleType
 import pytest
 
 from lmnr.evals import EvalConfigError, EvalRunner, Image
-from lmnr.evals.image import APP_STAGE, UV_IMAGE, compile_image
+from lmnr.evals.image import APP_STAGE, PNPM_VERSION, UV_IMAGE, compile_image
 
 DATA = Path(__file__).parent / "data"
 PROJECT = DATA / "evals_project"
@@ -125,6 +126,63 @@ def test_existing_stage_name_is_reused_and_root_user_is_left_alone(tmp_path: Pat
     assert "USER" not in text
     # A builder step on a Dockerfile image doesn't add a WORKDIR.
     assert "WORKDIR" not in text
+
+
+def _pnpm_project(tmp_path: Path, package_manager: str | None = None) -> Path:
+    web = tmp_path / "web"
+    web.mkdir()
+    manifest: dict[str, str] = {"name": "web"}
+    if package_manager is not None:
+        manifest["packageManager"] = package_manager
+    _ = (web / "package.json").write_text(json.dumps(manifest))
+    _ = (web / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n")
+    return web
+
+
+def _pnpm_lines(image: Image, tmp_path: Path) -> list[str]:
+    text = compile_image(image, fallback_dir=tmp_path).dockerfile_text or ""
+    return [line for line in text.splitlines() if "pnpm" in line]
+
+
+def test_pnpm_version_comes_from_the_argument_then_package_manager(tmp_path: Path):
+    web = _pnpm_project(tmp_path, "pnpm@10.12.1+sha512.abcdef")
+    lines = _pnpm_lines(Image.node("24").pnpm_install(str(web), "/srv/web"), tmp_path)
+    assert lines[0].startswith("RUN npm install -g") and "pnpm@10.12.1 " in lines[0]
+    assert lines[1] == 'COPY ["package.json", "pnpm-lock.yaml", "/srv/web/"]'
+    assert lines[2].startswith("RUN cd /srv/web/ && pnpm install --frozen-lockfile")
+    pinned = Image.node("24").pnpm_install(str(web), "/srv/web", version="11.0.0")
+    assert "pnpm@11.0.0 " in _pnpm_lines(pinned, tmp_path)[0]
+
+
+def test_pnpm_defaults_and_optional_files(tmp_path: Path):
+    web = _pnpm_project(tmp_path, "yarn@4.0.0")
+    _ = (web / ".npmrc").write_text("auto-install-peers=true\n")
+    _ = (web / "pnpm-workspace.yaml").write_text("onlyBuiltDependencies:\n  - esbuild\n")
+    lines = _pnpm_lines(Image.node("24").pnpm_install(str(web), "/srv/web"), tmp_path)
+    assert f"pnpm@{PNPM_VERSION} " in lines[0]
+    # Settings file copied; .npmrc (may hold a token) only mounted for the install.
+    assert '"pnpm-workspace.yaml"' in lines[1] and ".npmrc" not in lines[1]
+    assert "--mount=type=bind,source=.npmrc,target=/srv/web/.npmrc" in lines[2]
+
+
+@pytest.mark.parametrize(
+    ("setup", "message"),
+    [
+        (lambda web: (web / "pnpm-lock.yaml").unlink(), "no pnpm-lock.yaml"),
+        (
+            lambda web: (web / "pnpm-workspace.yaml").write_text("packages:\n  - apps/*\n"),
+            "lists workspace packages",
+        ),
+        (lambda web: (web / "package.json").write_text("[]"), "not a JSON object"),
+    ],
+)
+def test_pnpm_errors(tmp_path: Path, setup, message: str):
+    web = _pnpm_project(tmp_path)
+    _ = setup(web)
+    with pytest.raises(EvalConfigError, match=message):
+        _ = compile_image(
+            Image.node("24").pnpm_install(str(web), "/srv/web"), fallback_dir=tmp_path
+        )
 
 
 def test_user_inherited_from_an_earlier_stage_is_handled(tmp_path: Path):

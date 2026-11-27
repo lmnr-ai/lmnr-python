@@ -14,6 +14,7 @@ BUILDER = (
     .pip_install_from_requirements("../../requirements.txt")
     .uv_sync("../../pyproject.toml")
     .npm_ci("../../web", "/srv/web")
+    .pnpm_install("../../web-pnpm", "/srv/web-pnpm")
     .add_file("../../requirements.txt", "/srv/app/requirements.txt")
     .add_dir("../../app", "/srv/app/app")
     .run_commands("echo one", "echo 'two words'")
@@ -38,7 +39,13 @@ class ServicesRunner(EvalRunner):
             source="pgvector/pgvector:pg16-bookworm",
         ),
         Valkey("8"),
-        ClickHouse("25.8", database="analytics"),
+        ClickHouse(
+            "25.8",
+            database="analytics",
+            migrations="../../clickhouse/migrations",
+            config="../../clickhouse/config.xml",
+            users="../../clickhouse/users.xml",
+        ),
         Service.custom(
             "mailpit",
             "1.21",

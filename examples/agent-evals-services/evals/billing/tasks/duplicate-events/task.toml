@@ -1,0 +1,9 @@
+[task]
+name = "usage-billing-agent/duplicate-events"
+
+[environment]
+docker_image = "billing-evals"
+workdir = "/case"
+
+[agent]
+timeout_sec = 300
