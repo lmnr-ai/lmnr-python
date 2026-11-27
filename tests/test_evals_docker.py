@@ -594,8 +594,7 @@ from lmnr.evals import mock
 
 
 def get_customer(call, ctx):
-    return ctx.fixture_json("crm.json").get(call.args[0] if isinstance(call.args, list)
-                                            else call.args["email"])
+    return ctx.case.fixture_json("crm.json").get(call.args[0])
 
 
 def zendesk(req, ctx):
@@ -730,8 +729,8 @@ def test_layer_on_an_image_without_curl_or_python(tmp_path: Path):
                 "status": 200,
                 "body": {"action": "respond", "value": {"id": "cus_1"}},
             }
-            assert (await app("payments.refund", "{}"))["body"]["action"] == "respond"
-            assert (await app("payments.refund", "{}"))["body"]["error"]["type"] == (
+            assert (await app("payments.refund", "[]"))["body"]["action"] == "respond"
+            assert (await app("payments.refund", "[]"))["body"]["error"]["type"] == (
                 "DuplicateRefund"
             )
             assert await app("", '{"body": "hi"}') == {
@@ -767,7 +766,7 @@ def test_layer_on_an_image_without_curl_or_python(tmp_path: Path):
         ("https://api.zendesk.com", "respond"),
         ("https://api.zendesk.com", "unmatched"),
     ]
-    assert calls[0]["request"] == {"args": ["ana@example.com"], "lang": "typescript"}
+    assert calls[0]["request"] == {"args": ["ana@example.com"], "kwargs": {}, "lang": "typescript"}
     assert json.loads((tmp_path / "events.json").read_text()) == [{"id": 1, "kind": "open"}]
     assert json.loads((tmp_path / "calls.json").read_text()) == [
         {"path": "/api/conversations.history"}

@@ -3,7 +3,7 @@
     from lmnr.evals import EvalRunner, mock
 
     def get_customer(call, ctx):              # function mock: an observed function
-        return ctx.fixture_json("crm_customers.json").get(call.args["email"])
+        return ctx.case.fixture_json("crm_customers.json").get(call.args[0])
 
     def zendesk(req, ctx):                    # HTTP mock
         if req.method == "POST" and req.path.endswith("/comments"):
@@ -26,9 +26,11 @@ The mock server imports this module in the container, next to the handlers.
 from __future__ import annotations
 
 import json as jsonlib
+import posixpath
+from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Final
 
 from typing_extensions import override
 
@@ -46,6 +48,20 @@ PASSTHROUGH: Any = _Passthrough()
 it means unmatched (501): there is no egress proxy yet."""
 
 _UNSET: Any = object()
+
+
+class ProjectDependencies:
+    """The type of `mock.PROJECT_DEPENDENCIES`."""
+
+    @override
+    def __repr__(self) -> str:
+        return "mock.PROJECT_DEPENDENCIES"
+
+
+PROJECT_DEPENDENCIES: Final = ProjectDependencies()
+"""In `EvalRunner.mock_dependencies`, the evals project's dependencies (what
+the default installs), so a list can extend them:
+`mock_dependencies = [mock.PROJECT_DEPENDENCIES, "extra>=1"]`."""
 
 
 class Error(Exception):
@@ -126,9 +142,12 @@ class Call:
     """A call of a mocked function."""
 
     key: str
-    # As the SDK sent them: an object by parameter name from Python, an array
-    # from TypeScript.
-    args: Any
+    # Positional, in every language: Python sends every positional parameter
+    # in order (defaults filled in), then the `*args` values.
+    args: list[Any]
+    # Python's keyword-only parameters and `**kwargs` entries; `{}` from
+    # TypeScript.
+    kwargs: dict[str, Any]
     # 0-based, per key.
     index: int
 
@@ -153,10 +172,53 @@ class Request:
         return jsonlib.loads(self.body) if self.body else None
 
 
+def fixture_key(path: str) -> str:
+    """`path` as one key under the case's `tests/fixtures/`, the same on the
+    host and in a handler: `/`-separated, normalized, without a leading `/`
+    (`"/a/./b.json"` -> `"a/b.json"`). A path that leaves the folder raises
+    `ValueError`."""
+    key = posixpath.normpath(path.replace("\\", "/")).lstrip("/")
+    if key in ("", ".", "..") or key.startswith("../"):
+        raise ValueError(f"{path!r} isn't a file under the case's tests/fixtures/.")
+    return key
+
+
+def missing_fixture(case_name: str, key: str) -> FileNotFoundError:
+    return FileNotFoundError(f"The case {case_name!r} has no tests/fixtures/{key}.")
+
+
+class FixtureReader(ABC):
+    """`fixture_bytes(path)` / `fixture_text` / `fixture_json`: a file under
+    the case's `tests/fixtures/`, the same on `ctx.case` on the host (`Case`)
+    and in a mock handler (`CaseInfo`). A missing one raises
+    `FileNotFoundError` with its path."""
+
+    @abstractmethod
+    def fixture_bytes(self, path: str) -> bytes: ...
+
+    def fixture_text(self, path: str) -> str:
+        return self.fixture_bytes(path).decode()
+
+    def fixture_json(self, path: str) -> Any:
+        return jsonlib.loads(self.fixture_bytes(path))
+
+
 @dataclass(frozen=True)
-class CaseInfo:
+class CaseInfo(FixtureReader):
+    """A handler's `ctx.case`: `name`, `metadata` (`[metadata]` in
+    `task.toml`) and the fixture readers, over the case's `tests/fixtures/`
+    loaded when the trial started."""
+
     name: str
     metadata: dict[str, Any]
+    fixtures: Mapping[str, bytes] = field(default_factory=dict[str, bytes], repr=False)
+
+    @override
+    def fixture_bytes(self, path: str) -> bytes:
+        key = fixture_key(path)
+        if key not in self.fixtures:
+            raise missing_fixture(self.name, key)
+        return self.fixtures[key]
 
 
 class Context:
@@ -165,9 +227,11 @@ class Context:
     - `state`: one dict per trial, shared by every handler.
     - `calls`: earlier calls of this key, as logged (`request`, `outcome`,
       `response`, ...), oldest first.
-    - `fixture(path)` / `fixture_text` / `fixture_json`: the case's
-      `tests/fixtures/`, loaded when the trial started.
-    - `case.name`, `case.metadata` (`[metadata]` in `task.toml`); `env`.
+    - `case`: `name`, `metadata` (`[metadata]` in `task.toml`), and
+      `fixture_bytes(path)` / `fixture_text` / `fixture_json` over the case's
+      `tests/fixtures/`, loaded when the trial started (as on the host's
+      `ctx.case`).
+    - `env`.
     """
 
     def __init__(
@@ -175,7 +239,6 @@ class Context:
         *,
         state: dict[str, Any],
         calls: list[dict[str, Any]],
-        fixtures: Mapping[str, bytes],
         case: CaseInfo,
         env: Mapping[str, str],
     ):
@@ -183,16 +246,3 @@ class Context:
         self.calls: list[dict[str, Any]] = calls
         self.case: CaseInfo = case
         self.env: dict[str, str] = dict(env)
-        self._fixtures: Mapping[str, bytes] = fixtures
-
-    def fixture(self, path: str) -> bytes:
-        key = path.strip("/")
-        if key not in self._fixtures:
-            raise FileNotFoundError(f"The case {self.case.name!r} has no tests/fixtures/{key}.")
-        return self._fixtures[key]
-
-    def fixture_text(self, path: str) -> str:
-        return self.fixture(path).decode()
-
-    def fixture_json(self, path: str) -> Any:
-        return jsonlib.loads(self.fixture(path))

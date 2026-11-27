@@ -1,5 +1,5 @@
 {
-  "description": "TypeScript sends positional arguments as an array; keys are percent-encoded as one path segment; index counts per key.",
+  "description": "TypeScript sends the argument list as args and no kwargs (the handler sees {}); keys are percent-encoded as one path segment; index counts per key.",
   "calls": [
     {
       "method": "POST",
@@ -25,6 +25,7 @@
               "limit": 3
             }
           ],
+          "kwargs": {},
           "index": 0
         }
       },
@@ -36,6 +37,7 @@
               "limit": 3
             }
           ],
+          "kwargs": {},
           "index": 0
         }
       }
@@ -58,6 +60,7 @@
           "args": [
             "shipping"
           ],
+          "kwargs": {},
           "index": 1
         }
       },
@@ -66,6 +69,7 @@
           "args": [
             "shipping"
           ],
+          "kwargs": {},
           "index": 1
         }
       }

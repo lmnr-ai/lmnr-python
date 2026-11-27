@@ -1,0 +1,80 @@
+{
+  "description": "Python sends positional parameters and *args values as args, keyword-only parameters and **kwargs entries as kwargs; the handler sees both.",
+  "calls": [
+    {
+      "method": "POST",
+      "path": "/fn/tools%2Fsearch%20web",
+      "body": {
+        "args": [
+          "refund policy",
+          3
+        ],
+        "kwargs": {
+          "region": "eu"
+        },
+        "lang": "python",
+        "trace_id": null,
+        "span_id": null
+      },
+      "status": 200,
+      "response": {
+        "action": "respond",
+        "value": {
+          "args": [
+            "refund policy",
+            3
+          ],
+          "kwargs": {
+            "region": "eu"
+          },
+          "index": 0
+        }
+      },
+      "sdk": {
+        "returns": {
+          "args": [
+            "refund policy",
+            3
+          ],
+          "kwargs": {
+            "region": "eu"
+          },
+          "index": 0
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/fn/tools%2Fsearch%20web",
+      "body": {
+        "args": [
+          "shipping"
+        ],
+        "kwargs": {},
+        "lang": "python",
+        "trace_id": null,
+        "span_id": null
+      },
+      "status": 200,
+      "response": {
+        "action": "respond",
+        "value": {
+          "args": [
+            "shipping"
+          ],
+          "kwargs": {},
+          "index": 1
+        }
+      },
+      "sdk": {
+        "returns": {
+          "args": [
+            "shipping"
+          ],
+          "kwargs": {},
+          "index": 1
+        }
+      }
+    }
+  ]
+}

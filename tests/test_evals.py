@@ -497,6 +497,11 @@ def test_case_reads_task_dir(tmp_path: Path):
     assert case.instruction == "Handle it."
     assert case.expected() == {"refund_count": 1}
     assert case.fixture_json("crm.json") == {"a": 1}
+    assert case.fixture_text("crm.json") == '{"a": 1}'
+    assert case.fixture_bytes("crm.json") == b'{"a": 1}'
+    assert case.fixture_path("crm.json") == case.dir / "tests" / "fixtures" / "crm.json"
+    with pytest.raises(FileNotFoundError, match=r"no tests/fixtures/missing\.json"):
+        _ = case.fixture_bytes("missing.json")
     assert case.file("ticket.json") == case.dir / "environment" / "ticket.json"
     # Data files are not seed scripts.
     _ = case.file("seed.json").write_text("{}")

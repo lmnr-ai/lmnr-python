@@ -1,6 +1,7 @@
 # What eval.py imports. It runs on your machine, in the process that runs
-# Harbor (not in the container), so lmnr-cli installs these there. The app's
-# own dependencies are in ../package.json and go into the image.
+# Harbor, so lmnr-cli installs these there; the runner installs them next to
+# the mock server too, which imports eval.py in the container. The app's own
+# dependencies are in ../package.json and go into the image.
 [project]
 name = "billing-support-evals"
 version = "0.1.0"

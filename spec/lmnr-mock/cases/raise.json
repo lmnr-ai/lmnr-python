@@ -5,9 +5,10 @@
       "method": "POST",
       "path": "/fn/payments.refund",
       "body": {
-        "args": {
-          "charge_id": "ch_1"
-        },
+        "args": [
+          "ch_1"
+        ],
+        "kwargs": {},
         "lang": "python",
         "trace_id": null,
         "span_id": null
@@ -29,9 +30,10 @@
       "method": "POST",
       "path": "/fn/payments.refund",
       "body": {
-        "args": {
-          "charge_id": "ch_1"
-        },
+        "args": [
+          "ch_1"
+        ],
+        "kwargs": {},
         "lang": "python",
         "trace_id": null,
         "span_id": null

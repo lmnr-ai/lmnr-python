@@ -148,7 +148,7 @@ def test_respond_returns_the_value_and_records_the_span(
     assert get_customer("ana@example.com") == {"id": "cus_1"}
     assert ran == []
     [(_, body)] = server.calls()
-    assert body["args"] == {"email": "ana@example.com", "plan": "pro"}
+    assert (body["args"], body["kwargs"]) == (["ana@example.com", "pro"], {})
     assert body["lang"] == "python"
 
     [span] = span_exporter.get_finished_spans()
@@ -405,21 +405,90 @@ class Service:
 
     @classmethod
     @observe(name="search.web")
-    def search(cls, q: str) -> Any:
+    def search(cls, q: str, limit: int = 3) -> Any:
         return None
 
 
-def test_args_are_bound_by_name_without_self_or_cls(server: FakeServer):
+def test_methods_send_args_without_self_or_cls(
+    server: FakeServer, span_exporter: InMemorySpanExporter
+):
     server.respond("crm.get_customer", 1)
     server.respond("search.web", 2)
 
     assert Service().get("a", 1, 2, flag=True) == 1
     assert Service.search("q") == 2
-    assert [body["args"] for _, body in server.calls()] == [
+    assert [(body["args"], body["kwargs"]) for _, body in server.calls()] == [
         # `ignore_inputs` is about the span, the handler sees every argument
-        {"email": "a", "rest": [1, 2], "secret": "s", "flag": True},
-        {"q": "q"},
+        (["a", 1, 2], {"secret": "s", "flag": True}),
+        (["q", 3], {}),
     ]
+    # The span's input is still by name.
+    inputs = [
+        json.loads(str((s.attributes or {})["lmnr.span.input"]))
+        for s in span_exporter.get_finished_spans()
+    ]
+    assert inputs == [{"email": "a", "rest": [1, 2], "flag": True}, {"q": "q", "limit": 3}]
+
+
+def positional_only(a: int, b: int = 2, /, c: int = 3) -> None: ...
+
+
+def var_positional(a: int, *rest: int) -> None: ...
+
+
+def keyword_only(a: int, *, b: int, c: int = 3) -> None: ...
+
+
+def var_keyword(a: int, b: int = 2, **extra: Any) -> None: ...
+
+
+def everything(a: int, /, b: int, *rest: int, c: int, d: int = 4, **extra: Any) -> None: ...
+
+
+@pytest.mark.parametrize(
+    ("fn", "args", "kwargs", "expected"),
+    [
+        (positional_only, (1,), {}, ([1, 2, 3], {})),
+        (positional_only, (1,), {"c": 5}, ([1, 2, 5], {})),
+        (var_positional, (1, 2, 3), {}, ([1, 2, 3], {})),
+        (var_positional, (1,), {}, ([1], {})),
+        (keyword_only, (1,), {"b": 2}, ([1], {"b": 2, "c": 3})),
+        (keyword_only, (), {"a": 1, "b": 2}, ([1], {"b": 2, "c": 3})),
+        (var_keyword, (), {"a": 1, "z": 9}, ([1, 2], {"z": 9})),
+        (everything, (1, 2, 3), {"c": 5, "x": 0}, ([1, 2, 3], {"c": 5, "d": 4, "x": 0})),
+        # Doesn't bind (raises TypeError when it runs): sent as passed.
+        (keyword_only, (1, 2), {}, ([1, 2], {})),
+        (positional_only, (), {"a": 1}, ([], {"a": 1})),
+    ],
+)
+def test_args_are_bound_to_the_signature(
+    fn: Callable[..., Any],
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    expected: tuple[list[Any], dict[str, Any]],
+):
+    assert intercept._mock_call_args(fn, False, args, kwargs) == expected
+
+
+def test_a_method_call_that_doesnt_bind_drops_self():
+    def get(self: Any, email: str) -> None: ...
+
+    assert intercept._mock_call_args(get, True, ("self", "a", "b"), {"x": 1}) == (
+        ["a", "b"],
+        {"x": 1},
+    )
+
+
+def test_a_call_that_doesnt_bind_is_sent_as_passed(server: FakeServer):
+    server.respond("crm.get_customer", "mocked")
+
+    @observe(name="crm.get_customer")
+    def get_customer(email: str) -> str:
+        return "real"
+
+    assert get_customer("a", "b", extra=1) == "mocked"  # pyright: ignore[reportCallIssue]
+    [(_, body)] = server.calls()
+    assert (body["args"], body["kwargs"]) == (["a", "b"], {"extra": 1})
 
 
 def test_unserializable_args_become_strings(server: FakeServer):
@@ -436,7 +505,7 @@ def test_unserializable_args_become_strings(server: FakeServer):
 
     get_customer(Opaque(), b"\xff")
     [(_, body)] = server.calls()
-    assert body["args"] == {"value": "<opaque>", "data": "/w=="}
+    assert body["args"] == ["<opaque>", "/w=="]
 
 
 def test_mocks_work_without_tracing(server: FakeServer):
@@ -708,9 +777,9 @@ def test_mocked_error_is_exported_and_pickles():
 # Conformance cases (spec/lmnr-mock/cases), against the reference server
 
 
-def recording(ran: list[dict[str, Any]]) -> Callable[..., Any]:
-    def real(**kwargs: Any) -> Any:
-        ran.append(kwargs)
+def recording(ran: list[tuple[list[Any], dict[str, Any]]]) -> Callable[..., Any]:
+    def real(*args: Any, **kwargs: Any) -> Any:
+        ran.append((list(args), kwargs))
         return "real"
 
     return real
@@ -751,9 +820,11 @@ def test_conformance_case(case_file: str, mock_env: Any):
         call
         for call in json.loads((cases / case_file).read_text())["calls"]
         if call["path"].startswith("/fn/")
-        # What this SDK sends: args by name, always, and only for listed keys
+        # What this SDK sends: an args array and a kwargs object, always,
+        # and only for listed keys
         and call["body"]["lang"] == "python"
-        and "args" in call["body"]
+        and isinstance(call["body"].get("args"), list)
+        and isinstance(call["body"].get("kwargs"), dict)
         and unquote(call["path"].removeprefix("/fn/")) in mapping
     ]
     if not calls:
@@ -761,25 +832,29 @@ def test_conformance_case(case_file: str, mock_env: Any):
         pytest.skip("no function call this SDK would send")
     for call in calls:
         key = unquote(call["path"].removeprefix("/fn/"))
-        ran: list[dict[str, Any]] = []
+        args, kwargs = call["body"]["args"], call["body"]["kwargs"]
+        ran: list[tuple[list[Any], dict[str, Any]]] = []
         observed = observe(name=key)(recording(ran))
         expected = call["sdk"]
         if "returns" in expected:
-            assert observed(**call["body"]["args"]) == expected["returns"]
+            assert observed(*args, **kwargs) == expected["returns"]
             assert ran == []
         elif "raises" in expected:
             with pytest.raises(MockedError) as raised:
-                _ = observed(**call["body"]["args"])
+                _ = observed(*args, **kwargs)
             assert raised.value.type == expected["raises"]["type"]
             assert raised.value.message == expected["raises"]["message"]
             assert ran == []
         elif "calls_real_function" in expected:
-            assert observed(**call["body"]["args"]) == "real"
-            assert ran == [call["body"]["args"]]
+            assert observed(*args, **kwargs) == "real"
+            assert ran == [(args, kwargs)]
         else:
             assert expected == {"fails": True}
             with pytest.raises(MockedError) as raised:
-                _ = observed(**call["body"]["args"])
+                _ = observed(*args, **kwargs)
             assert raised.value.type == MOCK_FAILURE
             assert ran == []
+        # The server got the case's arguments.
+        request = reference.calls[-1]["request"]
+        assert (request["args"], request["kwargs"]) == (args, kwargs)
     httpd.shutdown()

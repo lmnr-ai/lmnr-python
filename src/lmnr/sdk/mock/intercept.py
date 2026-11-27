@@ -22,7 +22,7 @@ from opentelemetry.trace import Span
 
 from lmnr.opentelemetry_lib.tracing.attributes import MOCK_KEY, MOCK_OUTCOME, SPAN_MOCKED
 from lmnr.sdk.log import get_default_logger
-from lmnr.sdk.utils import get_input_from_func_args, is_method
+from lmnr.sdk.utils import is_method
 
 from .client import MockClient, get_client
 from .errors import MOCK_FAILURE, MockedError
@@ -154,17 +154,17 @@ class MockedCall:
         return self._settle(span, outcome)
 
     def _body(self, span: Span | None, args: tuple[Any, ...], kwargs: dict[str, Any]) -> bytes:
-        # Every argument, bound by name: `ignore_input(s)` and
-        # `input_formatter` shape the span, not what the handler sees.
-        bound = get_input_from_func_args(
-            self.target.fn, is_method=self.target.is_method, func_args=args, func_kwargs=kwargs
+        # Every argument: `ignore_input(s)` and `input_formatter` shape the
+        # span, not what the handler sees.
+        call_args, call_kwargs = _mock_call_args(
+            self.target.fn, self.target.is_method, args, kwargs
         )
         trace_id = span_id = None
         if span is not None:
             context = span.get_span_context()
             if context.is_valid:
                 trace_id, span_id = f"{context.trace_id:032x}", f"{context.span_id:016x}"
-        return request_body(bound, trace_id, span_id)
+        return request_body(call_args, call_kwargs, trace_id, span_id)
 
     def _settle(self, span: Span | None, outcome: Outcome) -> Any:
         if outcome.error is not None:
@@ -183,6 +183,40 @@ class MockedCall:
                 span.set_attribute(SPAN_MOCKED, True)
         except Exception:
             logger.debug("Failed to set mock attributes", exc_info=True)
+
+
+def _mock_call_args(
+    fn: Callable[..., Any], is_method: bool, args: tuple[Any, ...], kwargs: dict[str, Any]
+) -> tuple[list[Any], dict[str, Any]]:
+    """The call as the protocol's `args` / `kwargs`, bound to the signature
+    with defaults applied: every positional-only and positional-or-keyword
+    parameter in order, then the `*args` values; keyword-only parameters and
+    the `**kwargs` entries by name. A method's `self` / `cls` is dropped. A
+    call that doesn't bind (it raises `TypeError` when it runs) is sent as
+    passed."""
+    try:
+        signature = inspect.signature(fn)
+        bound = signature.bind(*args, **kwargs)
+    except (TypeError, ValueError):
+        if not is_method:
+            return list(args), dict(kwargs)
+        return list(args[1:]), {k: v for k, v in kwargs.items() if k not in ("self", "cls")}
+    bound.apply_defaults()
+    positional: list[Any] = []
+    named: dict[str, Any] = {}
+    for i, (name, param) in enumerate(signature.parameters.items()):
+        if is_method and i == 0:
+            continue
+        value = bound.arguments[name]
+        if param.kind is inspect.Parameter.VAR_POSITIONAL:
+            positional.extend(value)
+        elif param.kind is inspect.Parameter.KEYWORD_ONLY:
+            named[name] = value
+        elif param.kind is inspect.Parameter.VAR_KEYWORD:
+            named.update(value)
+        else:
+            positional.append(value)
+    return positional, named
 
 
 def _type_name(tp: Any) -> str:

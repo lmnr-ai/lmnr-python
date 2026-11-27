@@ -25,7 +25,7 @@ def status_api(req, ctx):
                 "resolved_at": now.isoformat() if incident["resolved"] else None,
                 "summary": incident["summary"],
             }
-            for incident in ctx.fixture_json("incidents.json")
+            for incident in ctx.case.fixture_json("incidents.json")
             if incident["started_days_ago"] <= days
         ]
     return None  # anything else: 501, logged as unmatched
@@ -80,5 +80,5 @@ class BillingAlternativesEval(EvalRunner):
     async def setup(self, ctx):
         # Instead of seed=case_fixture(...): load the case's rows yourself,
         # e.g. when they need computing or come from several files.
-        await self.service(Postgres).load_sql(ctx, ctx.case.fixture("accounts.sql"))
-        await self.service(ClickHouse).execute(ctx, ctx.case.fixture("usage.sql").read_text())
+        await self.service(Postgres).load_sql(ctx, ctx.case.fixture_path("accounts.sql"))
+        await self.service(ClickHouse).execute(ctx, ctx.case.fixture_text("usage.sql"))

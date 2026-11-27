@@ -15,11 +15,12 @@ from typing import Any, ClassVar, TypeVar, overload
 
 from lmnr.evals.artifacts import Artifact, validate_artifacts
 from lmnr.evals.context import AgentContext, VerifyContext
+from lmnr.evals.dependencies import check_mock_dependencies
 from lmnr.evals.errors import EvalConfigError
 from lmnr.evals.image import Image
-from lmnr.evals.layer import validate_mock_dependencies
 from lmnr.evals.mirrors.base import Mirror
 from lmnr.evals.mocks.host import MockSpec, resolve_mocks
+from lmnr.evals.mocks.mock import ProjectDependencies
 from lmnr.evals.paths import add_evals_root_to_path
 from lmnr.evals.services.base import Service
 
@@ -82,10 +83,17 @@ class EvalRunner:
       to `collect`; `verify` reads the calls with `ctx.mocks.calls(key)`.
       Handlers are top-level functions of `eval.py` or of a module under the
       evals root.
-    - `mock_dependencies`: pip requirements for the mock server's Python, which
-      imports `eval.py` in the container: whatever `eval.py`, its shared
-      modules and the handlers import at the top level (`["anthropic"]` for a
-      judge), beyond `lmnr`.
+    - `mock_dependencies`: what the mock server's Python installs besides
+      `lmnr`. It imports `eval.py` in the container, so whatever `eval.py`,
+      its shared modules and the handlers import at the top level must be
+      there (`anthropic` for a judge). Default (None): the evals project's
+      dependencies, which run `eval.py` on the host too: the evals root's
+      `pyproject.toml` `[project] dependencies` and `eval.py`'s PEP 723
+      `# /// script` block (a `[tool.uv.sources]` package or a local path is
+      left out, with a warning). A list replaces them; put
+      `mock.PROJECT_DEPENDENCIES` in it to extend them instead
+      (`[mock.PROJECT_DEPENDENCIES, "httpx>=0.27"]`). Only runners with
+      `mocks` install anything.
     - `grade_with_test_sh = True`: grade each case with its own
       `tests/test.sh`, run in the container by Harbor's default verifier,
       instead of `verify()` (for imported Harbor datasets that ship one).
@@ -110,7 +118,7 @@ class EvalRunner:
     artifacts: ClassVar[list[str | Artifact]] = []
     services: ClassVar[list[Service]] = []
     mocks: ClassVar[dict[str, Any]] = {}
-    mock_dependencies: ClassVar[list[str]] = []
+    mock_dependencies: ClassVar[list[str | ProjectDependencies] | None] = None
 
     async def setup(self, ctx: AgentContext) -> None:
         seed = ctx.case.seed_file()
@@ -276,7 +284,7 @@ class EvalRunner:
         warnings += _validate_services(cls)
 
         specs = cls.mock_specs()
-        _ = validate_mock_dependencies(name, cls.mock_dependencies)
+        check_mock_dependencies(name, cls.mock_dependencies)
         taken = {key: f"{name}.env" for key in cls.env}
         for service in cls.services:
             taken.update({key: f"service {service.name!r}" for key in service.env_spec})

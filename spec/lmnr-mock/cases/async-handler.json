@@ -5,9 +5,10 @@
       "method": "POST",
       "path": "/fn/pricing.quote",
       "body": {
-        "args": {
-          "sku": "A"
-        },
+        "args": [
+          "A"
+        ],
+        "kwargs": {},
         "lang": "python",
         "trace_id": null,
         "span_id": null
@@ -31,9 +32,10 @@
       "method": "POST",
       "path": "/fn/pricing.quote",
       "body": {
-        "args": {
-          "sku": "B"
-        },
+        "args": [
+          "B"
+        ],
+        "kwargs": {},
         "lang": "python",
         "trace_id": null,
         "span_id": null

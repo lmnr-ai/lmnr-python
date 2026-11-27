@@ -6,6 +6,7 @@ handler references describe validates, the lifecycle `LaminarAgent` drives
 from __future__ import annotations
 
 import asyncio
+import importlib.metadata
 import json
 import os
 import re
@@ -107,7 +108,7 @@ SHARED = """
 
 
     def get_customer(call, ctx):
-        return ctx.fixture_json("crm.json").get(call.args["email"])
+        return ctx.case.fixture_json("crm.json").get(call.args[0])
 
 
     class SupportRunner(EvalRunner):
@@ -171,7 +172,7 @@ def server_for(root: Path, case: Case) -> MockServer:
 
 
 def call_fn(server: MockServer, key: str, args: Any, **extra: Any) -> tuple[int, Any]:
-    body = json.dumps({"args": args, "lang": "python", **extra}).encode()
+    body = json.dumps({"args": args, "kwargs": {}, "lang": "python", **extra}).encode()
     status, _, payload = server.route(
         "POST", f"/_lmnr/v1/{TOKEN}/fn/{quote(key, safe='')}", {}, body
     )
@@ -183,19 +184,19 @@ def call_fn(server: MockServer, key: str, args: Any, **extra: Any) -> tuple[int,
 
 def test_function_outcomes(evals_root: Path, tmp_path: Path):
     server = server_for(evals_root, make_case(tmp_path))
-    assert call_fn(server, "crm.get_customer", {"email": "ana@example.com"}) == (
+    assert call_fn(server, "crm.get_customer", ["ana@example.com"]) == (
         200,
         {"action": "respond", "value": {"id": "cus_1", "plan": "pro"}},
     )
-    assert call_fn(server, "crm.get_customer", {"email": "bob@example.com"}) == (
+    assert call_fn(server, "crm.get_customer", ["bob@example.com"]) == (
         200,
         {"action": "respond", "value": None},
     )
-    assert call_fn(server, "payments.refund", {"charge_id": "ch_1"}) == (
+    assert call_fn(server, "payments.refund", ["ch_1"]) == (
         200,
         {"action": "respond", "value": {"status": "ok", "index": 0}},
     )
-    assert call_fn(server, "payments.refund", {"charge_id": "ch_1"}) == (
+    assert call_fn(server, "payments.refund", ["ch_1"]) == (
         200,
         {
             "action": "raise",
@@ -206,17 +207,17 @@ def test_function_outcomes(evals_root: Path, tmp_path: Path):
         200,
         {"action": "respond", "value": {"quote": 42}},
     )
-    assert call_fn(server, "search.web", {"q": "x"}) == (200, {"action": "passthrough"})
-    assert call_fn(server, "inventory.check", {}) == (
+    assert call_fn(server, "search.web", ["x"]) == (200, {"action": "passthrough"})
+    assert call_fn(server, "inventory.check", []) == (
         500,
         {
             "action": "handler_error",
             "error": {"type": "ValueError", "message": "handler is broken"},
         },
     )
-    status, body = call_fn(server, "wrong.kind", {})
+    status, body = call_fn(server, "wrong.kind", [])
     assert (status, body["action"], body["error"]["type"]) == (500, "handler_error", "TypeError")
-    assert call_fn(server, "crm.delete", {}) == (
+    assert call_fn(server, "crm.delete", []) == (
         404,
         {"error": {"type": "UnknownMockKey", "message": "no function mock 'crm.delete'"}},
     )
@@ -236,7 +237,7 @@ def test_function_outcomes(evals_root: Path, tmp_path: Path):
         (7, "wrong.kind", 0, "handler_error"),
         (8, "crm.delete", None, "unmatched"),
     ]
-    assert log[3]["request"] == {"args": {"charge_id": "ch_1"}, "lang": "python"}
+    assert log[3]["request"] == {"args": ["ch_1"], "kwargs": {}, "lang": "python"}
     assert log[3]["response"] == {
         "error": {"type": "DuplicateRefund", "message": "charge already refunded"}
     }
@@ -247,9 +248,50 @@ def test_function_outcomes(evals_root: Path, tmp_path: Path):
     assert "ValueError: handler is broken" in text
 
 
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        ({"lang": "python"}, 'expected a JSON object with "args"'),
+        ([], 'expected a JSON object with "args"'),
+        ({"args": {"email": "a"}, "lang": "python"}, '"args" must be an array'),
+        ({"args": None, "lang": "python"}, '"args" must be an array'),
+        ({"args": [], "kwargs": [1], "lang": "python"}, '"kwargs" must be an object'),
+        ({"args": [], "kwargs": None, "lang": "python"}, '"kwargs" must be an object'),
+    ],
+)
+def test_function_calls_must_have_args_and_kwargs_of_the_right_type(
+    evals_root: Path, tmp_path: Path, body: Any, message: str
+):
+    server = server_for(evals_root, make_case(tmp_path))
+    status, _, payload = server.route(
+        "POST", f"/_lmnr/v1/{TOKEN}/fn/crm.get_customer", {}, json.dumps(body).encode()
+    )
+    assert (status, json.loads(payload)) == (
+        400,
+        {"error": {"type": "BadRequest", "message": message}},
+    )
+    assert server.calls == []
+
+
+def test_kwargs_default_to_an_empty_object(evals_root: Path, tmp_path: Path):
+    server = server_for(evals_root, make_case(tmp_path))
+    for body in (
+        {"args": ["x"], "lang": "typescript"},
+        {"args": ["x"], "kwargs": {"limit": 3}, "lang": "python"},
+    ):
+        status, _, _ = server.route(
+            "POST", f"/_lmnr/v1/{TOKEN}/fn/search.web", {}, json.dumps(body).encode()
+        )
+        assert status == 200
+    assert [c["request"] for c in server.calls] == [
+        {"args": ["x"], "kwargs": {}, "lang": "typescript"},
+        {"args": ["x"], "kwargs": {"limit": 3}, "lang": "python"},
+    ]
+
+
 def test_function_calls_carry_trace_ids(evals_root: Path, tmp_path: Path):
     server = server_for(evals_root, make_case(tmp_path))
-    _ = call_fn(server, "search.web", {}, trace_id="a" * 32, span_id="b" * 16)
+    _ = call_fn(server, "search.web", [], trace_id="a" * 32, span_id="b" * 16)
     assert (server.calls[0]["trace_id"], server.calls[0]["span_id"]) == ("a" * 32, "b" * 16)
 
 
@@ -361,7 +403,7 @@ def test_token_and_routes_reveal_nothing(evals_root: Path, tmp_path: Path):
         ("GET", "/h/"),
     ]:
         assert server.route(method, path, {}, b"") == not_found, path
-    assert call_fn(server, "crm.get_customer", {"email": "x"})[0] == 200
+    assert call_fn(server, "crm.get_customer", ["x"])[0] == 200
     assert server.route("POST", f"/_lmnr/v1/{TOKEN}/fn/crm.get_customer", {}, b"{")[0] == 400
 
 
@@ -370,10 +412,36 @@ def test_fixtures_are_served_from_memory(evals_root: Path, tmp_path: Path):
     server = server_for(evals_root, case)
     assert server.fixtures["nested/a.txt"] == b"nested"
     shutil.rmtree(case.dir / "tests" / "fixtures")
-    assert call_fn(server, "crm.get_customer", {"email": "ana@example.com"})[1]["value"] == {
+    assert call_fn(server, "crm.get_customer", ["ana@example.com"])[1]["value"] == {
         "id": "cus_1",
         "plan": "pro",
     }
+
+
+def test_host_and_handler_read_fixtures_the_same_way(evals_root: Path, tmp_path: Path):
+    case = make_case(tmp_path)
+    handler_case = server_for(evals_root, case).case
+    for reader in (case, handler_case):
+        assert reader.fixture_bytes("nested/a.txt") == b"nested"
+        assert reader.fixture_text("nested/a.txt") == "nested"
+        assert reader.fixture_json("crm.json") == {
+            "ana@example.com": {"id": "cus_1", "plan": "pro"}
+        }
+        with pytest.raises(
+            FileNotFoundError, match=r"^The case 'acme/refund-1' has no tests/fixtures/x\.json\.$"
+        ):
+            _ = reader.fixture_json("x.json")
+        # One key on both sides: a leading `/` or `./` reads the same file,
+        # and nothing outside tests/fixtures/ is reachable.
+        assert reader.fixture_bytes("/nested/./a.txt") == b"nested"
+        with pytest.raises(FileNotFoundError, match=r"has no tests/fixtures/y\.json\.$"):
+            _ = reader.fixture_bytes("/y.json")
+        for escape in ("../task.toml", "nested/../../task.toml", "/..", ""):
+            with pytest.raises(ValueError, match="isn't a file under the case's tests/fixtures/"):
+                _ = reader.fixture_bytes(escape)
+    assert case.fixture_path("/crm.json") == case.dir / "tests" / "fixtures" / "crm.json"
+    assert case.fixture_path("crm.json") == case.dir / "tests" / "fixtures" / "crm.json"
+    assert not hasattr(handler_case, "fixture_path")
 
 
 def test_concurrent_calls_are_serialized(evals_root: Path, tmp_path: Path):
@@ -386,7 +454,7 @@ def test_concurrent_calls_are_serialized(evals_root: Path, tmp_path: Path):
 
     def one(_: int) -> dict[str, Any]:
         request = urllib.request.Request(
-            url, data=json.dumps({"args": {}, "lang": "python"}).encode(), method="POST"
+            url, data=json.dumps({"args": [], "lang": "python"}).encode(), method="POST"
         )
         with urllib.request.urlopen(request, timeout=10) as response:
             return json.loads(response.read())["value"]
@@ -527,6 +595,177 @@ def test_base_url_env_cannot_shadow_other_env(tmp_path: Path):
         _ = describe(path)
 
 
+# mock_dependencies: the evals project's dependencies by default
+
+PYPROJECT = """\
+[project]
+name = "evals"
+version = "0"
+dependencies = [
+    "anthropic>=2.4.0",
+    "lmnr[all]>=0.8",
+    "pydantic",
+    "shared-lib",
+    "local-pkg @ file:///srv/local-pkg",
+]
+
+[tool.uv.sources]
+shared-lib = { path = "../shared-lib", editable = true }
+"""
+
+SCRIPT = """\
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#   "httpx>=0.27",
+#   "anthropic>=2.4.0",
+#   "./vendor/thing",
+# ]
+# ///
+"""
+
+
+def dependencies_runner(
+    root: Path,
+    *,
+    pyproject: str | None = None,
+    script: str = "",
+    mocks: bool = True,
+    deps: str | None = None,
+) -> Path:
+    if pyproject is not None:
+        root.mkdir(parents=True, exist_ok=True)
+        _ = (root / "pyproject.toml").write_text(pyproject)
+    lines = [
+        script,
+        "from lmnr.evals import EvalRunner, Image, mock",
+        "",
+        "def h(call, ctx):",
+        "    return None",
+        "",
+        "class E(EvalRunner):",
+        '    image = Image.from_registry("python:3.13-slim")',
+        '    run_command = "true"',
+        "    grade_with_test_sh = True",
+    ]
+    if mocks:
+        lines.append('    mocks = {"crm.get": h}')
+    if deps is not None:
+        lines.append(f"    mock_dependencies = {deps}")
+    return write_runner(root, "\n".join(lines) + "\n")
+
+
+def layer_install_line(result: dict[str, Any]) -> str:
+    text = result["images"]["support-evals"]["dockerfile_text"]
+    return next(line for line in text.splitlines() if line.startswith("RUN uv pip install"))
+
+
+def test_mock_dependencies_default_to_the_pyproject(tmp_path: Path):
+    path = dependencies_runner(tmp_path / "evals", pyproject=PYPROJECT)
+    result = describe(path)
+    # lmnr is dropped silently: the layer pins it.
+    assert result["mock_dependencies"] == ["anthropic>=2.4.0", "pydantic"]
+    assert layer_install_line(result).endswith(" 'anthropic>=2.4.0' pydantic")
+    [uv_source, local_path] = result["warnings"]
+    assert "'shared-lib' from pyproject.toml" in uv_source
+    assert "[tool.uv.sources]" in uv_source
+    assert (
+        'add an installable spec to mock_dependencies: [mock.PROJECT_DEPENDENCIES, "shared-lib'
+        in (uv_source)
+    )
+    assert "'local-pkg @ file:///srv/local-pkg' from pyproject.toml" in local_path
+    assert "a local path" in local_path
+
+
+def test_mock_dependencies_default_to_the_pep_723_block(tmp_path: Path):
+    path = dependencies_runner(tmp_path / "evals", script=SCRIPT)
+    result = describe(path)
+    assert result["mock_dependencies"] == ["httpx>=0.27", "anthropic>=2.4.0"]
+    [warning] = result["warnings"]
+    assert "'./vendor/thing' from eval.py's # /// script block" in warning
+
+
+def test_mock_dependencies_default_to_both_without_duplicates(tmp_path: Path):
+    path = dependencies_runner(tmp_path / "evals", pyproject=PYPROJECT, script=SCRIPT)
+    result = describe(path)
+    assert result["mock_dependencies"] == ["anthropic>=2.4.0", "pydantic", "httpx>=0.27"]
+    assert len(result["warnings"]) == 3
+
+
+def test_project_dependencies_marker_expands_in_place(tmp_path: Path):
+    path = dependencies_runner(
+        tmp_path / "evals",
+        pyproject=PYPROJECT,
+        deps='["extra>=1", mock.PROJECT_DEPENDENCIES, "lmnr==0.1", "shared-lib>=1"]',
+    )
+    result = describe(path)
+    assert result["mock_dependencies"] == [
+        "extra>=1",
+        "anthropic>=2.4.0",
+        "pydantic",
+        "shared-lib>=1",
+    ]
+    # shared-lib has an installable spec now; local-pkg still warns.
+    [warning] = result["warnings"]
+    assert "local-pkg" in warning
+
+
+def test_a_mock_dependencies_list_replaces_the_default(tmp_path: Path):
+    path = dependencies_runner(
+        tmp_path / "evals", pyproject=PYPROJECT, script=SCRIPT, deps='["httpx"]'
+    )
+    result = describe(path)
+    assert (result["mock_dependencies"], result["warnings"]) == (["httpx"], [])
+    path = dependencies_runner(tmp_path / "empty", pyproject=PYPROJECT, deps="[]")
+    assert describe(path)["mock_dependencies"] == []
+
+
+@pytest.mark.parametrize(
+    "pyproject",
+    [None, "[tool.ruff]\nline-length = 100\n", '[project]\nname = "evals"\nversion = "0"\n'],
+)
+def test_no_project_dependencies(tmp_path: Path, pyproject: str | None):
+    path = dependencies_runner(tmp_path / "evals", pyproject=pyproject)
+    result = describe(path)
+    assert (result["mock_dependencies"], result["warnings"]) == ([], [])
+    assert layer_install_line(result).endswith(f"lmnr=={importlib.metadata.version('lmnr')}")
+
+
+def test_runners_without_mocks_install_no_dependencies(tmp_path: Path):
+    path = dependencies_runner(tmp_path / "evals", pyproject=PYPROJECT, mocks=False)
+    result = describe(path)
+    assert (result["mock_dependencies"], result["warnings"]) == ([], [])
+    assert layer_install_line(result).endswith(f"lmnr=={importlib.metadata.version('lmnr')}")
+    path = dependencies_runner(tmp_path / "explicit", mocks=False, deps='["httpx"]')
+    result = describe(path)
+    assert result["mock_dependencies"] == []
+    assert result["warnings"] == [
+        "E.mock_dependencies is ignored: the runner has no mocks, so nothing imports eval.py "
+        + "in the container."
+    ]
+
+
+@pytest.mark.parametrize(
+    ("pyproject", "script", "deps", "message"),
+    [
+        (None, "", '"httpx"', "must be a list of pip requirements"),
+        (None, "", "[1]", "must be a list of pip requirements"),
+        (None, "", '[""]', "must be a list of pip requirements"),
+        (None, "", "[mock.PROJECT_DEPENDENCIES, None]", "must be a list of pip requirements"),
+        ("[project\n", "", None, "pyproject.toml is not valid TOML"),
+        ('[project]\ndependencies = "x"\n', "", None, "must be a list of requirement strings"),
+        (None, SCRIPT + "\n" + SCRIPT, None, "more than one `# /// script` block"),
+        (None, "# /// script\n# dependencies = [\n# ///\n", None, "is not valid TOML"),
+    ],
+)
+def test_invalid_mock_dependencies_fail_describe(
+    tmp_path: Path, pyproject: str | None, script: str, deps: str | None, message: str
+):
+    path = dependencies_runner(tmp_path / "evals", pyproject=pyproject, script=script, deps=deps)
+    with pytest.raises(EvalConfigError, match=re.escape(message)):
+        _ = describe(path)
+
+
 def test_describe_lists_mocks_and_the_layer(evals_root: Path):
     result = describe(evals_root / "refunds" / "agent" / "eval.py", layer_lmnr="wheel")
     assert result["mocks"][0] == {
@@ -663,7 +902,7 @@ def test_lifecycle_in_a_container_like_shell(evals_root: Path, tmp_path: Path, h
             ctx.container,
             "POST",
             f"{url}/fn/crm.get_customer",
-            body=json.dumps({"args": {"email": "ana@example.com"}, "lang": "python"}).encode(),
+            body=json.dumps({"args": ["ana@example.com"], "lang": "python"}).encode(),
         )
         assert fn.json() == {"action": "respond", "value": {"id": "cus_1", "plan": "pro"}}
         out = await ctx.container.sh(
@@ -699,8 +938,10 @@ def test_lifecycle_in_a_container_like_shell(evals_root: Path, tmp_path: Path, h
         secrets=Secrets([], {}),
         mock_keys=list(runner.mocks),
     )
-    assert verify_ctx.mocks.calls("crm.get_customer")[0]["request"]["args"] == {
-        "email": "ana@example.com"
+    assert verify_ctx.mocks.calls("crm.get_customer")[0]["request"] == {
+        "args": ["ana@example.com"],
+        "kwargs": {},
+        "lang": "python",
     }
     assert verify_ctx.mocks.calls("payments.refund") == []
     assert len(verify_ctx.mocks.all()) == 2

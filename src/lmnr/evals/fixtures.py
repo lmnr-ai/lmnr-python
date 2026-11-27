@@ -45,7 +45,7 @@ def resolve_seed(seed: SeedSpec, case: Case, base_dir: Path | None, owner: str) 
     if seed is None:
         return None
     if isinstance(seed, CaseFixture):
-        path = case.fixture(seed.path)
+        path = case.fixture_path(seed.path)
         if path.is_file():
             return path
         if seed.required:
