@@ -10,7 +10,7 @@ import socket
 import sys
 import threading
 import time
-from collections.abc import AsyncGenerator, Callable, Generator, Iterator
+from collections.abc import AsyncGenerator, AsyncIterator, Callable, Generator, Iterable, Iterator
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -437,6 +437,10 @@ class Quote(TypedDict):
     price: int
 
 
+class Opaque:
+    """No pydantic schema."""
+
+
 def test_values_are_validated_against_the_return_annotation(server: FakeServer):
     server.keys = ["customer", "order", "quotes", "untyped", "optional"]
     server.respond("customer", {"id": "cus_1"})
@@ -576,7 +580,7 @@ def test_async_functions_work_across_event_loops(server: FakeServer):
 
 
 def test_generators_cant_be_mocked(server: FakeServer):
-    server.keys = ["gen", "agen", "iterator"]
+    server.keys = ["gen", "agen"]
 
     @observe(name="gen")
     def gen() -> Generator[int, None, None]:
@@ -586,24 +590,66 @@ def test_generators_cant_be_mocked(server: FakeServer):
     async def agen() -> AsyncGenerator[int, None]:
         yield 1
 
-    # Not a generator function: mocked, and the value goes through the
-    # annotation (pydantic validates an iterable into an iterator).
-    @observe(name="iterator")
-    def iterator() -> Iterator[int]:
-        raise AssertionError
-
     @observe(name="unmocked")
     def unmocked() -> Generator[int, None, None]:
         yield 1
-
-    server.respond("iterator", [1, 2])
 
     for f in (gen, agen):
         with pytest.raises(MockedError, match="generators can't be mocked yet"):
             _ = f()
     assert list(unmocked()) == [1]
-    assert list(iterator()) == [1, 2]
-    assert [key for key, _ in server.calls()] == ["iterator"]
+    assert server.calls() == []
+
+
+@pytest.mark.asyncio
+async def test_a_function_returning_an_iterator_gets_one(server: FakeServer):
+    # Not generator functions: mocked like any other, and the list becomes
+    # the annotated iterator (pydantic has no schema for these).
+    server.keys = ["quotes", "skus", "aquotes", "async_def"]
+    for key in server.keys:
+        server.respond(key, [{"sku": "A", "price": 1}, {"sku": "B", "price": 2}])
+
+    @observe(name="quotes")
+    def quotes() -> Iterator[Quote]:
+        raise AssertionError
+
+    @observe(name="skus")
+    def skus() -> Iterable[dict[str, Any]]:
+        raise AssertionError
+
+    @observe(name="aquotes")
+    def aquotes() -> AsyncIterator[Quote]:
+        raise AssertionError
+
+    @observe(name="async_def")
+    async def async_def() -> AsyncIterator[Quote]:
+        raise AssertionError
+
+    expected = [Quote(sku="A", price=1), Quote(sku="B", price=2)]
+    iterator = quotes()
+    assert next(iterator) == expected[0]
+    assert list(iterator) == expected[1:]
+    assert [s["sku"] for s in skus()] == ["A", "B"]
+    assert [q async for q in aquotes()] == expected
+    assert [q async for q in await async_def()] == expected
+
+
+def test_an_annotation_pydantic_cant_handle_returns_the_value_as_is_with_a_warning(
+    server: FakeServer, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    monkeypatch.setattr(intercept.logger, "propagate", True)
+    server.respond("crm.get_customer", {"id": "cus_1"})
+
+    @observe(name="crm.get_customer")
+    def get_customer() -> Opaque:
+        raise AssertionError
+
+    assert get_customer() == {"id": "cus_1"}
+    [record] = [r for r in caplog.records if r.name == intercept.logger.name]
+    assert record.levelname == "WARNING"
+    assert record.getMessage().startswith(
+        "observe, mock 'crm.get_customer': mocked values can't be converted to the return type "
+    )
 
 
 # Public API

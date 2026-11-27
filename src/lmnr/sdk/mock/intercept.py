@@ -5,9 +5,17 @@ from __future__ import annotations
 
 import inspect
 import typing
-from collections.abc import Callable
+from collections.abc import (
+    AsyncGenerator,
+    AsyncIterable,
+    AsyncIterator,
+    Callable,
+    Generator,
+    Iterable,
+    Iterator,
+)
 from functools import cached_property
-from typing import Any
+from typing import Any, cast
 
 import pydantic
 from opentelemetry.trace import Span
@@ -21,6 +29,12 @@ from .errors import MOCK_FAILURE, MockedError
 from .protocol import Outcome, request_body
 
 logger = get_default_logger(__name__)
+
+# Return annotations pydantic has no schema for (or would validate lazily):
+# the mocked JSON list is validated as `list[item]` and handed back as one.
+_ITERATORS = (Iterator, Iterable, Generator)
+_ASYNC_ITERATORS = (AsyncIterator, AsyncIterable, AsyncGenerator)
+_Wrap = Callable[[list[Any]], Any]
 
 
 class MockTarget:
@@ -43,33 +57,48 @@ class MockTarget:
             raise MockedError(MOCK_FAILURE, f"{self.key}: generators can't be mocked yet")
 
     @cached_property
-    def _return_type(self) -> tuple[Any, pydantic.TypeAdapter[Any] | None]:
-        """The return annotation (the awaited type for `async def`) and an
-        adapter for it; no adapter without an annotation, for `Any`, or when
-        the annotation can't be resolved or pydantic can't handle it."""
+    def _return_type(self) -> tuple[Any, pydantic.TypeAdapter[Any] | None, _Wrap | None]:
+        """The return annotation (the awaited type for `async def`), an
+        adapter for it, and, for an iterator annotation, what turns the
+        validated list into one. No adapter without an annotation, for `Any`,
+        or when the annotation can't be resolved or pydantic can't handle it."""
         try:
             hint = typing.get_type_hints(self.fn).get("return", Any)
-            return hint, None if hint is Any else pydantic.TypeAdapter(hint)
         except Exception:
             logger.debug(f"observe, mock {self.key!r}: no usable return type", exc_info=True)
-            return Any, None
+            return Any, None, None
+        if hint is Any:
+            return hint, None, None
+        origin = typing.get_origin(hint) or hint
+        wrap = iter if origin in _ITERATORS else _aiter if origin in _ASYNC_ITERATORS else None
+        target = hint if wrap is None else list[(typing.get_args(hint) or (Any,))[0]]
+        try:
+            return hint, pydantic.TypeAdapter(target), wrap
+        except Exception as e:
+            logger.warning(
+                f"observe, mock {self.key!r}: mocked values can't be converted to the return "
+                + f"type {_type_name(hint)}, returning them as is: {e}"
+            )
+            return hint, None, wrap
 
     def convert(self, value: Any) -> Any:
         """The mocked JSON value as the annotated return type when it fits
-        (pydantic models, dataclasses, TypedDicts are built from it), else as
-        is, with a warning: an annotation can be broad or wrong, and the
-        function's callers decide whether the value works."""
-        hint, adapter = self._return_type
-        if adapter is None:
-            return value
-        try:
-            return adapter.validate_python(value)
-        except pydantic.ValidationError as e:
-            logger.warning(
-                f"observe, mock {self.key!r}: the mocked value doesn't match the return type "
-                + f"{_type_name(hint)}, returning it as is: {e}"
-            )
-            return value
+        (pydantic models, dataclasses, TypedDicts are built from it; a list
+        becomes an iterator), else as is, with a warning: an annotation can
+        be broad or wrong, and the function's callers decide whether the
+        value works."""
+        hint, adapter, wrap = self._return_type
+        if adapter is not None:
+            try:
+                value = adapter.validate_python(value)
+            except pydantic.ValidationError as e:
+                logger.warning(
+                    f"observe, mock {self.key!r}: the mocked value doesn't match the return type "
+                    + f"{_type_name(hint)}, returning it as is: {e}"
+                )
+        if wrap is not None and isinstance(value, list):
+            return wrap(cast("list[Any]", value))
+        return value
 
 
 def mocks_enabled() -> bool:
@@ -157,3 +186,8 @@ class MockedCall:
 
 def _type_name(tp: Any) -> str:
     return tp.__name__ if isinstance(tp, type) else repr(tp)
+
+
+async def _aiter(items: list[Any]) -> AsyncIterator[Any]:
+    for item in items:
+        yield item
