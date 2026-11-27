@@ -111,17 +111,19 @@ class LaminarLayer:
             f"RUN uv python install {LAYER_PYTHON} && "
             + f"uv venv --python {LAYER_PYTHON} {LAYER_DIR}/venv",
         ]
+        requirements = [r for r in (self.lmnr, *self.mock_dependencies) if r is not None]
+        if any("git+" in r for r in requirements):
+            # A VCS requirement (lmnr's or a mock dependency's): the stage has no git.
+            lines.append(
+                "RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y "
+                + "--no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*"
+            )
         if self.lmnr is None:
             lines.append(f"COPY --from={WHEEL_CONTEXT} / /tmp/lmnr-dist/")
             packages = ["/tmp/lmnr-dist/*.whl"]
         else:
-            if "git+" in self.lmnr:
-                lines.append(
-                    "RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y "
-                    + "--no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*"
-                )
-            packages = [shlex.quote(self.lmnr)]
-        packages += [shlex.quote(d) for d in self.mock_dependencies]
+            packages = []
+        packages += [shlex.quote(r) for r in requirements]
         lines.append(f"RUN uv pip install --python {VENV_PYTHON} {' '.join(packages)}")
         lines += [
             f"COPY <<'EOF' {RELAY_FILE}",

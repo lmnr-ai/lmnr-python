@@ -212,8 +212,9 @@ class RunningMocks:
 async def start_mock_server(
     ctx: AgentContext, specs: list[MockSpec], *, eval_path: Path
 ) -> RunningMocks:
-    """Upload, start, wait for the port, delete the uploaded files, check
-    health. Runs after the services and before `setup`."""
+    """Upload, start, wait for the port, check health, delete the uploaded
+    files; a server that started but failed a later step is killed. Runs after
+    the services and before `setup`."""
     root = evals_root(eval_path)
     token = secrets.token_urlsafe(24)  # 32 URL-safe characters
     remote = f"/tmp/.{uuid.uuid4().hex[:12]}"
@@ -231,6 +232,7 @@ async def start_mock_server(
         "ready_file": f"{remote}/ready",
     }
     _ = await ctx.container.sh(f"mkdir -m 700 {quoted}", user="root", timeout=60)
+    pid: int | None = None
     try:
         with tempfile.TemporaryDirectory(prefix="lmnr-evals-") as tmp:
             local = Path(tmp)
@@ -270,19 +272,23 @@ async def start_mock_server(
                 + (err.stdout[-OUTPUT_TAIL_CHARS:].rstrip() or "(no output)")
             )
         port = int((await ctx.container.sh(f"cat {quoted}/ready", user="root", timeout=60)).stdout)
+        url = f"http://{HOST}:{port}{PROTOCOL_PREFIX}{token}"
+        health = await relay_http(ctx.container, "GET", f"{url}/health", timeout=30)
+        if health.status != 200:
+            raise RuntimeError(f"The mock server answered {health.status} to its health check.")
+        env = {MOCK_URL_ENV: url}
+        for spec in specs:
+            if spec.base_url_env is not None:
+                env[spec.base_url_env] = spec.base_url(port)
+        return RunningMocks(pid=pid, url=url, env=env)
+    except BaseException:
+        # Not handed to collect_mocks, which stops it otherwise.
+        if pid is not None:
+            _ = await ctx.container.sh(f"kill {pid}", user="root", check=False, timeout=60)
+        raise
     finally:
         # Before `setup`: the agent under test never sees these files.
         _ = await ctx.container.sh(f"rm -rf {quoted}", user="root", check=False, timeout=60)
-
-    url = f"http://{HOST}:{port}{PROTOCOL_PREFIX}{token}"
-    health = await relay_http(ctx.container, "GET", f"{url}/health", timeout=30)
-    if health.status != 200:
-        raise RuntimeError(f"The mock server answered {health.status} to its health check.")
-    env = {MOCK_URL_ENV: url}
-    for spec in specs:
-        if spec.base_url_env is not None:
-            env[spec.base_url_env] = spec.base_url(port)
-    return RunningMocks(pid=pid, url=url, env=env)
 
 
 async def collect_mocks(ctx: AgentContext, running: RunningMocks) -> None:

@@ -8,11 +8,13 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
 import textwrap
 import threading
+import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -23,8 +25,9 @@ from urllib.parse import quote
 import pytest
 
 from lmnr.evals import AgentContext, Case, EvalConfigError, VerifyContext, layer, mocks, relay
-from lmnr.evals.context import Secrets, relay_http
+from lmnr.evals.context import HttpResponse, Secrets, relay_http
 from lmnr.evals.describe import describe
+from lmnr.evals.layer import LaminarLayer
 from lmnr.evals.mock_server import MockServer, StartupError, http_server
 from lmnr.evals.runner import find_runner, load_module
 
@@ -712,6 +715,56 @@ def test_a_server_that_fails_to_start_raises_with_its_output(
     assert "mock_dependencies" in str(info.value)
     temp = next(c.split()[-1] for c in env.commands if c.startswith("mkdir -m 700 "))
     assert not Path(temp).exists()
+
+
+def test_a_server_that_fails_its_health_check_is_killed(
+    evals_root: Path, tmp_path: Path, host_relay: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Started, then failed: collect_mocks never gets it, so start stops it."""
+    eval_path = evals_root / "refunds" / "agent" / "eval.py"
+    runner = find_runner(load_module(eval_path))
+    env = LocalEnvironment()
+    ctx = AgentContext(
+        environment=env,
+        case=make_case(tmp_path),
+        runner_dir=eval_path.parent,
+        host_logs_dir=tmp_path / "trial" / "agent",
+    )
+
+    async def unhealthy(*args: Any, **kwargs: Any) -> HttpResponse:
+        return HttpResponse(503, {}, b"")
+
+    monkeypatch.setattr(mocks, "relay_http", unhealthy)
+    with pytest.raises(RuntimeError, match="answered 503 to its health check"):
+        _ = asyncio.run(mocks.start_mock_server(ctx, runner.mock_specs(), eval_path=eval_path))
+    kill = next(c for c in env.commands if c.startswith("kill "))
+    pid = int(kill.split()[1])
+    deadline = 50
+    while relay.alive(pid) and deadline:
+        deadline -= 1
+        time.sleep(0.1)
+    assert not relay.alive(pid)
+    temp = next(c.split()[-1] for c in env.commands if c.startswith("mkdir -m 700 "))
+    assert not Path(temp).exists()
+
+
+@pytest.mark.parametrize(
+    ("lmnr", "deps"),
+    [
+        ("lmnr @ git+https://github.com/lmnr-ai/lmnr-python@feat/x", ()),
+        ("lmnr==0.8.0", ("crm-sdk @ git+https://github.com/acme/crm-sdk@v2",)),
+        (None, ("crm-sdk @ git+https://github.com/acme/crm-sdk@v2",)),
+    ],
+)
+def test_layer_installs_git_for_any_vcs_requirement(lmnr: str | None, deps: tuple[str, ...]):
+    text = "\n".join(LaminarLayer(lmnr, deps).bundle_stages(str))
+    assert "apt-get install -y --no-install-recommends git" in text
+    assert all(shlex.quote(d) in text for d in deps)
+
+
+def test_layer_skips_git_without_vcs_requirements():
+    text = "\n".join(LaminarLayer("lmnr==0.8.0", ("anthropic>=2",)).bundle_stages(str))
+    assert "git" not in text
 
 
 def test_mock_calls_without_mocks_or_log(tmp_path: Path):
