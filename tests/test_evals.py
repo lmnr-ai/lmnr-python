@@ -3,6 +3,7 @@ environment records the `exec` / `upload` calls `ctx` makes."""
 
 from __future__ import annotations
 
+import importlib.metadata
 import json
 import subprocess
 import sys
@@ -106,7 +107,12 @@ def write_eval(tmp_path: Path, body: str, dataset: str = "support") -> Path:
     path = tmp_path / dataset / "agent" / "eval.py"
     path.parent.mkdir(parents=True)
     _ = path.write_text(textwrap.dedent(body))
+    _ = (path.parent / "Dockerfile").write_text("FROM python:3.13-slim\n")
     return path
+
+
+def layer_steps(lmnr: str = f"lmnr=={importlib.metadata.version('lmnr')}") -> list[dict[str, str]]:
+    return [{"origin": f"Laminar layer: Python 3.13, {lmnr}", "step": "laminar layer"}]
 
 
 SUPPORT_EVAL = """
@@ -164,7 +170,8 @@ def test_valid_runner_has_no_warnings():
         ({"secrets": ["KEY=value"]}, "env var names"),
         ({"env": {"KEY": 1}}, "must be a string or secret"),
         ({"services": ["postgres"]}, "services must be a list of services"),
-        ({"mocks": {"crm.get": print}}, "mocks is not supported yet"),
+        ({"mocks": {"crm.get": print}}, "the handler must be a function"),
+        ({"mock_dependencies": "anthropic"}, "list of pip requirements"),
         ({"artifacts": "/srv/out"}, "must be a list"),
         ({"artifacts": [1]}, "container paths or Artifact"),
         ({"artifacts": ["/srv/../etc"]}, "must not contain '..'"),
@@ -204,17 +211,21 @@ def test_resolved_env_reads_secrets_and_skips_unset_ones():
 
 def test_describe_outputs_json_for_lmnr_cli(tmp_path: Path):
     path = write_eval(tmp_path, SUPPORT_EVAL)
-    assert describe(path) == {
+    result = describe(path)
+    # The Laminar layer makes even a bare Dockerfile a generated image.
+    image = result["images"]["support-evals"]
+    assert image["kind"] == "generated"
+    assert image["context"] == str(tmp_path.resolve())
+    assert "FROM python:3.13-slim AS lmnr-app" in image["dockerfile_text"]
+    assert "COPY --from=lmnr-layer /opt/lmnr /opt/lmnr" in image["dockerfile_text"]
+    assert image["steps"] == [
+        {"origin": ANY, "step": "from_dockerfile Dockerfile"},
+        *layer_steps(),
+    ]
+    assert result == {
         "version": 1,
         "runner": "SupportEval",
-        "images": {
-            "support-evals": {
-                "kind": "dockerfile",
-                "dockerfile": str((path.parent / "Dockerfile").resolve()),
-                "context": str(tmp_path.resolve()),
-                "steps": [{"origin": ANY, "step": "from_dockerfile Dockerfile"}],
-            }
-        },
+        "images": {"support-evals": image},
         "default_image": "support-evals",
         "model": "anthropic/claude-sonnet-5-5",
         "env": {"ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}", "SUPPORT_TONE": "formal"},
@@ -229,6 +240,13 @@ def test_describe_outputs_json_for_lmnr_cli(tmp_path: Path):
         ],
         "services": [],
         "classes": [{"name": "SupportEval", "file": "support/agent/eval.py"}],
+        "mocks": [],
+        "mock_dependencies": [],
+        "laminar_layer": {
+            "python": "3.13",
+            "lmnr": f"lmnr=={importlib.metadata.version('lmnr')}",
+            "build_contexts": {},
+        },
     }
 
 
@@ -244,22 +262,20 @@ def test_describe_named_images(tmp_path: Path):
             grade_with_test_sh = True
         """,
     )
+    (path.parent / "old").mkdir()
+    _ = (path.parent / "old" / "Dockerfile").write_text("FROM debian:trixie-slim\n")
     result = describe(path)
-    assert result["images"] == {
-        "new": {
-            "kind": "registry",
-            "ref": "python:3.14",
-            "steps": [{"origin": "support/agent/eval.py:5 (E)", "step": "from python:3.14"}],
-        },
-        "old": {
-            "kind": "dockerfile",
-            "dockerfile": str((path.parent / "old" / "Dockerfile").resolve()),
-            "context": str((path.parent / "old").resolve()),
-            "steps": [
-                {"origin": "support/agent/eval.py:5 (E)", "step": "from_dockerfile old/Dockerfile"}
-            ],
-        },
-    }
+    new, old = result["images"]["new"], result["images"]["old"]
+    assert (new["kind"], old["kind"]) == ("generated", "generated")
+    assert new["steps"] == [
+        {"origin": "support/agent/eval.py:5 (E)", "step": "from python:3.14"},
+        *layer_steps(),
+    ]
+    assert old["context"] == str((path.parent / "old").resolve())
+    assert old["steps"] == [
+        {"origin": "support/agent/eval.py:5 (E)", "step": "from_dockerfile old/Dockerfile"},
+        *layer_steps(),
+    ]
     assert result["default_image"] == "new"
     assert result["grade_with_test_sh"] is True
 
@@ -323,6 +339,7 @@ def shared_evals(tmp_path: Path):
     root = tmp_path / "evals"
     shared = root / "_shared"
     (shared / "fixtures").mkdir(parents=True)
+    _ = (shared / "Dockerfile").write_text("FROM python:3.13-slim\n")
     _ = (shared / "support.py").write_text(textwrap.dedent(SHARED_RUNNER))
     _ = (shared / "start.sh").write_text("echo start")
     _ = (shared / "fixtures" / "crm.json").write_text("{}")
@@ -349,20 +366,14 @@ def test_shared_runner_paths_resolve_from_its_own_file(shared_evals: Path):
     result = describe(shared_evals)
     assert result["runner"] == "RefundsEval"
     # The shared module's Dockerfile, not refunds/agent/Dockerfile.
-    assert result["images"] == {
-        "refunds-evals": {
-            "kind": "dockerfile",
-            "dockerfile": str((root / "_shared" / "Dockerfile").resolve()),
-            "context": str(root.resolve()),
-            # Declared in the shared module, by the shared class.
-            "steps": [
-                {
-                    "origin": "_shared/support.py:5 (SupportRunner)",
-                    "step": "from_dockerfile Dockerfile",
-                }
-            ],
-        }
-    }
+    image = result["images"]["refunds-evals"]
+    assert image["context"] == str(root.resolve())
+    assert "# from _shared/Dockerfile (SupportRunner)" in image["dockerfile_text"]
+    # Declared in the shared module, by the shared class.
+    assert image["steps"] == [
+        {"origin": "_shared/support.py:5 (SupportRunner)", "step": "from_dockerfile Dockerfile"},
+        *layer_steps(),
+    ]
     assert result["env"] == {"TONE": "formal", "QUEUE": "refunds"}
     assert result["modules"] == ["_shared/support.py", "refunds/agent/eval.py"]
 
@@ -571,11 +582,22 @@ async def test_service_starts_in_background_and_waits(tmp_path: Path):
     ctx = agent_ctx(tmp_path, env)
     process = await ctx.container.service("api", "python -m http.server 8000", ready=port(8000))
     assert (process.name, process.pid, process.log_path) == ("api", 4242, "/logs/agent/api.log")
-    start, wait = env.commands()
+    start, wait = [c for c in env.commands() if "nohup" in c or "relay.py wait" in c]
     assert "nohup sh -c 'python -m http.server 8000' > /logs/agent/api.log 2>&1" in start
-    assert wait.startswith("bash -c ")
-    assert "/dev/tcp/127.0.0.1/8000" in wait
-    assert "kill -0 4242" in wait
+    # The polling loop is the relay's; what to wait for comes on stdin, from a
+    # temp file the shell deletes before the relay starts.
+    request = next(path for path in env.files if path in wait)
+    assert wait == (
+        f"{{ rm -f {request} 2>/dev/null; /opt/lmnr/venv/bin/python -I /opt/lmnr/relay.py wait; }}"
+        + f" < {request}"
+    )
+    assert json.loads(env.files[request]) == {
+        "ready": {"kind": "port", "host": "127.0.0.1", "port": 8000},
+        "timeout": 60,
+        "pid": 4242,
+    }
+    # The agent user can't delete root's file in sticky /tmp: root does.
+    assert env.commands()[-1] == f"rm -f {request}"
 
 
 @pytest.mark.asyncio
@@ -583,7 +605,7 @@ async def test_service_that_exits_reports_its_log(tmp_path: Path):
     def respond(command: str) -> tuple[int, str]:
         if "nohup" in command:
             return 0, "7\n"
-        if command.startswith("bash -c"):
+        if "relay.py wait" in command:
             return 2, ""  # the process exited
         if command.startswith("tail"):
             return 0, "Error: port in use"
@@ -597,7 +619,7 @@ async def test_service_that_exits_reports_its_log(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_wait_for_times_out(tmp_path: Path):
-    ctx = agent_ctx(tmp_path, FakeEnvironment(lambda _: (1, "")))
+    ctx = agent_ctx(tmp_path, FakeEnvironment(lambda c: (1, "") if "relay.py" in c else (0, "")))
     with pytest.raises(TimeoutError, match="`pg_isready` was not ready after 5s"):
         await ctx.container.wait_for("pg_isready", timeout=5)
 

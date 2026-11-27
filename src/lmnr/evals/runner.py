@@ -17,7 +17,9 @@ from lmnr.evals.artifacts import Artifact, validate_artifacts
 from lmnr.evals.context import AgentContext, VerifyContext
 from lmnr.evals.errors import EvalConfigError
 from lmnr.evals.image import Image
+from lmnr.evals.layer import validate_mock_dependencies
 from lmnr.evals.mirrors.base import Mirror
+from lmnr.evals.mocks.host import MockSpec, resolve_mocks
 from lmnr.evals.paths import add_evals_root_to_path
 from lmnr.evals.services.base import Service
 
@@ -72,6 +74,15 @@ class EvalRunner:
     - `artifacts`: container paths (or `Artifact(source, destination=...)`)
       Harbor collects after the agent phase; `verify` reads them with
       `ctx.artifacts`, also when it grades in a separate container.
+    - `mocks`: `{key: handler}`. A key is an observed function's span name
+      (`"crm.get_customer"`, handler `(call, ctx)`), or an API's base URL
+      with `mock.http(handler, base_url_env="API_URL")` (handler `(req,
+      ctx)`). A mock server runs them in the container, from before `setup`
+      to `collect`; `verify` reads the calls with `ctx.mocks.calls(key)`.
+      Handlers are top-level functions of `eval.py` or of a module under the
+      evals root.
+    - `mock_dependencies`: pip requirements the handlers' modules import,
+      installed next to the mock server (`["anthropic"]`).
     - `grade_with_test_sh = True`: grade each case with its own
       `tests/test.sh`, run in the container by Harbor's default verifier,
       instead of `verify()` (for imported Harbor datasets that ship one).
@@ -94,8 +105,8 @@ class EvalRunner:
     grade_with_test_sh: ClassVar[bool] = False
     artifacts: ClassVar[list[str | Artifact]] = []
     services: ClassVar[list[Service]] = []
-    # Not supported yet (phase 3): a mock server started before `setup`.
     mocks: ClassVar[dict[str, Any]] = {}
+    mock_dependencies: ClassVar[list[str]] = []
 
     async def setup(self, ctx: AgentContext) -> None:
         seed = ctx.case.seed_file()
@@ -259,9 +270,29 @@ class EvalRunner:
         validate_artifacts(name, cls.artifacts)
         warnings += _validate_services(cls)
 
-        if cls.mocks:
-            raise EvalConfigError(f"{name}.mocks is not supported yet.")
+        specs = cls.mock_specs()
+        _ = validate_mock_dependencies(name, cls.mock_dependencies)
+        taken = {key: f"{name}.env" for key in cls.env}
+        for service in cls.services:
+            taken.update({key: f"service {service.name!r}" for key in service.env_spec})
+        for spec in specs:
+            if spec.base_url_env in taken:
+                raise EvalConfigError(
+                    f"{name}.mocks[{spec.key!r}]: base_url_env {spec.base_url_env} is also set "
+                    + f"by {taken[spec.base_url_env]}; keep one."
+                )
         return warnings
+
+    @classmethod
+    def mock_specs(cls) -> list[MockSpec]:
+        """`mocks`, validated, with each handler's reference for the container."""
+        return resolve_mocks(cls.__name__, cls.mocks, cls.eval_file())
+
+    @classmethod
+    def eval_file(cls) -> Path | None:
+        """The `eval.py` that defines this runner."""
+        file = getattr(sys.modules.get(cls.__module__), "__file__", None)
+        return Path(file).resolve() if isinstance(file, str) else None
 
 
 def _validate_services(cls: type[EvalRunner]) -> list[str]:

@@ -4,17 +4,18 @@ from __future__ import annotations
 
 import json
 import shlex
-import uuid
 import zlib
 from collections.abc import Mapping
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import urlencode
 
 from typing_extensions import override
 
-from lmnr.evals.errors import EvalConfigError
+from lmnr.evals.context import relay_http
+from lmnr.evals.errors import OUTPUT_TAIL_CHARS, EvalConfigError
 from lmnr.evals.fixtures import SeedSpec, resolve_seed
-from lmnr.evals.services.base import HOST, STATE_DIR, Service, run_script
+from lmnr.evals.services.base import HOST, STATE_DIR, Service
 
 if TYPE_CHECKING:
     from lmnr.evals.context import AgentContext, Context
@@ -25,42 +26,12 @@ STATE_FILE = "state.json"
 DEFAULT_PORT_BASE = 18000
 DEFAULT_PORT_SPAN = 2000
 
-# `http METHOD URL [BODY_FILE]` prints the response body and fails on a
-# non-2xx status: curl when the image has it, else bash's /dev/tcp (HTTP/1.0,
-# so no chunked responses), which every image the runner supports has.
-HTTP_FUNCTION = r"""http() {
-  method=$1; url=$2; body=${3:-}
-  if command -v curl >/dev/null 2>&1; then
-    if [ -n "$body" ]; then
-      curl -fsS -X "$method" -H 'Content-Type: application/json' --data-binary "@$body" "$url"
-    else
-      curl -fsS -X "$method" "$url"
-    fi
-    return
-  fi
-  rest=${url#http://}; hostport=${rest%%/*}; path=/${rest#*/}
-  [ "$rest" = "$hostport" ] && path=/
-  exec 3<>"/dev/tcp/${hostport%:*}/${hostport##*:}" || return 1
-  if [ -n "$body" ]; then
-    printf '%s %s HTTP/1.0\r\nHost: %s\r\nContent-Type: application/json\r\nContent-Length: %s\r\n\r\n' \
-      "$method" "$path" "$hostport" "$(wc -c < "$body")" >&3
-    cat "$body" >&3
-  else
-    printf '%s %s HTTP/1.0\r\nHost: %s\r\n\r\n' "$method" "$path" "$hostport" >&3
-  fi
-  IFS=' ' read -r _ code _ <&3
-  while IFS= read -r line <&3; do line=${line%$'\r'}; [ -z "$line" ] && break; done
-  cat <&3
-  exec 3>&-
-  case $code in 2*) return 0 ;; *) echo "HTTP $code from $method $url" >&2; return 1 ;; esac
-}"""
-
 
 class Mirror(Service):
     """A stand-in for a SaaS API, running in the agent container.
 
-    On top of `Service`: a per-case `seed` loaded after start (uploaded to a
-    temp file, loaded, deleted, all before the agent starts), a base `url` the
+    On top of `Service`: a per-case `seed` loaded after start (before the
+    agent starts; the provider sends it, nothing stays on disk), a base `url` the
     app is pointed at through `env` templates (`{"SLACK_API_URL": "{url}"}`),
     and `state(ctx)` / `get(ctx, path)` for grading. Providers fill in
     `load_seed` and `read_state`.
@@ -102,9 +73,9 @@ class Mirror(Service):
 
     # Provider hooks
 
-    async def load_seed(self, ctx: AgentContext, path: str) -> None:
-        """Load the seed at `path` (a temp file in the container) into the
-        running mirror."""
+    async def load_seed(self, ctx: AgentContext, path: Path) -> None:
+        """Load the seed file at `path` (on the host) into the running mirror,
+        e.g. `await self.request(ctx, "POST", ..., body=path.read_bytes())`."""
         raise NotImplementedError
 
     async def read_state(self, ctx: Context) -> Any:
@@ -116,15 +87,8 @@ class Mirror(Service):
     @override
     async def seed(self, ctx: AgentContext) -> None:
         host = resolve_seed(self.seed_spec, ctx.case, self.base_dir, self.name)
-        if host is None:
-            return
-        remote_dir = f"/tmp/.{uuid.uuid4().hex[:12]}"
-        remote = f"{remote_dir}/{host.name}"
-        try:
-            await ctx.container.copy(host, remote)
-            await self.load_seed(ctx, remote)
-        finally:
-            _ = await ctx.container.sh(f"rm -rf {remote_dir}", user="root", check=False)
+        if host is not None:
+            await self.load_seed(ctx, host)
 
     @override
     async def snapshot(self, ctx: AgentContext, out_dir: str) -> None:
@@ -185,25 +149,33 @@ class Mirror(Service):
         *,
         params: Mapping[str, Any] | None = None,
         body: Any = None,
+        timeout: float = 60,
     ) -> Any:
-        """An HTTP request to the mirror from inside the container."""
+        """An HTTP request to the mirror from inside the container. `body` is
+        sent as JSON (bytes as they are); a JSON response is parsed, anything
+        else comes back as text. A status of 400 or more raises."""
         query = _query(params or {})
         url = f"{self.url}{path if path.startswith('/') else '/' + path}{query}"
-        lines = [HTTP_FUNCTION]
-        if body is None:
-            lines.append(f"http {shlex.quote(method)} {shlex.quote(url)}")
-        else:
-            body_file = f"/tmp/.{uuid.uuid4().hex[:12]}.json"
-            await ctx.container.write_file(body_file, json.dumps(body))
-            lines.append(
-                f"http {shlex.quote(method)} {shlex.quote(url)} {body_file}; "
-                + f"rc=$?; rm -f {body_file}; exit $rc"
+        data = None
+        if body is not None:
+            data = body if isinstance(body, bytes) else json.dumps(body).encode()
+        response = await relay_http(
+            ctx.container,
+            method,
+            url,
+            body=data,
+            headers={"Content-Type": "application/json"} if data is not None else None,
+            timeout=timeout,
+        )
+        if response.status >= 400:
+            raise RuntimeError(
+                f"{method} {url} ({self.name}) answered {response.status}: "
+                + response.text()[-OUTPUT_TAIL_CHARS:]
             )
-        out = await run_script(ctx, "\n".join(lines), what=f"{method} {url} ({self.name})")
         try:
-            return json.loads(out)
+            return response.json()
         except ValueError:
-            return out
+            return response.text()
 
 
 def default_port(name: str) -> int:

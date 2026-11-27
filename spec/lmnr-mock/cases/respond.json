@@ -1,0 +1,53 @@
+{
+  "description": "A handler's return value is the mocked function's return value, null included.",
+  "calls": [
+    {
+      "method": "POST",
+      "path": "/fn/crm.get_customer",
+      "body": {
+        "args": {
+          "email": "ana@example.com"
+        },
+        "lang": "python",
+        "trace_id": "0123456789abcdef0123456789abcdef",
+        "span_id": "0123456789abcdef"
+      },
+      "status": 200,
+      "response": {
+        "action": "respond",
+        "value": {
+          "id": "cus_1",
+          "email": "ana@example.com",
+          "plan": "pro"
+        }
+      },
+      "sdk": {
+        "returns": {
+          "id": "cus_1",
+          "email": "ana@example.com",
+          "plan": "pro"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/fn/orders.find",
+      "body": {
+        "args": {
+          "order_id": "o_9"
+        },
+        "lang": "python",
+        "trace_id": null,
+        "span_id": null
+      },
+      "status": 200,
+      "response": {
+        "action": "respond",
+        "value": null
+      },
+      "sdk": {
+        "returns": null
+      }
+    }
+  ]
+}

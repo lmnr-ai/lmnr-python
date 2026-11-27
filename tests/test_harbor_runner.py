@@ -34,6 +34,7 @@ from harbor.models.trial.paths import TrialPaths  # pyright: ignore[reportMissin
 from harbor.verifier.factory import VerifierFactory  # pyright: ignore[reportMissingImports]
 
 from lmnr import Laminar
+from lmnr.integrations.harbor import runner as runner_module
 from lmnr.integrations.harbor.runner import LaminarAgent, LaminarVerifier
 from lmnr.integrations.harbor.spans import (
     LAMINAR_AGENT_IMPORT_PATH,
@@ -398,3 +399,159 @@ async def test_verifier_mode_decides_service_env(services_dataset: Path, mode: s
         {"TONE": "formal", "DB_URL": "db://127.0.0.1"} if mode == "shared" else {"TONE": "formal"}
     )
     assert check["env"] == expected
+
+
+MOCKS_EVAL_PY = (
+    SERVICES_EVAL_PY.replace(
+        "from lmnr.evals import EvalRunner, Image, Service",
+        """from lmnr.evals import EvalRunner, Image, Service, mock
+
+def get_customer(call, ctx):
+    return {"id": 1}
+
+def zendesk(req, ctx):
+    return None
+""",
+    )
+    .replace(
+        '    services = [Recorder("db", "1", env={"DB_URL": "db://{host}"})]',
+        """    services = [Recorder("db", "1", env={"DB_URL": "db://{host}"})]
+    mocks = {
+        "crm.get_customer": get_customer,
+        "https://api.zendesk.com": mock.http(zendesk, base_url_env="ZENDESK_URL"),
+    }""",
+    )
+    .replace(
+        '        return {"mode": ctx.verifier_mode == "separate"}',
+        '        return {"lookups": len(ctx.mocks.calls("crm.get_customer"))}',
+    )
+)
+
+
+@pytest.fixture
+def mocks_dataset(dataset: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """The mock server's start and collect replaced by marker commands (the
+    lifecycle itself: `tests/test_evals_mocks.py`)."""
+    _ = (dataset / "agent" / "eval.py").write_text(textwrap.dedent(MOCKS_EVAL_PY))
+
+    async def start(ctx: Any, specs: Any, *, eval_path: Path) -> Any:
+        assert [s.ref for s in specs] == ["__runner__:get_customer", "__runner__:zendesk"]
+        assert eval_path == dataset / "agent" / "eval.py"
+        # Services are up: their env reaches the server's config.
+        assert ctx.env["DB_URL"] == "db://127.0.0.1"
+        await ctx.container.sh("start mocks", user="root")
+        return runner_module.RunningMocks(
+            pid=7,
+            url="http://127.0.0.1:1/_lmnr/v1/token",
+            env={"LMNR_MOCK_URL": "http://127.0.0.1:1/_lmnr/v1/token", "ZENDESK_URL": "z"},
+        )
+
+    async def collect(ctx: Any, running: Any) -> None:
+        await ctx.container.sh(f"collect mocks {running.pid}", user="root")
+
+    monkeypatch.setattr(runner_module, "start_mock_server", start)
+    monkeypatch.setattr(runner_module, "collect_mocks", collect)
+    return dataset
+
+
+@pytest.mark.asyncio
+async def test_mock_server_starts_after_services_and_is_collected_last(mocks_dataset: Path):
+    trial_paths = make_trial(mocks_dataset, "ok")
+    env = FakeEnvironment()
+    await services_agent(trial_paths).run("", env, AgentContext())
+    assert env.commands() == [
+        "start db",
+        "migrate db",
+        "seed db",
+        "start mocks",
+        "setup",
+        "python -m app",
+        "snapshot db /logs/artifacts/state/db",
+        "collect mocks 7",
+    ]
+    run = next(e for e in env.execs if e["command"] == "python -m app")
+    assert run["env"] == {
+        "DB_URL": "db://127.0.0.1",
+        "LMNR_MOCK_URL": "http://127.0.0.1:1/_lmnr/v1/token",
+        "ZENDESK_URL": "z",
+    }
+
+
+@pytest.mark.asyncio
+async def test_mock_calls_are_collected_when_run_fails(mocks_dataset: Path):
+    trial_paths = make_trial(mocks_dataset, "broken")
+    eval_py = mocks_dataset / "agent" / "eval.py"
+    _ = eval_py.write_text(
+        eval_py.read_text().replace(
+            'ctx.set_result(db=ctx.env["DB_URL"])', 'raise RuntimeError("agent crashed")'
+        )
+    )
+    env = FakeEnvironment()
+    with pytest.raises(RuntimeError, match="agent crashed"):
+        await services_agent(trial_paths).run("", env, AgentContext())
+    assert env.commands()[-2:] == ["snapshot db /logs/artifacts/state/db", "collect mocks 7"]
+
+
+def _with_setup(dataset: Path, body: str) -> None:
+    """eval.py's setup replaced by `body`, plus a collect() that leaves a marker."""
+    eval_py = dataset / "agent" / "eval.py"
+    _ = eval_py.write_text(
+        eval_py.read_text().replace(
+            '        await ctx.container.sh("setup")\n',
+            f"        {body}\n\n"
+            + "    async def collect(self, ctx):\n"
+            + '        await ctx.container.sh("user collect")\n',
+        )
+    )
+
+
+@pytest.mark.asyncio
+async def test_mock_server_is_collected_when_setup_fails(mocks_dataset: Path):
+    """collect() only follows a finished setup; the runner's own cleanup always runs."""
+    trial_paths = make_trial(mocks_dataset, "broken")
+    _with_setup(mocks_dataset, 'raise RuntimeError("seed failed")')
+    env = FakeEnvironment()
+    with pytest.raises(RuntimeError, match="seed failed"):
+        await services_agent(trial_paths).run("", env, AgentContext())
+    assert env.commands()[-3:] == [
+        "start mocks",
+        "snapshot db /logs/artifacts/state/db",
+        "collect mocks 7",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_mock_server_is_collected_when_setup_times_out(mocks_dataset: Path):
+    """Harbor cancels the agent on timeout and still runs the verifier, which
+    reads the call log."""
+    trial_paths = make_trial(mocks_dataset, "slow")
+    _with_setup(mocks_dataset, "await asyncio.sleep(30)")
+    eval_py = mocks_dataset / "agent" / "eval.py"
+    _ = eval_py.write_text("import asyncio\n" + eval_py.read_text())
+    env = FakeEnvironment()
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(services_agent(trial_paths).run("", env, AgentContext()), 0.5)
+    assert "user collect" not in env.commands()
+    assert env.commands()[-2:] == ["snapshot db /logs/artifacts/state/db", "collect mocks 7"]
+
+
+@pytest.mark.asyncio
+async def test_verifier_reads_the_mock_call_log(mocks_dataset: Path):
+    trial_paths = make_trial(mocks_dataset, "ok")
+    log = trial_paths.artifacts_dir / "logs" / "artifacts" / "mocks.jsonl"
+    log.parent.mkdir(parents=True)
+    _ = log.write_text(
+        '{"key": "crm.get_customer", "outcome": "respond"}\n'
+        + '{"key": "https://api.zendesk.com", "outcome": "unmatched"}\n'
+    )
+    verifier = VerifierFactory.create_verifier_from_config(
+        VerifierConfig(
+            import_path=LAMINAR_VERIFIER_IMPORT_PATH,
+            kwargs={"runner": "agent/eval.py:ServicesEval"},
+        ),
+        task=Task(mocks_dataset / "tasks" / "ok"),
+        trial_paths=trial_paths,
+        environment=FakeEnvironment(),  # pyright: ignore[reportArgumentType]
+        logger=logging.getLogger(__name__),
+    )
+    assert (await verifier.verify()).rewards == {"lookups": 1}

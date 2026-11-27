@@ -33,12 +33,21 @@ from lmnr.evals import (
     VerifyContext,
     case_fixture,
     cmd,
+    layer,
+    relay,
 )
 from lmnr.evals.context import Context, Secrets
 from lmnr.evals.image import compile_image
 from lmnr.evals.mirrors import Mirror, Rystic
 from lmnr.evals.mirrors import rystic as rystic_module
 from lmnr.evals.services.base import snapshot_services, start_services
+
+
+@pytest.fixture(autouse=True)
+def host_relay(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The relay from this checkout, run by the test's Python, instead of the
+    Laminar layer's `/opt/lmnr` (commands run on the host)."""
+    monkeypatch.setattr(layer, "RELAY_COMMAND", f"{sys.executable} -I {relay.__file__}")
 
 
 class RecordingEnvironment:
@@ -58,9 +67,11 @@ class RecordingEnvironment:
 
     async def upload_file(self, source_path, target_path) -> None:
         self.commands.append((f"upload {Path(source_path).name} -> {target_path}", None))
+        self.envs.append(None)
 
     async def upload_dir(self, source_dir, target_dir) -> None:
         self.commands.append((f"upload_dir {source_dir} -> {target_dir}", None))
+        self.envs.append(None)
 
     async def download_file(self, source_path, target_path) -> None:
         raise FileNotFoundError(source_path)
@@ -305,7 +316,7 @@ def test_postgres_commands(tmp_path: Path):
     assert "runuser -u postgres -- postgres -D /var/lib/postgresql/data" in start
     assert "-c listen_addresses=127.0.0.1" in start
     # Bootstrap, migrations and the seed go through temp scripts, removed after.
-    uploads = [c for c in commands if c.startswith("upload ")]
+    uploads = [c for c in commands if c.startswith("upload ") and c.endswith(".sh")]
     assert any("upload_dir" in c for c in commands)
     assert len(uploads) == 3
     assert all(
@@ -332,7 +343,7 @@ def test_clickhouse_migrators(tmp_path: Path, migrator: str):
     assert uploads
     stages = "\n".join(ch.bundle_stages(lambda p: str(p)))
     if migrator == "clickhouse-migrations":
-        assert "FROM node:24-bookworm-slim AS svc-clickhouse-migrations" in stages
+        assert "FROM node:24-trixie-slim AS svc-clickhouse-migrations" in stages
         assert "clickhouse-migrations@1.6.0" in stages
     else:
         assert "node" not in stages
@@ -466,26 +477,20 @@ def free_port() -> int:
         return s.getsockname()[1]
 
 
-@pytest.mark.parametrize("client", ["curl", "bash"])
-def test_rystic_against_a_fake_simulator(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, client: str
-):
+def test_rystic_against_a_fake_simulator(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     binary = tmp_path / "bin" / "rystic"
     binary.parent.mkdir()
     _ = binary.write_text(f"#!{sys.executable}\n{FAKE_RYSTIC}")
     binary.chmod(0o755)
     monkeypatch.setattr(rystic_module, "BINARY", str(binary))
-    if client == "bash":
-        # A PATH without curl: the /dev/tcp fallback.
-        tools = tmp_path / "tools"
-        tools.mkdir()
-        for tool in ("bash", "sh", "mkdir", "cat", "wc", "rm", "nohup", "sleep", "grep", "chmod"):
-            found = shutil.which(tool)
-            assert found is not None
-            (tools / tool).symlink_to(found)
-        monkeypatch.setenv("PATH", str(tools))
-    elif shutil.which("curl") is None:
-        pytest.skip("no curl")
+    # A PATH without curl or python: HTTP goes through the relay.
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    for tool in ("bash", "sh", "mkdir", "cat", "rm", "nohup", "chmod", "tail"):
+        found = shutil.which(tool)
+        assert found is not None
+        (tools / tool).symlink_to(found)
+    monkeypatch.setenv("PATH", str(tools))
 
     # What Laminar's remote sandboxes set for every trial.
     monkeypatch.setenv("RYSTIC_TOKEN", "rys_" + "a" * 43)
@@ -649,6 +654,6 @@ def test_custom_service(tmp_path: Path):
     asyncio.run(start_services([mail], ctx))
     assert "nohup sh -c '/mailpit --listen 127.0.0.1:8025'" in env.commands[0][0]
     # The ready check gets the bundled libraries too, not only the process.
-    waits = [i for i, (c, _) in enumerate(env.commands) if c.startswith("bash -c")]
+    waits = [i for i, (c, _) in enumerate(env.commands) if "relay.py wait" in c]
     assert waits
     assert all((env.envs[i] or {}).get("LD_LIBRARY_PATH") == mail.lib_dir for i in waits)
