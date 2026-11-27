@@ -577,7 +577,7 @@ def test_rystic_without_a_token_fails_before_the_pull(
         runner_dir=tmp_path,
         host_logs_dir=tmp_path / "agent",
     )
-    with pytest.raises(RuntimeError, match="pass your Rystic API key with `--env RYSTIC_TOKEN`"):
+    with pytest.raises(RuntimeError, match="Pass your Rystic API key with `--env RYSTIC_TOKEN`"):
         asyncio.run(Rystic("slack", version="1.4").start(ctx))
 
 

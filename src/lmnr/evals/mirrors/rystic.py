@@ -81,9 +81,8 @@ PULL_TIMEOUT_SEC = 300
 # Whether the trial has Rystic access: Laminar's per-trial token, or the user's key.
 ACCESS_CHECK = 'if [ -n "${RYSTIC_TOKEN:-}" ]; then echo yes; fi'
 NO_ACCESS = (
-    "Rystic mirrors need Rystic access in the trial: `lmnr-cli eval run --remote` gives "
-    + "each trial its own; for a local run, pass your Rystic API key with "
-    + "`--env RYSTIC_TOKEN` (read from your shell, .env.local or .env)."
+    "Rystic mirrors need Rystic access in local (not `--remote`) runs. Pass your Rystic API "
+    + "key with `--env RYSTIC_TOKEN` (read from your shell, .env.local or .env)."
 )
 
 
@@ -94,8 +93,8 @@ class Rystic(Mirror):
         Rystic("slack", version="1.4", seed=case_fixture("slack.json"),
                env={"SLACK_API_URL": "{url}/api/"})
 
-    `lmnr-cli eval run --remote` gives each trial its Rystic access; a local
-    run needs your Rystic API key (`--env RYSTIC_TOKEN`).
+    Local (not `--remote`) runs need your Rystic API key
+    (`--env RYSTIC_TOKEN`).
 
     `seed` is a register map (`{"<register>": {"<key>": {record}}}`, see
     `rystic docs slack-twin seeding-state`), merged into the twin's empty
