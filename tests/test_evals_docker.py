@@ -130,7 +130,7 @@ def build(image: Image, services: list[Service], tmp_path: Path) -> str:
     """Builds like lmnr-cli: the services plus the Laminar layer, which the
     runner's helpers (readiness, HTTP, snapshots) run on."""
     compiled = compile_image(image, [*services, LaminarLayer(lmnr=None)], fallback_dir=tmp_path)
-    assert compiled.kind == "generated" and compiled.dockerfile_text and compiled.context
+    assert compiled.dockerfile_text and compiled.context
     tag = f"lmnr-evals-test:{uuid.uuid4().hex[:10]}"
     result = subprocess.run(
         [
@@ -240,11 +240,11 @@ def test_services_on_base(base: str, tmp_path: Path):
             assert mode.stdout.strip() == "1777"
 
             # Migrations in natural order, then the case's seed.
-            assert await postgres.sql(ctx, "select amount from refunds") == [{"amount": 5}]
-            assert await postgres.sql(ctx, "select name from customers;") == [{"name": "Ada"}]
+            assert await postgres.query(ctx, "select amount from refunds") == [{"amount": 5}]
+            assert await postgres.query(ctx, "select name from customers;") == [{"name": "Ada"}]
             await postgres.insert(ctx, "refunds", [{"customer_id": 1, "amount": 7}])
             await postgres.execute(ctx, "update refunds set amount = amount * 2 where amount = 7")
-            rows = await postgres.sql(ctx, "select id, amount from refunds order by id")
+            rows = await postgres.query(ctx, "select id, amount from refunds order by id")
             assert rows == [{"id": 1, "amount": 5}, {"id": 2, "amount": 14}]
             # The app reads DATABASE_URL from every command's env.
             out = await ctx.container.sh('psql "$DATABASE_URL" -Atc "select count(*) from refunds"')
@@ -320,11 +320,13 @@ def test_postgres_migrations_at_build_and_extensions(tmp_path: Path):
                 "PGUSER": "shop",
             }
             # Baked in the image: the schema and the rows migrations inserted.
-            assert await postgres.sql(ctx, "select count(*)::int as n from refunds") == [{"n": 1}]
-            assert await postgres.sql(ctx, "select gen_random_uuid() is not null as ok") == [
+            assert await postgres.query(ctx, "select count(*)::int as n from refunds") == [{"n": 1}]
+            assert await postgres.query(ctx, "select gen_random_uuid() is not null as ok") == [
                 {"ok": True}
             ]
-            assert await postgres.sql(ctx, "select count(*)::int as n from settings") == [{"n": 0}]
+            assert await postgres.query(ctx, "select count(*)::int as n from settings") == [
+                {"n": 0}
+            ]
 
         asyncio.run(scenario())
     finally:

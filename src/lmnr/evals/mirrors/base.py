@@ -42,7 +42,6 @@ class Mirror(Service):
     """
 
     display_name: ClassVar[str] = "Mirror"
-    snapshot_option: ClassVar[str | None] = "snapshot=True"
 
     def __init__(
         self,
@@ -136,7 +135,7 @@ class Mirror(Service):
         if getattr(ctx, "verifier_mode", None) == "separate":
             raise EvalConfigError(
                 f"{self.name} isn't running in separate verifier mode; use "
-                + f"self.mirror({self.name!r}).state(ctx) with snapshot=True."
+                + f"self.service({self.name!r}).state(ctx) with snapshot=True."
             )
         return await self.request(ctx, "GET", path, params=params)
 

@@ -105,7 +105,6 @@ class ClickHouse(Service):
     """
 
     display_name: ClassVar[str] = "ClickHouse"
-    snapshot_option: ClassVar[str | None] = "snapshot=[...]"
 
     def __init__(
         self,

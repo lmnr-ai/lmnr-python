@@ -18,7 +18,6 @@ from lmnr.evals.context import AgentContext, VerifyContext
 from lmnr.evals.dependencies import check_mock_dependencies
 from lmnr.evals.errors import EvalConfigError
 from lmnr.evals.image import Image
-from lmnr.evals.mirrors.base import Mirror
 from lmnr.evals.mocks.host import MockSpec, resolve_mocks
 from lmnr.evals.mocks.mock import ProjectDependencies
 from lmnr.evals.paths import add_evals_root_to_path
@@ -169,13 +168,6 @@ class EvalRunner:
                 + 'pick one by name: self.service("<name>").'
             )
         return found[0]
-
-    def mirror(self, name: str) -> Mirror:
-        """A declared mirror, by name: `self.mirror("slack").state(ctx)`."""
-        service = self.service(name)
-        if not isinstance(service, Mirror):
-            raise EvalConfigError(f"Service {name!r} is not a mirror; use self.service({name!r}).")
-        return service
 
     # Configuration, as read by lmnr-cli and the Harbor adapters
 

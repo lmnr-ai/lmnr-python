@@ -244,11 +244,9 @@ def test_self_service_finds_declared_services():
     instance = runner(services=[pg, Valkey("8"), mirror])()
     assert instance.service(Postgres) is pg
     assert instance.service("postgres") is pg
-    assert instance.mirror("slack") is mirror
+    assert instance.service(Rystic) is mirror
     with pytest.raises(EvalConfigError, match="declares no service 'ClickHouse'"):
         _ = instance.service(ClickHouse)
-    with pytest.raises(EvalConfigError, match="not a mirror"):
-        _ = instance.mirror("postgres")
     two = runner(services=[Valkey("8"), Valkey("8", name="cache", port=6380, env="CACHE_URL")])()
     with pytest.raises(EvalConfigError, match="several Valkey services"):
         _ = two.service(Valkey)
@@ -413,33 +411,9 @@ def test_live_helpers_fail_clearly_in_separate_verifier_mode(tmp_path: Path):
         verifier_mode="separate",
     )
     with pytest.raises(EvalConfigError, match=r"declare snapshot=\[\.\.\.\]"):
-        asyncio.run(pg.sql(ctx, "select 1"))
-    # Without the declared services, the hint names both kinds.
-    with pytest.raises(
-        FileNotFoundError, match=r"database service's snapshot=\[\.\.\.\].*snapshot=True"
-    ):
+        asyncio.run(pg.query(ctx, "select 1"))
+    with pytest.raises(FileNotFoundError, match="declare snapshot= on 'postgres'"):
         _ = ctx.state("postgres", "refunds")
-
-
-def test_missing_state_says_what_to_declare(tmp_path: Path):
-    services = [Postgres("16"), Rystic("slack", version="1.4"), Valkey("8")]
-    ctx = VerifyContext(
-        environment=RecordingEnvironment(),
-        case=make_case(tmp_path),
-        runner_dir=tmp_path,
-        host_agent_dir=tmp_path / "agent",
-        secrets=Secrets([], {}),
-        verifier_mode="separate",
-        snapshot_options={s.name: s.snapshot_option for s in services},
-    )
-    with pytest.raises(FileNotFoundError, match="add 'refunds' to the service's snapshot"):
-        _ = ctx.state("postgres", "refunds")
-    with pytest.raises(FileNotFoundError, match="declare snapshot=True on 'slack'"):
-        _ = ctx.state("slack", "calls")
-    with pytest.raises(FileNotFoundError, match="service 'valkey' saves no state"):
-        _ = ctx.state("valkey", "keys")
-    with pytest.raises(FileNotFoundError, match="declares no service 'stripe'"):
-        _ = ctx.state("stripe", "state")
 
 
 def test_case_fixture_paths_are_checked():

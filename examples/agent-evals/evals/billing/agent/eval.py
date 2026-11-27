@@ -141,7 +141,7 @@ class BillingEval(EvalRunner):
             return {"credit": 0, "reply": 0, "in_thread": 0}
 
         # 1. The credits the agent issued, straight from Postgres.
-        [credits] = await self.service(Postgres).sql(
+        [credits] = await self.service(Postgres).query(
             ctx,
             "SELECT count(*)::int AS n, coalesce(sum(amount_cents), 0)::int AS cents FROM credits",
         )
@@ -151,7 +151,7 @@ class BillingEval(EvalRunner):
         # simulated API, in order.
         posts = [
             call["args"]
-            for call in await self.mirror("slack").calls(ctx)
+            for call in await self.service(Rystic).calls(ctx)
             if call["path"] == "/api/chat.postMessage"
         ]
         ctx.logger.info(f"Slack posts: {posts}")

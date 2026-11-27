@@ -101,7 +101,7 @@ class Rystic(Mirror):
     `rystic docs slack-twin seeding-state`), merged into the twin's empty
     workspace after start; `clock` (RFC
     3339) starts the twin's clock. In `verify`: `await
-    self.mirror("slack").state(ctx)` (`/_rystic/inspect`), `.calls(ctx)`
+    self.service(Rystic).state(ctx)` (`/_rystic/inspect`), `.calls(ctx)`
     (`/_rystic/calls`) or `.get(ctx, "/api/conversations.history",
     channel="C1")`. With `snapshot=True`, `collect` saves the state and the
     calls, so both also work in a separate verifier (also as

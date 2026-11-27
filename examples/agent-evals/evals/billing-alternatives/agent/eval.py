@@ -79,5 +79,5 @@ class BillingAlternativesEval(EvalRunner):
     async def setup(self, ctx):
         # Instead of seed=case_fixture(...): load the case's rows yourself,
         # e.g. when they need computing or come from several files.
-        await self.service(Postgres).load_sql(ctx, ctx.case.fixture_path("accounts.sql"))
+        await self.service(Postgres).execute(ctx, ctx.case.fixture_text("accounts.sql"))
         await self.service(ClickHouse).execute(ctx, ctx.case.fixture_text("usage.sql"))
