@@ -1,7 +1,7 @@
 # lmnr-mock: the mock server protocol
 
 - **Protocol version:** 1 (in every URL: `/_lmnr/v1/`)
-- **Reference server:** `lmnr.evals.mock_server` (lmnr-python)
+- **Reference server:** `lmnr.evals.mocks.server` (lmnr-python)
 - **Conformance cases:** [`cases/`](./cases)
 
 An `eval.py` runner (`lmnr.evals.EvalRunner`) declares mocks as Python

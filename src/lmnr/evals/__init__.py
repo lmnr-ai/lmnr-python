@@ -27,7 +27,6 @@ container. `lmnr-cli eval run` runs it through Harbor. This package never
 imports Harbor.
 """
 
-from lmnr.evals import mock
 from lmnr.evals.artifacts import Artifact, Artifacts
 from lmnr.evals.context import (
     AgentContext,
@@ -41,6 +40,7 @@ from lmnr.evals.context import (
 from lmnr.evals.errors import CommandError, EvalConfigError, ExecResult
 from lmnr.evals.fixtures import CaseFixture, case_fixture
 from lmnr.evals.image import Image
+from lmnr.evals.mocks import mock
 from lmnr.evals.readiness import Readiness, cmd, http, port
 from lmnr.evals.runner import EvalRunner, Secret, secret
 from lmnr.evals.services import ClickHouse, Postgres, Service, Valkey

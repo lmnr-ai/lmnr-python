@@ -20,7 +20,7 @@ show in `ps` (the runner feeds it from a temp file it deletes first):
   JSON objects one per line (ClickHouse's JSONEachRow), and writes them to
   `out` as one JSON array. Fails when a command exits non-zero, so a failed
   query never saves `[]`.
-- `serve <config>`: the mock server (`lmnr.evals.mock_server`).
+- `serve <config>`: the mock server (`lmnr.evals.mocks.server`).
 
 No command line or process name may contain `mock`, `eval`, `test` or
 `fixture`: the process is named `relay` (`PR_SET_NAME`).
@@ -200,7 +200,7 @@ def main(argv: list[str] | None = None) -> int:
     command = args[0] if args else ""
     if command == "serve" and len(args) == 2:
         # Heavy (imports `lmnr` and the user's handlers), so only here.
-        from lmnr.evals.mock_server import serve
+        from lmnr.evals.mocks.server import serve
 
         return serve(args[1])
     try:

@@ -1,7 +1,7 @@
 """`EvalRunner.mocks` on the host: validation, handler references, and the
 mock server's lifecycle in the agent container.
 
-Handlers run in the container (`lmnr.evals.mock_server`), which imports them
+Handlers run in the container (`lmnr.evals.mocks.server`), which imports them
 by reference, so each must be a top-level function of `eval.py`
 (`__runner__:<name>`) or of a module under the evals root
 (`_shared.support:<name>`). Before `setup` the runner uploads the runner's
@@ -31,9 +31,9 @@ from lmnr.evals.artifacts import ARTIFACTS_DIR
 from lmnr.evals.context import relay, relay_http
 from lmnr.evals.errors import OUTPUT_TAIL_CHARS, EvalConfigError
 from lmnr.evals.layer import relay_command
-from lmnr.evals.mock import HttpMock
-from lmnr.evals.mock_calls import MOCK_LOG
-from lmnr.evals.mock_server import CONFIG_VERSION, HTTP_PREFIX, PROTOCOL_PREFIX, RUNNER_MODULE
+from lmnr.evals.mocks.calls import MOCK_LOG
+from lmnr.evals.mocks.mock import HttpMock
+from lmnr.evals.mocks.server import CONFIG_VERSION, HTTP_PREFIX, PROTOCOL_PREFIX, RUNNER_MODULE
 from lmnr.evals.paths import evals_root, loaded_modules
 from lmnr.evals.readiness import file as file_ready
 

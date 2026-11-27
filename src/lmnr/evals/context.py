@@ -27,7 +27,7 @@ from typing_extensions import override
 from lmnr.evals.artifacts import ARTIFACTS_DIR, Artifact, Artifacts, check_destination
 from lmnr.evals.errors import OUTPUT_TAIL_CHARS, CommandError, EvalConfigError, ExecResult
 from lmnr.evals.layer import LAYER_DIR, relay_command
-from lmnr.evals.mock_calls import MockCalls
+from lmnr.evals.mocks.calls import MockCalls
 from lmnr.evals.paths import caller_dir
 from lmnr.evals.readiness import Readiness
 from lmnr.evals.readiness import cmd as cmd_ready

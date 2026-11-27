@@ -43,7 +43,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 from typing_extensions import override
 
-from lmnr.evals.mock import (
+from lmnr.evals.mocks.mock import (
     PASSTHROUGH,
     Call,
     CaseInfo,

@@ -145,7 +145,7 @@ class LaminarLayer:
             + f" lib/python{LAYER_PYTHON}/"
             + f" lib/python{LAYER_PYTHON}/".join(_UNUSED_STDLIB),
             # Fails the build when this lmnr has no mock server.
-            f"RUN {VENV_PYTHON} -c 'import lmnr.evals.mock_server' && "
+            f"RUN {VENV_PYTHON} -c 'import lmnr.evals.mocks.server' && "
             + f"echo '[]' | {RELAY_COMMAND} rows",
         ]
         return lines

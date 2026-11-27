@@ -45,7 +45,7 @@ from lmnr.evals.context import (
     normalize_rewards,
 )
 from lmnr.evals.errors import EvalConfigError
-from lmnr.evals.mocks import RunningMocks, collect_mocks, start_mock_server
+from lmnr.evals.mocks.host import RunningMocks, collect_mocks, start_mock_server
 from lmnr.evals.runner import EvalRunner, load_runner
 from lmnr.evals.services.base import snapshot_services, start_services
 from lmnr.integrations.harbor.spans import verifier_spans

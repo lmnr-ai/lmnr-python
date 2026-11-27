@@ -1,4 +1,4 @@
-"""Mocks (LAM-2588 phase 3): the mock server (`lmnr.evals.mock_server`), the
+"""Mocks (LAM-2588 phase 3): the mock server (`lmnr.evals.mocks.server`), the
 handler references describe validates, the lifecycle `LaminarAgent` drives
 (run on the host: commands in a local shell, the relay from this checkout),
 `ctx.mocks`, and the `spec/lmnr-mock` conformance cases."""
@@ -24,11 +24,12 @@ from urllib.parse import quote
 
 import pytest
 
-from lmnr.evals import AgentContext, Case, EvalConfigError, VerifyContext, layer, mocks, relay
+from lmnr.evals import AgentContext, Case, EvalConfigError, VerifyContext, layer, relay
 from lmnr.evals.context import HttpResponse, Secrets, relay_http
 from lmnr.evals.describe import describe
 from lmnr.evals.layer import LaminarLayer
-from lmnr.evals.mock_server import MockServer, StartupError, http_server
+from lmnr.evals.mocks import host
+from lmnr.evals.mocks.server import MockServer, StartupError, http_server
 from lmnr.evals.runner import find_runner, load_module
 
 SPEC_DIR = Path(__file__).resolve().parent.parent / "spec" / "lmnr-mock"
@@ -611,7 +612,7 @@ class LocalEnvironment:
 def host_relay(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     monkeypatch.setattr(layer, "RELAY_COMMAND", f"{sys.executable} -I {relay.__file__}")
     artifacts = tmp_path / "container" / "logs" / "artifacts"
-    monkeypatch.setattr(mocks, "ARTIFACTS_DIR", str(artifacts))
+    monkeypatch.setattr(host, "ARTIFACTS_DIR", str(artifacts))
     return artifacts
 
 
@@ -631,8 +632,8 @@ def test_lifecycle_in_a_container_like_shell(evals_root: Path, tmp_path: Path, h
     host_relay.mkdir(parents=True)
     _ = (host_relay / "mocks.jsonl").write_text('{"planted": true}\n')
 
-    async def scenario() -> mocks.RunningMocks:
-        running = await mocks.start_mock_server(ctx, runner.mock_specs(), eval_path=eval_path)
+    async def scenario() -> host.RunningMocks:
+        running = await host.start_mock_server(ctx, runner.mock_specs(), eval_path=eval_path)
         ctx.add_env(running.env)
         # The uploaded files are gone before setup.
         temp = next(c.split()[-1] for c in env.commands if c.startswith("mkdir -m 700 "))
@@ -661,7 +662,7 @@ def test_lifecycle_in_a_container_like_shell(evals_root: Path, tmp_path: Path, h
             + "os.environ['ZENDESK_URL'] + '/v2/tickets/1').read().decode())\""
         )
         assert json.loads(out.stdout)["case"] == "acme/refund-1"
-        await mocks.collect_mocks(ctx, running)
+        await host.collect_mocks(ctx, running)
         return running
 
     running = asyncio.run(scenario())
@@ -714,7 +715,7 @@ def test_a_server_that_fails_to_start_raises_with_its_output(
     # The container's copy of eval.py fails to import (e.g. a missing package).
     _ = eval_path.write_text(eval_path.read_text() + "\nimport not_installed_anywhere\n")
     with pytest.raises(RuntimeError, match="The mock server exited") as info:
-        _ = asyncio.run(mocks.start_mock_server(ctx, runner.mock_specs(), eval_path=eval_path))
+        _ = asyncio.run(host.start_mock_server(ctx, runner.mock_specs(), eval_path=eval_path))
     assert "mock_dependencies" in str(info.value)
     temp = next(c.split()[-1] for c in env.commands if c.startswith("mkdir -m 700 "))
     assert not Path(temp).exists()
@@ -737,9 +738,9 @@ def test_a_server_that_fails_its_health_check_is_killed(
     async def unhealthy(*args: Any, **kwargs: Any) -> HttpResponse:
         return HttpResponse(503, {}, b"")
 
-    monkeypatch.setattr(mocks, "relay_http", unhealthy)
+    monkeypatch.setattr(host, "relay_http", unhealthy)
     with pytest.raises(RuntimeError, match="answered 503 to its health check"):
-        _ = asyncio.run(mocks.start_mock_server(ctx, runner.mock_specs(), eval_path=eval_path))
+        _ = asyncio.run(host.start_mock_server(ctx, runner.mock_specs(), eval_path=eval_path))
     kill = next(c for c in env.commands if c.startswith("kill "))
     pid = int(kill.split()[1])
     deadline = 50

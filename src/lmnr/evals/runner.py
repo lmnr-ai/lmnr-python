@@ -19,7 +19,7 @@ from lmnr.evals.errors import EvalConfigError
 from lmnr.evals.image import Image
 from lmnr.evals.layer import validate_mock_dependencies
 from lmnr.evals.mirrors.base import Mirror
-from lmnr.evals.mocks import MockSpec, resolve_mocks
+from lmnr.evals.mocks.host import MockSpec, resolve_mocks
 from lmnr.evals.paths import add_evals_root_to_path
 from lmnr.evals.services.base import Service
 

@@ -29,7 +29,7 @@ from lmnr.evals.fixtures import case_fixture
 from lmnr.evals.image import compile_image
 from lmnr.evals.layer import WHEEL_CONTEXT, LaminarLayer
 from lmnr.evals.mirrors import Rystic
-from lmnr.evals.mocks import collect_mocks, start_mock_server
+from lmnr.evals.mocks.host import collect_mocks, start_mock_server
 from lmnr.evals.runner import find_runner, load_module
 from lmnr.evals.services.base import Service, snapshot_services, start_services
 
