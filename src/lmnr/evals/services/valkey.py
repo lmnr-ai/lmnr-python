@@ -34,8 +34,8 @@ class Valkey(Service):
 
     In memory only (`--save '' --appendonly no`), on 127.0.0.1, as the
     `valkey` OS user; `redis-cli` and `redis-server` point at Valkey's. `env`:
-    `"REDIS_URL"` (the default) gets `redis://127.0.0.1:<port>`; templates can
-    use `{url}`, `{host}`, `{port}`.
+    variables to templates over `{url}` (`redis://127.0.0.1:<port>`), `{host}`,
+    `{port}`; default `{"REDIS_URL": "{url}"}`.
     """
 
     display_name: ClassVar[str] = "Valkey"
@@ -46,10 +46,12 @@ class Valkey(Service):
         version: str,
         *,
         port: int = 6379,
-        env: EnvSpec = "REDIS_URL",
+        env: EnvSpec = None,
         source: str | None = None,
         name: str = "valkey",
     ):
+        if env is None:
+            env = {"REDIS_URL": "{url}"}
         super().__init__(name, version, env=env, source=source)
         self.port: int = port
 

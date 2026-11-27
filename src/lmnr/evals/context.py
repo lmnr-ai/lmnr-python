@@ -56,7 +56,7 @@ VerifierMode = Literal["shared", "separate"]
 # command's plus this, so the relay's fires first in every environment.
 EXEC_TIMEOUT_MARGIN_SEC = 30
 
-_SERVICE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_PROCESS_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 # Files that `setup` runs by default when a case has one in `environment/`.
 _SEED_SUFFIXES = (".py", ".sh", ".bash")
 
@@ -82,7 +82,7 @@ class Environment(Protocol):
 
 @dataclass(frozen=True)
 class BackgroundProcess:
-    """A process started with `ctx.container.service(...)`."""
+    """A process started with `ctx.container.spawn(...)`."""
 
     name: str
     pid: int
@@ -154,7 +154,8 @@ class Case(FixtureReader):
 
 
 class Secrets(Mapping[str, str]):
-    """The runner's declared `secrets`, read from the Harbor process env."""
+    """The runner's secrets (`secrets` and the `secret(...)`s in `env`), read
+    from the Harbor process env."""
 
     def __init__(self, declared: list[str], values: Mapping[str, str]):
         self._declared: list[str] = list(declared)
@@ -166,8 +167,9 @@ class Secrets(Mapping[str, str]):
     def __getitem__(self, key: str) -> str:
         if key not in self._declared:
             raise KeyError(
-                f"{key!r} is not in the runner's `secrets`. Add it there, and lmnr-cli "
-                + "reads it from the shell, .env.local or .env."
+                f"{key!r} is not one of the runner's secrets. Pass it to the agent with "
+                + f"`env = {{{key!r}: secret({key!r})}}`, or list it in `secrets` to keep it "
+                + "out of the container; lmnr-cli reads it from the shell, .env.local or .env."
             )
         if key not in self._values:
             raise KeyError(
@@ -231,7 +233,7 @@ class Container:
         exec_env: dict[str, str] | None = None,
     ):
         self.environment: Environment = environment
-        # Where `service` logs go: /logs/agent, or /logs/verifier in verify.
+        # Where `spawn` logs go: /logs/agent, or /logs/verifier in verify.
         self.logs_dir: str = logs_dir
         self._runner_dir: Path = runner_dir
         # Added to every command. Variables Harbor already sets on the agent's
@@ -322,7 +324,7 @@ class Container:
             except Exception as e:
                 logger.warning(f"Could not remove {remote_dir}: {e}")
 
-    async def service(
+    async def spawn(
         self,
         name: str,
         cmd: str,
@@ -332,7 +334,8 @@ class Container:
         cwd: str | None = None,
         user: User = "agent",
     ) -> BackgroundProcess:
-        """Start a background process and wait until it is ready.
+        """Start a background process (a server, a worker) and wait until it
+        is ready. Declared `services` are started this way.
 
         Output goes to `<logs dir>/<name>.log` (`/logs/agent`, or
         `/logs/verifier` in `verify`). `ready` is `port(5432)`, `http(url)`,
@@ -342,28 +345,28 @@ class Container:
         exits or isn't ready within `timeout` seconds, the error has the end of
         its log.
         """
-        if not _SERVICE_NAME.match(name):
+        if not _PROCESS_NAME.match(name):
             raise EvalConfigError(
-                f"Service name {name!r} must be letters, digits, '.', '_' or '-' (it names "
+                f"Process name {name!r} must be letters, digits, '.', '_' or '-' (it names "
                 + "the log file)."
             )
         log_path = f"{self.logs_dir}/{name}.log"
         start = (
             # Only `nohup` goes to the background (`a && b &` would background a
-            # subshell holding the exec's stdout open until the service exits).
+            # subshell holding the exec's stdout open until the process exits).
             f"mkdir -p {shlex.quote(self.logs_dir)} || exit 1; "
             + f"nohup sh -c {shlex.quote(cmd)} > {shlex.quote(log_path)} 2>&1 < /dev/null & "
             + "echo $!"
         )
         # Not through the relay: it returns at once, and only the pid is read.
         result = await self._exec(
-            start, env=env, cwd=cwd, user=user, timeout=30, what=f"Starting service {name!r}"
+            start, env=env, cwd=cwd, user=user, timeout=30, what=f"Starting process {name!r}"
         )
         try:
             pid = int(result.stdout.strip().splitlines()[-1])
         except (ValueError, IndexError):
             raise RuntimeError(
-                f"Service {name!r} did not report its pid: {result.stdout!r}"
+                f"Process {name!r} did not report its pid: {result.stdout!r}"
             ) from None
         process = BackgroundProcess(name=name, pid=pid, log_path=log_path)
         status = await self._wait(ready, timeout, pid=pid, env=env, user=user)
@@ -378,7 +381,7 @@ class Container:
             )
             log_tail = tail.stdout[-OUTPUT_TAIL_CHARS:].rstrip() or "(empty)"
             raise RuntimeError(
-                f"Service {name!r} {reason} (waiting for {_readiness(ready)}). "
+                f"Process {name!r} {reason} (waiting for {_readiness(ready)}). "
                 + f"End of {log_path}:\n{log_tail}"
             )
         return process
@@ -504,7 +507,7 @@ class Container:
         """`command` straight through the environment's `exec`: how stdout and
         stderr come back and what a timeout does depend on the environment.
         For the runner's own plumbing (the relay itself, mkdir / chmod / rm
-        around uploads, `service`'s background start)."""
+        around uploads, `spawn`'s background start)."""
         merged = {**self._exec_env, **(env or {})} if base_env else dict(env or {})
         result = await _exec_raw(
             self.environment, command, env=merged, cwd=cwd, user=user, timeout=timeout
@@ -807,15 +810,21 @@ class VerifyContext(Context):
         nothing)."""
         return _read_json_object(self.host_agent_dir / RESULT_FILE)
 
-    def state(self, service: str, table: str) -> Any:
-        """A table a service saved in `collect` (`snapshot=[...]`): the rows of
-        `/logs/artifacts/state/<service>/<table>.json`. Read on the host, so it
-        works in both verifier modes."""
-        path = f"{ARTIFACTS_DIR}/state/{service}/{table}.json"
+    def state(self, service: str, name: str) -> Any:
+        """What a service saved in `collect`: `/logs/artifacts/state/<service>/
+        <name>.json`, read on the host, so it works in both verifier modes.
+
+        A database's table (`snapshot=["refunds"]`): `ctx.state("postgres",
+        "refunds")`, the rows. A mirror's snapshot (`snapshot=True`):
+        `ctx.state("slack", "state")`, plus the provider's files (Rystic's
+        `"calls"`).
+        """
+        path = f"{ARTIFACTS_DIR}/state/{service}/{name}.json"
         if not self.artifacts.exists(path):
             raise FileNotFoundError(
-                f"No saved state for {service!r} / {table!r} ({path}): add {table!r} to the "
-                + "service's snapshot=[...] so collect saves it."
+                f"No saved state for {service!r} / {name!r} ({path}): declare snapshot= on "
+                + f"{service!r} (a table list for a database, True for a mirror) so collect "
+                + "saves it."
             )
         return self.artifacts.read_json(path)
 

@@ -10,7 +10,6 @@
             "../../../app", "/srv/app/app"
         )
         services = [Postgres("16", migrations="../../../migrations")]
-        secrets = ["ANTHROPIC_API_KEY"]
         env = {"ANTHROPIC_API_KEY": secret("ANTHROPIC_API_KEY")}
         mocks = {"crm.get_customer": get_customer}
 

@@ -1791,13 +1791,15 @@ async def test_no_agent_trajectory_without_trajectory_spans(client, tmp_path: Pa
 
 
 @pytest.mark.asyncio
-async def test_no_agent_trajectory_when_the_evaluation_fails_to_start(client, tmp_path: Path):
-    # A local-only agent whose trajectory nobody reads would lose its spans.
+async def test_agent_trajectory_even_when_the_evaluation_fails_to_start(client, tmp_path: Path):
+    # The trial env doesn't depend on Laminar being reachable: without the
+    # variable, an app calling Laminar.initialize() with no API key throws.
+    # The trajectory just stays in the job dir.
     client.evals.init.side_effect = RuntimeError("down")
     job = FakeJob(tmp_path / "job")
     plugin = LaminarPlugin(project_api_key="test_key")
     await plugin.on_job_start(job)
-    assert job.config.agents[0].env == {}
+    assert job.config.agents[0].env == {"LMNR_TRAJECTORY_PATH": AGENT_TRAJECTORY_PATH}
 
 
 def test_agent_trajectory_reaches_harbor_agents(tmp_path: Path):

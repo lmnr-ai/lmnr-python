@@ -15,8 +15,8 @@ Checked against rystic CLI 0.0.93 and lmnr's hosted-evals proxy (LAM-2592):
   needs a key. Laminar's remote sandboxes give every trial its own:
   `RYSTIC_TOKEN`, `RYSTIC_RELEASE_ENDPOINT` and `RYSTIC_LEASE_URL` in the
   sandbox env, pointing at the app-server's Rystic proxy (lmnr-private
-  `hosted_evals/rystic.rs`). Local runs use the user's own key, passed with
-  `lmnr-cli eval run --env RYSTIC_TOKEN`, against rystic.ai. A trial without
+  `hosted_evals/rystic.rs`). Local runs use the user's own `RYSTIC_TOKEN`,
+  which `lmnr-cli eval run` passes to the trials, against rystic.ai. A trial without
   a token fails before the pull, saying so;
 - `rystic run <product> --name <n> --port <p>` serves the vendor's API in the
   foreground (`-d` would detach), starting from an empty workspace (no
@@ -73,7 +73,8 @@ SEED_PATH = "/_rystic/seed"
 STATE_PATH = "/_rystic/inspect"
 CALLS_PATH = "/_rystic/calls"
 SETTLE_PATH = "/_rystic/settle"
-CALLS_FILE = "calls.json"
+# The snapshot file `calls()` goes to (`ctx.state(<mirror>, "calls")`).
+CALLS = "calls"
 # `settle` long-polls; Rystic answers unsettled after its own 30 s default.
 SETTLE_TIMEOUT_SEC = 90
 # `rystic pull` downloads the twin.
@@ -81,8 +82,8 @@ PULL_TIMEOUT_SEC = 300
 # Whether the trial has Rystic access: Laminar's per-trial token, or the user's key.
 ACCESS_CHECK = 'if [ -n "${RYSTIC_TOKEN:-}" ]; then echo yes; fi'
 NO_ACCESS = (
-    "Rystic mirrors need Rystic access in local (not `--remote`) runs. Pass your Rystic API "
-    + "key with `--env RYSTIC_TOKEN` (read from your shell, .env.local or .env)."
+    "Rystic mirrors need Rystic access in local (not `--remote`) runs. Set RYSTIC_TOKEN to "
+    + "your Rystic API key (in your shell, .env.local or .env)."
 )
 
 
@@ -93,17 +94,18 @@ class Rystic(Mirror):
         Rystic("slack", version="1.4", seed=case_fixture("slack.json"),
                env={"SLACK_API_URL": "{url}/api/"})
 
-    Local (not `--remote`) runs need your Rystic API key
-    (`--env RYSTIC_TOKEN`).
+    Local (not `--remote`) runs need your Rystic API key in RYSTIC_TOKEN
+    (shell, `.env.local` or `.env`); lmnr-cli passes it to the trials.
 
     `seed` is a register map (`{"<register>": {"<key>": {record}}}`, see
     `rystic docs slack-twin seeding-state`), merged into the twin's empty
     workspace after start; `clock` (RFC
     3339) starts the twin's clock. In `verify`: `await
-    self.mirror("slack").state(ctx)` (`/_rystic/inspect`), `.calls(ctx)`
+    self.service(Rystic).state(ctx)` (`/_rystic/inspect`), `.calls(ctx)`
     (`/_rystic/calls`) or `.get(ctx, "/api/conversations.history",
     channel="C1")`. With `snapshot=True`, `collect` saves the state and the
-    calls, so both also work in a separate verifier.
+    calls, so both also work in a separate verifier (also as
+    `ctx.state("slack", "state")` / `ctx.state("slack", "calls")`).
     """
 
     display_name: ClassVar[str] = "Rystic"
@@ -211,7 +213,7 @@ class Rystic(Mirror):
 
     @override
     async def snapshot_extras(self, ctx: AgentContext) -> dict[str, Any]:
-        return {CALLS_FILE: await self._live_calls(ctx)}
+        return {CALLS: await self._live_calls(ctx)}
 
     # Grading
 
@@ -221,7 +223,7 @@ class Rystic(Mirror):
         or deleted); in a separate verifier, what `collect` saved
         (`snapshot=True`)."""
         if getattr(ctx, "verifier_mode", None) == "separate":
-            return self.saved(ctx, CALLS_FILE)
+            return self._saved(ctx, CALLS)
         return await self._live_calls(ctx)
 
     async def _live_calls(self, ctx: Context) -> Any:

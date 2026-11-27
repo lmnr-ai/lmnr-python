@@ -187,6 +187,12 @@ class LaminarPlugin:
     # Harbor JobPlugin protocol
 
     async def on_job_start(self, job: "Job") -> None:
+        # Before the evaluation, so the trial env doesn't depend on whether
+        # Laminar is reachable: an app calling `Laminar.initialize()` without
+        # an API key needs `LMNR_TRAJECTORY_PATH`, or it throws and fails the
+        # trial for a reason unrelated to the agent.
+        if self.trajectory_spans:
+            _request_agent_trajectories(job)
         try:
             await self._start_evaluation(job)
         except Exception as e:
@@ -194,8 +200,6 @@ class LaminarPlugin:
             self._handle_error("Failed to create Laminar evaluation", e)
             return
 
-        if self.trajectory_spans:
-            _request_agent_trajectories(job)
         job.on_trial_started(self._on_trial_started)
         job.on_agent_started(self._on_agent_started)
         job.on_verification_started(self._on_verification_started)
@@ -849,7 +853,8 @@ def _request_agent_trajectories(job: "Job") -> None:
     Must run in `on_job_start`: Harbor copies `AgentConfig.env` into the agent
     when it creates a trial, before any trial hook fires. The trial configs
     `Job.create` built share these `AgentConfig` objects. A value the user set
-    (`--ae LMNR_TRAJECTORY_PATH=...`) wins.
+    (`--ae LMNR_TRAJECTORY_PATH=...`) wins. Set even when the evaluation can't
+    be created: the trajectory then just stays in the job dir.
     """
     for agent in getattr(job.config, "agents", None) or []:
         env = getattr(agent, "env", None)

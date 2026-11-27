@@ -3,12 +3,11 @@ with mocks), an observed function whose key is mocked is answered by the
 trial's mock server instead of running. Protocol: `spec/lmnr-mock/`."""
 
 from .errors import MOCK_FAILURE, MockedError
-from .intercept import MockedCall, MockTarget, alookup, lookup, mocks_enabled
+from .intercept import MockTarget, alookup, lookup, mocks_enabled
 
 __all__ = [
     "MOCK_FAILURE",
     "MockTarget",
-    "MockedCall",
     "MockedError",
     "alookup",
     "lookup",

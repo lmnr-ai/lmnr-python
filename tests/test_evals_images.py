@@ -51,7 +51,6 @@ def check_golden(name: str, text: str) -> None:
 
 def test_builder_steps_golden(images: ModuleType):
     compiled = compile_image(images.BUILDER, root=ROOT, fallback_dir=ROOT)
-    assert compiled.kind == "generated"
     # The deepest folder holding the declaring file and every added path.
     assert compiled.context == PROJECT.resolve()
     assert compiled.dockerfile_text is not None
@@ -83,7 +82,6 @@ def test_dockerfile_composition_golden(images: ModuleType):
     compiled = compile_image(
         images.COMPOSED, images.COMPOSED_SERVICES, root=ROOT, fallback_dir=ROOT
     )
-    assert compiled.kind == "generated"
     # The user's context, so their COPY lines still work.
     assert compiled.context == PROJECT.resolve()
     assert compiled.dockerfile_text is not None
@@ -93,17 +91,6 @@ def test_dockerfile_composition_golden(images: ModuleType):
     assert text.startswith("# syntax=docker/dockerfile:1\n# from support/agent/Dockerfile\n")
     assert f"FROM python:${{PYTHON}}-slim-bookworm AS {APP_STAGE}\n" in text
     assert text.rstrip().endswith("USER app")
-
-
-def test_plain_bases_stay_as_they_are(tmp_path: Path):
-    registry = compile_image(Image.from_registry("python:3.13"), fallback_dir=tmp_path)
-    assert (registry.kind, registry.ref) == ("registry", "python:3.13")
-    _ = (tmp_path / "Dockerfile").write_text("FROM python:3.13\n")
-    dockerfile = compile_image(
-        Image.from_dockerfile(str(tmp_path / "Dockerfile")), fallback_dir=tmp_path
-    )
-    assert dockerfile.kind == "dockerfile"
-    assert dockerfile.describe()["dockerfile"] == str(tmp_path / "Dockerfile")
 
 
 def test_steps_return_new_images_that_share_a_prefix():

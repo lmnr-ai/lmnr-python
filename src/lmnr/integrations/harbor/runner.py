@@ -193,7 +193,7 @@ class LaminarVerifier(BaseVerifier):  # pyright: ignore[reportUntypedBaseClass]
             env=runner_env,
             exec_env={**runner_env, **verifier_env},
             host_agent_dir=trial_paths.agent_dir,
-            secrets=Secrets(runner_cls.secrets, os.environ),
+            secrets=Secrets(runner_cls.secret_names(), os.environ),
             host_artifacts_dir=trial_paths.artifacts_dir,
             artifacts=list(runner_cls.artifacts),
             verifier_mode=verifier_mode,

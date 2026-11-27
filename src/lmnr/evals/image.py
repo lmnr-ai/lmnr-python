@@ -270,13 +270,11 @@ class Image:
 
 @dataclass
 class CompiledImage:
-    """An image as lmnr-cli gets it in describe's `images`."""
+    """An image as lmnr-cli gets it in describe's `images`: always a generated
+    Dockerfile, since describe adds the Laminar layer to every image."""
 
-    kind: str  # "registry" | "dockerfile" | "generated"
-    ref: str | None = None
-    dockerfile: Path | None = None
-    dockerfile_text: str | None = None
-    context: Path | None = None
+    dockerfile_text: str
+    context: Path
     # The ignore file of a `from_dockerfile` image (`<Dockerfile>.dockerignore`),
     # which a generated Dockerfile would otherwise lose.
     ignore_file: Path | None = None
@@ -284,17 +282,13 @@ class CompiledImage:
     steps: list[dict[str, str]] = field(default_factory=list)
 
     def describe(self) -> dict[str, Any]:
-        out: dict[str, Any] = {"kind": self.kind}
-        if self.kind == "registry":
-            out["ref"] = self.ref
-        elif self.kind == "dockerfile":
-            out["dockerfile"] = str(self.dockerfile)
-            out["context"] = str(self.context)
-        else:
-            out["dockerfile_text"] = self.dockerfile_text
-            out["context"] = str(self.context)
-            if self.ignore_file is not None:
-                out["ignore_file"] = str(self.ignore_file)
+        out: dict[str, Any] = {
+            "kind": "generated",
+            "dockerfile_text": self.dockerfile_text,
+            "context": str(self.context),
+        }
+        if self.ignore_file is not None:
+            out["ignore_file"] = str(self.ignore_file)
         out["steps"] = self.steps
         return out
 
@@ -306,11 +300,8 @@ def compile_image(
     root: Path | None = None,
     fallback_dir: Path,
 ) -> CompiledImage:
-    """`image` plus what `contributors` add, for lmnr-cli.
-
-    Without steps or contributors a base stays what it is (a registry ref, or
-    the user's Dockerfile); otherwise it becomes a generated Dockerfile. Order,
-    for caching: service stages, the base, service installs, the steps in
+    """`image` plus what `contributors` add, as a generated Dockerfile for
+    lmnr-cli. Order, for caching: service stages, the base, service installs, the steps in
     declaration order, then `WORKDIR`. A `from_dockerfile` base keeps its own
     stages first; services and steps go on top of its last stage.
     `root` (the evals root) shortens the provenance comments; `fallback_dir`
@@ -322,17 +313,10 @@ def compile_image(
     steps_info += [{"origin": c.image_title(root), "step": c.image_step()} for c in contributors]
     steps_info += [{"origin": _origin(s.site, root), "step": s.summary(root)} for s in image.steps]
 
-    if isinstance(base, FromRegistry) and not image.steps and not contributors:
-        return CompiledImage(kind="registry", ref=base.ref, steps=steps_info)
-
     if isinstance(base, FromDockerfile):
         base_dir = Path(base.base_dir) if base.base_dir else fallback_dir
         dockerfile = (base_dir / base.dockerfile).resolve()
         context = (base_dir / base.context).resolve() if base.context else dockerfile.parent
-        if not image.steps and not contributors:
-            return CompiledImage(
-                kind="dockerfile", dockerfile=dockerfile, context=context, steps=steps_info
-            )
         if not dockerfile.is_file():
             raise EvalConfigError(f"{dockerfile} does not exist.")
         host_paths = _host_paths(image, contributors)
@@ -353,7 +337,6 @@ def compile_image(
             root=root,
         )
         return CompiledImage(
-            kind="generated",
             dockerfile_text=text,
             context=context,
             ignore_file=ignore if ignore.is_file() else None,
@@ -368,7 +351,7 @@ def compile_image(
     else:
         context = base.site.file.parent if base.site is not None else fallback_dir
     text = _generate(base, image, contributors, rel=_relative_to(context), root=root)
-    return CompiledImage(kind="generated", dockerfile_text=text, context=context, steps=steps_info)
+    return CompiledImage(dockerfile_text=text, context=context, steps=steps_info)
 
 
 # Dockerfile text

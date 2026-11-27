@@ -158,7 +158,7 @@ def make_case(tmp_path: Path, fixtures: dict[str, str] | None = None) -> Case:
         ([Postgres("16"), Postgres("16")], "two services named 'postgres'"),
         ([Postgres("16"), Postgres("16", name="pg2")], "both use port 5432"),
         (
-            [Valkey("8"), Valkey("8", name="cache", port=6380, env="REDIS_URL")],
+            [Valkey("8"), Valkey("8", name="cache", port=6380, env={"REDIS_URL": "{url}"})],
             "REDIS_URL is set by both",
         ),
         ([Postgres("")], "needs a version"),
@@ -236,7 +236,7 @@ def test_env_templates():
         "PGPORT": "5432",
     }
     assert ClickHouse("25.8", http_port=8124).env() == {"CLICKHOUSE_URL": "http://127.0.0.1:8124"}
-    assert Valkey("8", env="CACHE_URL").env() == {"CACHE_URL": "redis://127.0.0.1:6379"}
+    assert Valkey("8", env={"CACHE_URL": "{url}"}).env() == {"CACHE_URL": "redis://127.0.0.1:6379"}
 
 
 def test_self_service_finds_declared_services():
@@ -244,12 +244,12 @@ def test_self_service_finds_declared_services():
     instance = runner(services=[pg, Valkey("8"), mirror])()
     assert instance.service(Postgres) is pg
     assert instance.service("postgres") is pg
-    assert instance.mirror("slack") is mirror
+    assert instance.service(Rystic) is mirror
     with pytest.raises(EvalConfigError, match="declares no service 'ClickHouse'"):
         _ = instance.service(ClickHouse)
-    with pytest.raises(EvalConfigError, match="not a mirror"):
-        _ = instance.mirror("postgres")
-    two = runner(services=[Valkey("8"), Valkey("8", name="cache", port=6380, env="CACHE_URL")])()
+    two = runner(
+        services=[Valkey("8"), Valkey("8", name="cache", port=6380, env={"CACHE_URL": "{url}"})]
+    )()
     with pytest.raises(EvalConfigError, match="several Valkey services"):
         _ = two.service(Valkey)
 
@@ -413,8 +413,8 @@ def test_live_helpers_fail_clearly_in_separate_verifier_mode(tmp_path: Path):
         verifier_mode="separate",
     )
     with pytest.raises(EvalConfigError, match=r"declare snapshot=\[\.\.\.\]"):
-        asyncio.run(pg.sql(ctx, "select 1"))
-    with pytest.raises(FileNotFoundError, match="add 'refunds' to the service's snapshot"):
+        asyncio.run(pg.query(ctx, "select 1"))
+    with pytest.raises(FileNotFoundError, match="declare snapshot= on 'postgres'"):
         _ = ctx.state("postgres", "refunds")
 
 
@@ -578,6 +578,11 @@ def test_rystic_against_a_fake_simulator(tmp_path: Path, monkeypatch: pytest.Mon
     assert asyncio.run(slack.calls(verify_ctx)) == [
         {"path": "/api/conversations.history", "ok": True}
     ]
+    # The same files through ctx.state.
+    assert verify_ctx.state("slack", "state")["messages"] == [{"text": "refund please"}]
+    assert verify_ctx.state("slack", "calls") == [
+        {"path": "/api/conversations.history", "ok": True}
+    ]
     with pytest.raises(EvalConfigError, match="isn't running in separate verifier mode"):
         asyncio.run(slack.get(verify_ctx, "/api/x"))
 
@@ -585,7 +590,7 @@ def test_rystic_against_a_fake_simulator(tmp_path: Path, monkeypatch: pytest.Mon
 def test_rystic_without_a_token_fails_before_the_pull(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """No RYSTIC_TOKEN (a local run without --env RYSTIC_TOKEN): fail before
+    """No RYSTIC_TOKEN (a local run without the user's key): fail before
     the pull, saying how to give the trial access."""
     monkeypatch.delenv("RYSTIC_TOKEN", raising=False)
     binary = tmp_path / "rystic"
@@ -598,7 +603,7 @@ def test_rystic_without_a_token_fails_before_the_pull(
         runner_dir=tmp_path,
         host_logs_dir=tmp_path / "agent",
     )
-    with pytest.raises(RuntimeError, match="Pass your Rystic API key with `--env RYSTIC_TOKEN`"):
+    with pytest.raises(RuntimeError, match="Set RYSTIC_TOKEN to your Rystic API key"):
         asyncio.run(Rystic("slack", version="1.4").start(ctx))
 
 
@@ -631,7 +636,7 @@ def test_mirror_snapshot_chmods_after_every_file(tmp_path: Path):
 
         @override
         async def snapshot_extras(self, ctx: AgentContext) -> dict[str, Any]:
-            return {"calls.json": []}
+            return {"calls": []}
 
     env = RecordingEnvironment()
     ctx = AgentContext(

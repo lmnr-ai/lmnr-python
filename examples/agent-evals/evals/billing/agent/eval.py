@@ -107,9 +107,9 @@ class BillingEval(EvalRunner):
     mocks = {"incidents.list_recent": list_incidents}
 
     model = "anthropic/claude-sonnet-5-5"
-    # Names only: lmnr-cli reads the values from your shell, .env.local or .env.
-    secrets = ["ANTHROPIC_API_KEY"]
     env = {
+        # A secret: lmnr-cli reads its value from your shell, .env.local or
+        # .env. verify() reads it too, for the judge (ctx.secrets).
         "ANTHROPIC_API_KEY": secret("ANTHROPIC_API_KEY"),
         "SLACK_BOT_TOKEN": "xoxb-eval",  # any xoxb- token: the simulator acts as the bot
         "SLACK_CHANNEL_ID": CHANNEL,
@@ -141,7 +141,7 @@ class BillingEval(EvalRunner):
             return {"credit": 0, "reply": 0, "in_thread": 0}
 
         # 1. The credits the agent issued, straight from Postgres.
-        [credits] = await self.service(Postgres).sql(
+        [credits] = await self.service(Postgres).query(
             ctx,
             "SELECT count(*)::int AS n, coalesce(sum(amount_cents), 0)::int AS cents FROM credits",
         )
@@ -151,7 +151,7 @@ class BillingEval(EvalRunner):
         # simulated API, in order.
         posts = [
             call["args"]
-            for call in await self.mirror("slack").calls(ctx)
+            for call in await self.service(Rystic).calls(ctx)
             if call["path"] == "/api/chat.postMessage"
         ]
         ctx.logger.info(f"Slack posts: {posts}")

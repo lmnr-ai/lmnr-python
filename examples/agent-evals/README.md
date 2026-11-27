@@ -56,7 +56,7 @@ evals/
   - `Rystic("slack", ...)` is a [Rystic](https://www.rystic.ai) Slack simulator. The case's `slack.json` seeds the workspace with the customer's message, and the app talks to it with the official Slack SDK through `SLACK_API_URL`.
 - **`mocks`**: `list_incidents` answers the app's observed `incidents.list_recent` (`src/incidents.ts`) from the case's `incidents.json`, so the status service doesn't have to run. The handler runs in the container, in a mock server, and the app's Laminar SDK asks that server before running the function. Function mocks need `@lmnr-ai/lmnr` 0.9.8 or later in the app; with an older SDK the real function runs and the tool reports an error.
 - **`run`** runs the agent (`node src/agent.ts slack`).
-- **`verify`** runs in the process that runs Harbor, not in the container. It reads the credits from Postgres (`self.service(Postgres).sql(...)`), the messages the agent posted from the Slack simulator's call log (`self.mirror("slack").calls(...)`), and asks an LLM judge (a plain function calling the Anthropic SDK, listed in `evals/pyproject.toml`) whether the reply meets `expected.json`'s `reply_should`. The reference answer never enters the container.
+- **`verify`** runs in the process that runs Harbor, not in the container. It reads the credits from Postgres (`self.service(Postgres).query(...)`), the messages the agent posted from the Slack simulator's call log (`self.service(Rystic).calls(...)`), and asks an LLM judge (a plain function calling the Anthropic SDK, listed in `evals/pyproject.toml`) whether the reply meets `expected.json`'s `reply_should`. The reference answer never enters the container.
 
 `lmnr-cli` builds the image, writes the job config Harbor needs, and runs every case through Harbor. There is no `agent.py`, verifier script or `harbor.yaml`. `npx lmnr-cli@latest eval describe billing` prints what `eval.py` resolves to: the image's steps and services, each with the line that declared it, and the mocks.
 
@@ -68,7 +68,7 @@ Each choice in `evals/billing-alternatives/agent/eval.py` replaces one from `bil
 | -- | -- | -- |
 | `Image.node(...)` builder | `Image.from_dockerfile("Dockerfile", context=...)` | you already have a Dockerfile |
 | function mock of an observed function | `mock.http(handler, base_url_env="INCIDENTS_API_URL")` | the call isn't an observed function, or the app doesn't use Laminar's SDK |
-| `seed=case_fixture(...)` on each service | `setup()` loads the rows with `load_sql` / `execute` | the rows need computing, or come from several files |
+| `seed=case_fixture(...)` on each service | `setup()` loads the rows with `execute` | the rows need computing, or come from several files |
 | `run()` | `run_command = "node ... > /srv/app/out/reply.txt"` | one shell command is enough (it gets no `ctx`, so no `--model`) |
 | `verify()` | `grade_with_test_sh = True`: each case's `tests/test.sh` writes the rewards | imported Harbor datasets, or cases that each check something different |
 | grading next to the live services | `[verifier] environment_mode = "separate"`, `Postgres(snapshot=["credits"])`, `artifacts = [Artifact(...)]` | grading must not see anything the run left besides what you collected |
@@ -90,14 +90,14 @@ You need [Docker](https://docs.docker.com/get-docker/), [uv](https://docs.astral
 4. Run the datasets:
 
    ```bash
-   npx lmnr-cli@latest eval run --env RYSTIC_TOKEN
+   npx lmnr-cli@latest eval run
    ```
 
-   `--env RYSTIC_TOKEN` passes your key into each trial, where the simulator starts. Remote runs (`eval run --remote`) don't need it: Laminar gives each trial its own Rystic access. To run one dataset, name it: `eval run billing-alternatives`.
+   lmnr-cli passes `RYSTIC_TOKEN` into each trial, where the simulator starts. Remote runs (`eval run --remote`) don't need it: Laminar gives each trial its own Rystic access. To run one dataset, name it: `eval run billing-alternatives`.
 
 Each trial shows up in Laminar as a datapoint with its scores (`credit`, `reply` and `in_thread` for `billing`), next to the trace of the agent's model and tool calls. The mocked `incidents.list_recent` call is marked as mocked. The first run pulls the Postgres, ClickHouse and Node images; later runs reuse the cached layers, and a change to `src/` rebuilds only the last one. Each trial's folder in `evals/<dataset>/jobs/` keeps the services' logs (`agent/`) and what was collected for grading (`artifacts/`, including `mocks.jsonl`, every call the mocks answered).
 
-To add a case to `billing`, create a folder in `evals/billing/tasks/` with its `tests/expected.json` and `tests/fixtures/`. The next `eval run` writes the rest (`task.toml` with the case's name, `instruction.md`, and the stub `tests/test.sh`), or create them first with `npx lmnr-cli@latest eval task new evals/billing/tasks/<name>`.
+To add a case to `billing`, create a folder in `evals/billing/tasks/` with its `tests/expected.json` and `tests/fixtures/`. The next `eval run` writes the rest (`task.toml` with the case's name, `instruction.md`, and the stub `tests/test.sh`), or create them first with `npx lmnr-cli@latest eval task new billing <name>`.
 
 ## Store the cases in Laminar
 

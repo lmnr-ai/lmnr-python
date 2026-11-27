@@ -16,7 +16,6 @@ from typing_extensions import override
 from lmnr.evals.errors import EvalConfigError
 from lmnr.evals.fixtures import SeedSpec, resolve_seed
 from lmnr.evals.image import PathMap
-from lmnr.evals.paths import caller_dir
 from lmnr.evals.readiness import Readiness, cmd
 from lmnr.evals.services.base import HOST, EnvSpec, Service, heredoc, require_live, run_script
 from lmnr.evals.services.bundle import BUNDLE_DIR, install_check, stage
@@ -71,9 +70,8 @@ class Postgres(Service):
 
     - `migrate_at="build"` (SQL migrations only) runs them while the image is
       built, so trials start from a ready data directory.
-    - `env`: `"DATABASE_URL"` (the default) gets the URL; a dict maps several
-      variables to templates over `{url}`, `{host}`, `{port}`, `{database}`,
-      `{user}`, `{password}`.
+    - `env`: variables to templates over `{url}`, `{host}`, `{port}`,
+      `{database}`, `{user}`, `{password}`; default `{"DATABASE_URL": "{url}"}`.
     - `snapshot=["refunds"]`: `collect` saves those tables as JSON for
       `ctx.state("postgres", "refunds")`, which works in a separate verifier.
     - `source="pgvector/pgvector:pg16-bookworm"`: install from another image
@@ -96,11 +94,13 @@ class Postgres(Service):
         extensions: Sequence[str] = (),
         init_sql: Sequence[str] = (),
         seed: SeedSpec = None,
-        env: EnvSpec = "DATABASE_URL",
+        env: EnvSpec = None,
         snapshot: Sequence[str] = (),
         source: str | None = None,
         name: str = "postgres",
     ):
+        if env is None:
+            env = {"DATABASE_URL": "{url}"}
         super().__init__(name, version, env=env, source=source)
         self.database: str = database
         self.user: str = user
@@ -236,7 +236,7 @@ runuser -u postgres -- "$pgbin/pg_ctl" -D "$PGDATA" -w -m fast stop"""
     async def seed(self, ctx: AgentContext) -> None:
         path = resolve_seed(self.seed_spec, ctx.case, self.base_dir, self.name)
         if path is not None:
-            await self.load_sql(ctx, path)
+            _ = await self._psql(ctx, path.read_text(), what=f"seed {path.name}")
 
     @override
     def template_values(self) -> dict[str, str]:
@@ -268,26 +268,17 @@ runuser -u postgres -- "$pgbin/pg_ctl" -D "$PGDATA" -w -m fast stop"""
 
     # Helpers, in `setup`, `run`, `collect` and a shared-mode `verify`
 
-    async def sql(self, ctx: Context, query: str) -> list[dict[str, Any]]:
+    async def query(self, ctx: Context, sql: str) -> list[dict[str, Any]]:
         """Run a query and return its rows."""
         require_live(self, ctx)
-        wrapped = f"select coalesce(json_agg(t), '[]'::json) from ({_strip(query)}) t"
-        out = await self._psql(ctx, wrapped, what="sql")
+        wrapped = f"select coalesce(json_agg(t), '[]'::json) from ({_strip(sql)}) t"
+        out = await self._psql(ctx, wrapped, what="query")
         return json.loads(out or "[]")
 
     async def execute(self, ctx: Context, sql: str) -> None:
         """Run statements (`ON_ERROR_STOP`)."""
         require_live(self, ctx)
         _ = await self._psql(ctx, sql, what="execute")
-
-    async def load_sql(self, ctx: Context, path: str | Path) -> None:
-        """Run a `.sql` file from the host. A relative path resolves against the
-        file whose code calls `load_sql`."""
-        host = Path(path)
-        if not host.is_absolute():
-            host = (caller_dir() or ctx.runner_dir) / host
-        require_live(self, ctx)
-        _ = await self._psql(ctx, host.read_text(), what=f"load_sql({str(path)!r})")
 
     async def insert(self, ctx: Context, table: str, rows: Sequence[Mapping[str, Any]]) -> None:
         """Insert rows (dicts by column); columns no row has keep their defaults."""
