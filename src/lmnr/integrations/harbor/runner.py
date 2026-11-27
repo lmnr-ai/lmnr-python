@@ -104,17 +104,23 @@ class LaminarAgent(BaseInstalledAgent):  # pyright: ignore[reportUntypedBaseClas
         if specs:
             mocks = await start_mock_server(ctx, specs, eval_path=eval_path)
             ctx.add_env(mocks.env, {k: v for k, v in mocks.env.items() if k not in harbor_env})
-        await runner.setup(ctx)
+        # Once the mock server runs, every exit goes through _collect: it
+        # stops the server and saves its call log, which Harbor's verifier
+        # still reads after an agent timeout (setup's included). `collect()`
+        # itself only runs once setup finished.
+        set_up = False
         try:
+            await runner.setup(ctx)
+            set_up = True
             await runner.run(ctx)
         except asyncio.CancelledError:
             await _collect_after_failure(
-                runner, ctx, mocks, timeout=COLLECT_AFTER_CANCEL_TIMEOUT_SEC
+                runner, ctx, mocks, user_collect=set_up, timeout=COLLECT_AFTER_CANCEL_TIMEOUT_SEC
             )
             raise
         except Exception as error:
             try:
-                await _collect_after_failure(runner, ctx, mocks)
+                await _collect_after_failure(runner, ctx, mocks, user_collect=set_up)
             except asyncio.CancelledError:
                 # Cancelled while collecting (the agent timed out, say): the
                 # run's error is still what failed the trial, so it wins.
@@ -239,11 +245,18 @@ class LaminarVerifier(BaseVerifier):  # pyright: ignore[reportUntypedBaseClass]
             await ctx.container.write_file(str(env_paths.reward_json_path), json.dumps(rewards))
 
 
-async def _collect(runner: EvalRunner, ctx: AgentContext, mocks: RunningMocks | None) -> None:
-    """`collect`, then the services' snapshots and the mock call log (each
-    also when an earlier one raised)."""
+async def _collect(
+    runner: EvalRunner,
+    ctx: AgentContext,
+    mocks: RunningMocks | None,
+    *,
+    user_collect: bool = True,
+) -> None:
+    """`collect` (unless setup failed), then the services' snapshots and the
+    mock call log (each also when an earlier one raised)."""
     try:
-        await runner.collect(ctx)
+        if user_collect:
+            await runner.collect(ctx)
     finally:
         try:
             await snapshot_services(type(runner).services, ctx)
@@ -256,14 +269,18 @@ async def _collect_after_failure(
     runner: EvalRunner,
     ctx: AgentContext,
     mocks: RunningMocks | None,
+    *,
+    user_collect: bool,
     timeout: float | None = None,
 ) -> None:
-    """`collect` after `run` raised. Its own error is logged, so the run's wins."""
+    """`_collect` after `setup` or `run` raised. Its own error is logged, so
+    the phase's error wins."""
     try:
         async with asyncio.timeout(timeout):
-            await _collect(runner, ctx, mocks)
+            await _collect(runner, ctx, mocks, user_collect=user_collect)
     except Exception:
-        logger.warning(f"collect() failed after run() failed:\n{traceback.format_exc()}")
+        what = "run()" if user_collect else "setup()"
+        logger.warning(f"collect failed after {what} failed:\n{traceback.format_exc()}")
 
 
 def _trial_model(config_path: Path) -> str | None:

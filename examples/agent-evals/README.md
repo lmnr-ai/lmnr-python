@@ -1,10 +1,6 @@
 # Agent evaluation example
 
-<<<<<<< HEAD
-A support agent that handles billing tickets, with [agent evaluation](https://laminar.sh/docs/agent-evaluations/introduction) datasets you run with `lmnr-cli eval run`. The agent looks up a customer's charges in a SQLite database and can refund one. Each case starts with its own copy of the database, and a verifier checks both the database and the reply.
-=======
-A support agent that handles billing tickets, with an [agent evaluation](https://laminar.sh/docs/agent-evaluations/introduction) dataset you run with `lmnr-cli eval run`. The agent looks up a customer's charges in a SQLite database, can refund one, and posts its reply through a helpdesk API. Each case starts with its own copy of the database and mocks of the CRM and the helpdesk, and a verifier checks the database, the reply, and what the agent sent to the helpdesk.
->>>>>>> 3b7eb16 (feat(evals): mock server, lmnr-mock protocol and the Laminar image layer)
+A support agent that handles billing tickets, with [agent evaluation](https://laminar.sh/docs/agent-evaluations/introduction) datasets you run with `lmnr-cli eval run`. The agent looks up a customer's charges in a SQLite database and can refund one. Each case starts with its own copy of the database, and a verifier checks both the database and the reply. In the `support` dataset the agent also posts its reply through a helpdesk API: each case mocks the CRM and the helpdesk, and the verifier checks what the agent sent to the helpdesk.
 
 The [quickstart](https://laminar.sh/docs/agent-evaluations/quickstart#get-started-manually) walks through the files.
 
@@ -33,6 +29,8 @@ evals/
         tests/
           test.sh             # a stub: eval.py's verify() grades the case
           expected.json       # the reference answer
+          fixtures/
+            crm.json          # what the CRM mock answers in this case
   _shared/                    # shared runner code, not a dataset (see "More datasets")
   support-api/                # the agent behind a service, graded in a separate container
   support-test-sh/            # cases graded by their own tests/test.sh
@@ -67,7 +65,7 @@ You need [Docker](https://docs.docker.com/get-docker/), [uv](https://docs.astral
 
    Without a name, `eval run` runs every dataset in `evals/`, including the two in "More datasets".
 
-Each trial shows up in Laminar as a datapoint with a `refund` score and a `reply` score, next to the trace of the agent's model and tool calls.
+Each trial shows up in Laminar as a datapoint with `refund`, `reply` and `posted` scores, next to the trace of the agent's model and tool calls. The trial's `artifacts/` folder in `evals/support/jobs/` holds `mocks.jsonl`, every call the mocks answered.
 
 To add a case, create a folder in `evals/support/tasks/` with its `environment/case.json`, `environment/seed.json`, `tests/expected.json` and `tests/fixtures/crm.json`. The next `eval run` writes the rest (`task.toml` with the case's name, `instruction.md`, and the stub `tests/test.sh`), or create them first with `npx lmnr-cli@latest eval task new evals/support/tasks/<name>`.
 

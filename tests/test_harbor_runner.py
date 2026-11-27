@@ -492,6 +492,49 @@ async def test_mock_calls_are_collected_when_run_fails(mocks_dataset: Path):
     assert env.commands()[-2:] == ["snapshot db /logs/artifacts/state/db", "collect mocks 7"]
 
 
+def _with_setup(dataset: Path, body: str) -> None:
+    """eval.py's setup replaced by `body`, plus a collect() that leaves a marker."""
+    eval_py = dataset / "agent" / "eval.py"
+    _ = eval_py.write_text(
+        eval_py.read_text().replace(
+            '        await ctx.container.sh("setup")\n',
+            f"        {body}\n\n"
+            + "    async def collect(self, ctx):\n"
+            + '        await ctx.container.sh("user collect")\n',
+        )
+    )
+
+
+@pytest.mark.asyncio
+async def test_mock_server_is_collected_when_setup_fails(mocks_dataset: Path):
+    """collect() only follows a finished setup; the runner's own cleanup always runs."""
+    trial_paths = make_trial(mocks_dataset, "broken")
+    _with_setup(mocks_dataset, 'raise RuntimeError("seed failed")')
+    env = FakeEnvironment()
+    with pytest.raises(RuntimeError, match="seed failed"):
+        await services_agent(trial_paths).run("", env, AgentContext())
+    assert env.commands()[-3:] == [
+        "start mocks",
+        "snapshot db /logs/artifacts/state/db",
+        "collect mocks 7",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_mock_server_is_collected_when_setup_times_out(mocks_dataset: Path):
+    """Harbor cancels the agent on timeout and still runs the verifier, which
+    reads the call log."""
+    trial_paths = make_trial(mocks_dataset, "slow")
+    _with_setup(mocks_dataset, "await asyncio.sleep(30)")
+    eval_py = mocks_dataset / "agent" / "eval.py"
+    _ = eval_py.write_text("import asyncio\n" + eval_py.read_text())
+    env = FakeEnvironment()
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(services_agent(trial_paths).run("", env, AgentContext()), 0.5)
+    assert "user collect" not in env.commands()
+    assert env.commands()[-2:] == ["snapshot db /logs/artifacts/state/db", "collect mocks 7"]
+
+
 @pytest.mark.asyncio
 async def test_verifier_reads_the_mock_call_log(mocks_dataset: Path):
     trial_paths = make_trial(mocks_dataset, "ok")
