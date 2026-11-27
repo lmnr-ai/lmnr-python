@@ -54,7 +54,8 @@ class EvalRunner:
 
     Class attributes:
 
-    - `image`: `Image.from_dockerfile(...)` / `Image.from_registry(...)`, or a dict
+    - `image`: an `Image` (`Image.python("3.13").add_dir(...)`,
+      `Image.from_dockerfile(...)`, `Image.from_registry(...)`), or a dict
       of named images (the first is the default; a task picks one with
       `docker_image` in its `task.toml`).
     - `model`: default model; `harbor.yaml` and `--model` override it.
@@ -81,8 +82,10 @@ class EvalRunner:
       to `collect`; `verify` reads the calls with `ctx.mocks.calls(key)`.
       Handlers are top-level functions of `eval.py` or of a module under the
       evals root.
-    - `mock_dependencies`: pip requirements the handlers' modules import,
-      installed next to the mock server (`["anthropic"]`).
+    - `mock_dependencies`: pip requirements for the mock server's Python, which
+      imports `eval.py` in the container: whatever `eval.py`, its shared
+      modules and the handlers import at the top level (`["anthropic"]` for a
+      judge), beyond `lmnr`.
     - `grade_with_test_sh = True`: grade each case with its own
       `tests/test.sh`, run in the container by Harbor's default verifier,
       instead of `verify()` (for imported Harbor datasets that ship one).
@@ -91,7 +94,8 @@ class EvalRunner:
 
     - `setup(ctx)`: before `run`. Default: the case's `environment/seed.*`, if any.
     - `run(ctx)`: the code under test. Required, unless `run_command` is set.
-    - `collect(ctx)`: after `run`, also when it failed. Default: nothing.
+    - `collect(ctx)`: after `run`, also when it failed (not when `setup`
+      failed). Default: nothing.
     - `verify(ctx)`: grading, on the host. Returns a number, a bool or a dict
       of them. Required, unless `grade_with_test_sh = True`.
     """
@@ -193,8 +197,9 @@ class EvalRunner:
         image = cls.image
         if image is None:
             raise EvalConfigError(
-                f'{name} has no image. Set `image = Image.from_dockerfile("Dockerfile")` '
-                + 'or `image = Image.from_registry("python:3.13-slim")`.'
+                f'{name} has no image. Set `image = Image.python("3.13").add_dir(...)`, '
+                + '`Image.from_dockerfile("Dockerfile")` or '
+                + '`Image.from_registry("python:3.13-slim")`.'
             )
         if isinstance(image, dict):
             if not image:

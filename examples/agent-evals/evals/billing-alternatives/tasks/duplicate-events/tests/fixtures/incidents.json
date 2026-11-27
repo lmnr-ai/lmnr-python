@@ -1,0 +1,9 @@
+[
+  {
+    "id": "inc_2611",
+    "title": "Ingestion retries recorded some events more than once",
+    "started_days_ago": 3,
+    "resolved": true,
+    "summary": "A retry storm in the ingestion API stored some accepted events up to eleven times. Affected accounts were billed for the duplicates."
+  }
+]

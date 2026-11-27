@@ -40,6 +40,7 @@ from lmnr.evals.context import (
 from lmnr.evals.errors import CommandError, EvalConfigError, ExecResult
 from lmnr.evals.fixtures import CaseFixture, case_fixture
 from lmnr.evals.image import Image
+from lmnr.evals.mirrors import Mirror, Rystic
 from lmnr.evals.mocks import mock
 from lmnr.evals.readiness import Readiness, cmd, http, port
 from lmnr.evals.runner import EvalRunner, Secret, secret
@@ -61,8 +62,10 @@ __all__ = [
     "EvalRunner",
     "ExecResult",
     "Image",
+    "Mirror",
     "Postgres",
     "Readiness",
+    "Rystic",
     "Secret",
     "Service",
     "Valkey",

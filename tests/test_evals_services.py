@@ -561,17 +561,12 @@ def test_rystic_against_a_fake_simulator(tmp_path: Path, monkeypatch: pytest.Mon
         asyncio.run(slack.get(verify_ctx, "/api/x"))
 
 
-@pytest.mark.parametrize("token", [False, True])
-def test_rystic_is_remote_only_for_now(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, token: bool
+def test_rystic_without_a_token_fails_before_the_pull(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """No RYSTIC_TOKEN (a local run): fail before the pull, with the reason. A
-    token without Laminar's endpoint (`--env RYSTIC_TOKEN`): warn and try."""
-    monkeypatch.delenv("RYSTIC_RELEASE_ENDPOINT", raising=False)
-    if token:
-        monkeypatch.setenv("RYSTIC_TOKEN", "rys_" + "b" * 43)
-    else:
-        monkeypatch.delenv("RYSTIC_TOKEN", raising=False)
+    """No RYSTIC_TOKEN (a local run without --env RYSTIC_TOKEN): fail before
+    the pull, saying how to give the trial access."""
+    monkeypatch.delenv("RYSTIC_TOKEN", raising=False)
     binary = tmp_path / "rystic"
     _ = binary.write_text("#!/bin/sh\necho pulled-without-access >&2; exit 3\n")
     binary.chmod(0o755)
@@ -582,14 +577,8 @@ def test_rystic_is_remote_only_for_now(
         runner_dir=tmp_path,
         host_logs_dir=tmp_path / "agent",
     )
-    warnings: list[str] = []
-    monkeypatch.setattr(ctx.logger, "warning", lambda msg, *a, **k: warnings.append(msg))
-    message = "pulled-without-access" if token else "only in `lmnr-cli eval run --remote`"
-    with pytest.raises(Exception, match=message):
+    with pytest.raises(RuntimeError, match="Pass your Rystic API key with `--env RYSTIC_TOKEN`"):
         asyncio.run(Rystic("slack", version="1.4").start(ctx))
-    assert bool(warnings) == token
-    if token:
-        assert "only in `lmnr-cli eval run --remote`" in warnings[0]
 
 
 def test_rystic_build_and_start_assumptions():
@@ -605,8 +594,12 @@ def test_rystic_build_and_start_assumptions():
     # The image gets the CLI at a pinned version; twins need a key, so no twin.
     stages = "\n".join(slack.bundle_stages(lambda p: str(p)))
     assert "FROM curlimages/curl:8.17.0 AS svc-slack" in stages
-    assert "RYSTIC_VERSION=0.0.93" in stages
-    assert slack.image_title(None).startswith("service: Rystic slack-twin 1.4, CLI 0.0.93 (")
+    assert f"RYSTIC_VERSION={rystic_module.DEFAULT_CLI_VERSION}" in stages
+    # A CA bundle for images without one, behind the wrapper on PATH.
+    assert "cp /etc/ssl/certs/ca-certificates.crt /bundle/usr/local/lib/rystic/" in stages
+    assert slack.image_title(None).startswith(
+        f"service: Rystic slack-twin 1.4, CLI {rystic_module.DEFAULT_CLI_VERSION} ("
+    )
 
 
 def test_mirror_snapshot_chmods_after_every_file(tmp_path: Path):

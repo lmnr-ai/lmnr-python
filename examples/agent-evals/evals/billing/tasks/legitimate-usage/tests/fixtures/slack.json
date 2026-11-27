@@ -1,0 +1,58 @@
+{
+  "state_team": {
+    "T0MTRLY": {
+      "id": "T0MTRLY",
+      "name": "Meterly",
+      "domain": "meterly"
+    }
+  },
+  "state_user": {
+    "member": {
+      "id": "U0BILLBOT",
+      "name": "billing-bot",
+      "real_name": "Billing Bot",
+      "team_id": "T0MTRLY",
+      "is_bot": true
+    },
+    "U0DANA01": {
+      "id": "U0DANA01",
+      "name": "dana",
+      "real_name": "Dana Okafor",
+      "team_id": "T0MTRLY",
+      "is_bot": false,
+      "profile": {
+        "real_name": "Dana Okafor",
+        "email": "ops@tallgrassfreight.com"
+      }
+    }
+  },
+  "state_channel": {
+    "C0BILLING": {
+      "id": "C0BILLING",
+      "name": "billing-help",
+      "is_channel": true,
+      "is_archived": false,
+      "created": 1767225600,
+      "creator": "U0DANA01"
+    }
+  },
+  "state_membership": {
+    "C0BILLING:U0BILLBOT": {
+      "channel": "C0BILLING",
+      "user": "U0BILLBOT"
+    },
+    "C0BILLING:U0DANA01": {
+      "channel": "C0BILLING",
+      "user": "U0DANA01"
+    }
+  },
+  "state_message": {
+    "C0BILLING:1767225600.000100": {
+      "channel": "C0BILLING",
+      "ts": "1767225600.000100",
+      "type": "message",
+      "user": "U0DANA01",
+      "text": "Hello, Dana at Tallgrass Freight. We got charged a lot more for API usage this month than last month. Is this a mistake?"
+    }
+  }
+}

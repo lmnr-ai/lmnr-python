@@ -1,0 +1,9 @@
+[
+  {
+    "id": "inc_2598",
+    "title": "Usage dashboard charts loaded slowly",
+    "started_days_ago": 12,
+    "resolved": true,
+    "summary": "Usage charts in the dashboard took up to a minute to load. Recorded usage and billing were not affected."
+  }
+]

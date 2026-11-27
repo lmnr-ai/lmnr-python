@@ -1,9 +1,0 @@
-[task]
-name = "usage-billing-agent/legitimate-usage"
-
-[environment]
-docker_image = "billing-evals"
-workdir = "/case"
-
-[agent]
-timeout_sec = 300

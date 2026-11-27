@@ -83,8 +83,8 @@ class ClickHouse(Service):
 
     It runs as the `clickhouse` OS user on 127.0.0.1 (HTTP `http_port`, native
     `tcp_port`), user `default` without a password. Every trial gets a fresh
-    server with `database` created, `migrations` (`*.sql` in natural order,
-    through `clickhouse client --multiquery`) and this case's `seed` (`.sql`).
+    server with `database` created, `migrations` (see `migrator`) and this
+    case's `seed` (`.sql`).
 
     - `env`: `"CLICKHOUSE_URL"` (the default) gets `http://127.0.0.1:<http_port>`;
       templates can use `{url}`, `{host}`, `{port}` (HTTP), `{tcp_port}`,

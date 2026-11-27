@@ -1,8 +1,0 @@
-{
-  "charges": [
-    {"id": "ch_51d0aa", "email": "james.chen@example.com", "description": "Business plan, October", "amount": 99.0, "created_at": "2026-10-01T08:00:02Z"},
-    {"id": "ch_7e19c3", "email": "james.chen@example.com", "description": "Business plan, November", "amount": 99.0, "created_at": "2026-11-01T08:00:03Z"},
-    {"id": "ch_93f2b8", "email": "james.chen@example.com", "description": "Business plan, November", "amount": 99.0, "created_at": "2026-11-01T08:00:04Z"},
-    {"id": "ch_a06d4e", "email": "james.chen@example.com", "description": "Business plan, November", "amount": 99.0, "created_at": "2026-11-01T08:00:06Z"}
-  ]
-}
