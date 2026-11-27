@@ -723,3 +723,22 @@ def test_verify_ctx_artifacts_default_to_the_trial_dir(tmp_path: Path):
         secrets=Secrets([], {}),
     )
     assert ctx.artifacts.dir == tmp_path / "trial" / "artifacts"
+
+
+@pytest.mark.asyncio
+async def test_default_setup_runs_the_case_seed(tmp_path: Path):
+    env = FakeEnvironment()
+    ctx = agent_ctx(tmp_path, env)
+    await runner_class()().setup(ctx)
+    assert env.calls == []  # no seed script
+    _ = ctx.case.file("seed.py").write_text("print(1)")
+    await runner_class()().setup(ctx)
+    assert any(c.startswith("python3 /tmp/lmnr-") for c in env.commands())
+
+
+def test_lmnr_evals_never_imports_harbor():
+    code = (
+        "import sys, lmnr.evals, lmnr.evals.describe; "
+        "assert not any(m == 'harbor' or m.startswith('harbor.') for m in sys.modules)"
+    )
+    _ = subprocess.run([sys.executable, "-c", code], check=True)
