@@ -43,13 +43,13 @@ class BillingAlternativesEval(EvalRunner):
         Postgres(
             "17",
             database="billing",
-            migrations="../../../db/migrations",
+            migrations="../../migrations/postgres",
             snapshot=["credits"],
         ),
         ClickHouse(
             "25.8",
             database="usage",
-            migrations="../../../clickhouse/migrations",
+            migrations="../../migrations/clickhouse",
             config="../../../clickhouse/config.xml",
             users="../../../clickhouse/users.xml",
             env={"CLICKHOUSE_URL": "{url}", "CLICKHOUSE_DB": "{database}"},
