@@ -51,7 +51,8 @@ def _read_file(file: Path) -> list[dict[str, Any]]:
         else:
             return [result]
     elif file.suffix == ".csv":
-        return [dict(row) for row in csv.DictReader(file.read_text().splitlines())]
+        with file.open(newline="") as stream:
+            return [dict(row) for row in csv.DictReader(stream)]
     elif file.suffix == ".jsonl":
         return [orjson.loads(line) for line in file.read_text().splitlines() if line.strip()]
     else:
