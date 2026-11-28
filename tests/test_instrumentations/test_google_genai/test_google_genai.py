@@ -1161,8 +1161,9 @@ And steal away a human heart."""
         }
     ]
     assert (span.attributes or {})["gen_ai.usage.input_tokens"] == 7
-    assert (span.attributes or {})["gen_ai.usage.output_tokens"] == 166
-    assert (span.attributes or {})["llm.usage.total_tokens"] == 175  # 173 + 2 (thinking tokens)
+    # usage in stream chunks is cumulative (7 + 2, 21, 68, 75): the last chunk is the total
+    assert (span.attributes or {})["gen_ai.usage.output_tokens"] == 75
+    assert (span.attributes or {})["llm.usage.total_tokens"] == 82
     assert len(span.events) == chunk_count
     assert all(event.name == "llm.content.completion.chunk" for event in span.events)
 
