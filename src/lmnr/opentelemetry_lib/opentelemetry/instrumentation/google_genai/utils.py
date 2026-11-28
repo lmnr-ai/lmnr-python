@@ -101,28 +101,23 @@ def process_stream_chunk(
     if chunk.usage_metadata:
         usage_dict = to_dict(chunk.usage_metadata)
         # prompt token count is sent in every chunk
-        # (and is less by 1 in the last chunk, so we set it once);
-        # total token count in every chunk is greater by prompt token count than it should be,
-        # thus this awkward logic here
+        # (and is less by 1 in the last chunk, so we set it once)
         if aggregated_usage_metadata.get("prompt_token_count") is None:
             # or 0, not .get(key, 0), because sometimes the value is explicitly None
             aggregated_usage_metadata["prompt_token_count"] = (
                 usage_dict.get("prompt_token_count") or 0
             )
-            aggregated_usage_metadata["total_token_count"] = (
-                usage_dict.get("total_token_count") or 0
-            )
-        aggregated_usage_metadata["candidates_token_count"] += (
-            usage_dict.get("candidates_token_count") or 0
-        )
-        aggregated_usage_metadata["total_token_count"] += (
-            usage_dict.get("candidates_token_count") or 0
-        )
-        # cached tokens describe the request's cache hit, not a per-chunk delta,
-        # so take the reported value rather than summing it across chunks
-        cached_content_token_count = usage_dict.get("cached_content_token_count")
-        if cached_content_token_count is not None:
-            aggregated_usage_metadata["cached_content_token_count"] = cached_content_token_count
+        # usage metadata in streaming chunks is cumulative, not a per-chunk
+        # delta, so keep the last reported (non-None) value rather than summing
+        for key in (
+            "candidates_token_count",
+            "thoughts_token_count",
+            "total_token_count",
+            "cached_content_token_count",
+        ):
+            value = usage_dict.get(key)
+            if value is not None:
+                aggregated_usage_metadata[key] = value
     return ProcessChunkResult(
         role=role,
         model_version=model_version,
