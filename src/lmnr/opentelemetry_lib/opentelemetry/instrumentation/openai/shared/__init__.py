@@ -263,6 +263,11 @@ def set_response_attributes(
         "gen_ai.usage.cache_read.input_tokens",
         prompt_tokens_details.get("cached_tokens", 0),
     )
+    set_span_attribute(
+        span,
+        "gen_ai.usage.cache_write.input_tokens",
+        prompt_tokens_details.get("cache_write_tokens"),
+    )
 
     if completion_token_details := dict(
         cast(dict[str, int], usage.get("completion_tokens_details", {}))

@@ -301,6 +301,12 @@ def set_data_attributes(traced_response: TracedData, span: Span):
                 "gen_ai.usage.cache_read.input_tokens",
                 usage.input_tokens_details.cached_tokens,
             )
+            # Older openai versions don't declare the field.
+            set_span_attribute(
+                span,
+                "gen_ai.usage.cache_write.input_tokens",
+                getattr(usage.input_tokens_details, "cache_write_tokens", None),
+            )
 
         reasoning_tokens = None
         if usage.output_tokens_details:
